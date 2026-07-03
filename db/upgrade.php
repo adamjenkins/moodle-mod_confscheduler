@@ -59,5 +59,40 @@ function xmldb_confscheduler_upgrade($oldversion) {
         upgrade_mod_savepoint(true, 2026070402, 'confscheduler');
     }
 
+    if ($oldversion < 2026070404) {
+        // Revision round 1 (2026-07-03): organiser-set conference start/end dates,
+        // settable in mod_form.php's General section. Nullable: not currently derived
+        // from or validated against any scheduled slot, purely an explicit setting.
+        $table = new xmldb_table('confscheduler');
+
+        $field = new xmldb_field('conferencestart', XMLDB_TYPE_INTEGER, '10', null, null, null, null, 'confprogramcmid');
+        if (!$dbman->field_exists($table, $field)) {
+            $dbman->add_field($table, $field);
+        }
+
+        $field = new xmldb_field('conferenceend', XMLDB_TYPE_INTEGER, '10', null, null, null, null, 'conferencestart');
+        if (!$dbman->field_exists($table, $field)) {
+            $dbman->add_field($table, $field);
+        }
+
+        upgrade_mod_savepoint(true, 2026070404, 'confscheduler');
+    }
+
+    if ($oldversion < 2026070405) {
+        // Revision round 1 (2026-07-03): span-block colour picker. Nullable hex colour,
+        // same type/length as confscheduler_room.colour, applying only to label-only
+        // span-block slots (submissionid IS NULL) -- enforced in classes/api.php, not at
+        // the schema level (the column exists on every slot row, but is only ever
+        // written for span blocks).
+        $table = new xmldb_table('confscheduler_slot');
+
+        $field = new xmldb_field('colour', XMLDB_TYPE_CHAR, '7', null, null, null, null, 'label');
+        if (!$dbman->field_exists($table, $field)) {
+            $dbman->add_field($table, $field);
+        }
+
+        upgrade_mod_savepoint(true, 2026070405, 'confscheduler');
+    }
+
     return true;
 }

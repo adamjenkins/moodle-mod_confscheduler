@@ -23,18 +23,23 @@ use mod_confscheduler\api;
 use PHPUnit\Framework\Attributes\CoversClass;
 
 /**
- * Tests for the add_span_block AJAX external function.
+ * Tests for the update_span_block AJAX external function.
+ *
+ * Mirrors add_span_block_test.php's fixture; the IDOR-scoping tests here are the
+ * counterpart of reschedule_slot_test.php's for a slot-id-accepting write endpoint.
  *
  * @package    mod_confscheduler
  * @copyright  2026 Adam Jenkins <adam@wisecat.net>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-#[CoversClass(add_span_block::class)]
-final class add_span_block_test extends advanced_testcase {
+#[CoversClass(update_span_block::class)]
+final class update_span_block_test extends advanced_testcase {
     /**
-     * Creates a course containing a linked confscheduler instance with two rooms.
+     * Creates a course containing a linked confscheduler instance with two rooms and
+     * one existing span block.
      *
-     * @return array{0: \stdClass, 1: int, 2: \stdClass, 3: int, 4: int} [$course, $cmid, $confscheduler, $room1, $room2]
+     * @return array{0: \stdClass, 1: int, 2: \stdClass, 3: int, 4: int, 5: int}
+     *     [$course, $cmid, $confscheduler, $room1, $room2, $slotid]
      */
     protected function create_fixture(): array {
         global $DB;
@@ -60,78 +65,46 @@ final class add_span_block_test extends advanced_testcase {
         $room1 = api::add_room((int) $confscheduler->id, 'Main Hall');
         $room2 = api::add_room((int) $confscheduler->id, 'Room B');
 
-        return [$course, (int) $cm->id, $confscheduler, $room1, $room2];
-    }
-
-    /**
-     * An editing teacher can create a column-spanning block with no presentation.
-     */
-    public function test_creates_span_block(): void {
-        $this->resetAfterTest();
-
-        [$course, $cmid, , $room1, $room2] = $this->create_fixture();
-        $teacher = $this->getDataGenerator()->create_and_enrol($course, 'editingteacher');
-        $this->setUser($teacher);
-
-        $result = add_span_block::execute(
-            $cmid,
-            'Lunch Break',
-            [$room1, $room2],
-            strtotime('2026-09-01 12:00:00'),
-            strtotime('2026-09-01 13:00:00')
-        );
-
-        $this->assertGreaterThan(0, $result['slotid']);
-
-        global $DB;
-        $slot = $DB->get_record('confscheduler_slot', ['id' => $result['slotid']]);
-        $this->assertNull($slot->submissionid);
-        $this->assertSame('Lunch Break', $slot->label);
-        $this->assertSame(2, $DB->count_records('confscheduler_slotroom', ['slotid' => $result['slotid']]));
-    }
-
-    /**
-     * A span block can be created with a colour theme (Revision round 1, 2026-07-03).
-     */
-    public function test_creates_span_block_with_colour(): void {
-        $this->resetAfterTest();
-
-        [$course, $cmid, , $room1, $room2] = $this->create_fixture();
-        $teacher = $this->getDataGenerator()->create_and_enrol($course, 'editingteacher');
-        $this->setUser($teacher);
-
-        $result = add_span_block::execute(
-            $cmid,
-            'Plenary',
-            [$room1, $room2],
-            strtotime('2026-09-01 09:00:00'),
-            strtotime('2026-09-01 10:00:00'),
-            '#3366cc'
-        );
-
-        global $DB;
-        $this->assertSame('#3366cc', $DB->get_field('confscheduler_slot', 'colour', ['id' => $result['slotid']]));
-    }
-
-    /**
-     * An invalid colour is rejected.
-     */
-    public function test_rejects_invalid_colour(): void {
-        $this->resetAfterTest();
-
-        [$course, $cmid, , $room1] = $this->create_fixture();
-        $teacher = $this->getDataGenerator()->create_and_enrol($course, 'editingteacher');
-        $this->setUser($teacher);
-
-        $this->expectException(\invalid_parameter_exception::class);
-        add_span_block::execute(
-            $cmid,
-            'Lunch',
+        $slotid = api::add_slot(
+            (int) $confscheduler->id,
             [$room1],
             strtotime('2026-09-01 12:00:00'),
             strtotime('2026-09-01 13:00:00'),
-            'not-a-colour'
+            null,
+            'Lunch Break',
+            '#3366cc'
         );
+
+        return [$course, (int) $cm->id, $confscheduler, $room1, $room2, $slotid];
+    }
+
+    /**
+     * An editing teacher can edit an existing span block's label/colour/time/room-range.
+     */
+    public function test_updates_span_block(): void {
+        $this->resetAfterTest();
+
+        [$course, $cmid, , $room1, $room2, $slotid] = $this->create_fixture();
+        $teacher = $this->getDataGenerator()->create_and_enrol($course, 'editingteacher');
+        $this->setUser($teacher);
+
+        $result = update_span_block::execute(
+            $cmid,
+            $slotid,
+            'Plenary',
+            '#ff0000',
+            [$room1, $room2],
+            strtotime('2026-09-01 14:00:00'),
+            strtotime('2026-09-01 15:00:00')
+        );
+
+        $this->assertTrue($result['success']);
+
+        global $DB;
+        $slot = $DB->get_record('confscheduler_slot', ['id' => $slotid]);
+        $this->assertSame('Plenary', $slot->label);
+        $this->assertSame('#ff0000', $slot->colour);
+        $this->assertSame(2, $DB->count_records('confscheduler_slotroom', ['slotid' => $slotid]));
     }
 
     /**
@@ -140,12 +113,67 @@ final class add_span_block_test extends advanced_testcase {
     public function test_rejects_blank_label(): void {
         $this->resetAfterTest();
 
+        [$course, $cmid, , $room1, , $slotid] = $this->create_fixture();
+        $teacher = $this->getDataGenerator()->create_and_enrol($course, 'editingteacher');
+        $this->setUser($teacher);
+
+        $this->expectException(\invalid_parameter_exception::class);
+        update_span_block::execute(
+            $cmid,
+            $slotid,
+            '   ',
+            null,
+            [$room1],
+            strtotime('2026-09-01 12:00:00'),
+            strtotime('2026-09-01 13:00:00')
+        );
+    }
+
+    /**
+     * A slot id belonging to a DIFFERENT confscheduler instance is rejected (IDOR
+     * prevention), with the same "invalid slot" message as a slot that simply does
+     * not exist -- see scheduler_context_trait::require_slot_in_instance()'s docblock.
+     */
+    public function test_rejects_slot_from_different_instance(): void {
+        $this->resetAfterTest();
+
+        [$course, $cmid, , $room1] = $this->create_fixture();
+        [, , , , , $foreignslotid] = $this->create_fixture();
+        $teacher = $this->getDataGenerator()->create_and_enrol($course, 'editingteacher');
+        $this->setUser($teacher);
+
+        $this->expectException(\invalid_parameter_exception::class);
+        update_span_block::execute(
+            $cmid,
+            $foreignslotid,
+            'Hijacked',
+            null,
+            [$room1],
+            strtotime('2026-09-01 12:00:00'),
+            strtotime('2026-09-01 13:00:00')
+        );
+    }
+
+    /**
+     * A non-existent slot id is rejected with the same message as a foreign one.
+     */
+    public function test_rejects_nonexistent_slot(): void {
+        $this->resetAfterTest();
+
         [$course, $cmid, , $room1] = $this->create_fixture();
         $teacher = $this->getDataGenerator()->create_and_enrol($course, 'editingteacher');
         $this->setUser($teacher);
 
         $this->expectException(\invalid_parameter_exception::class);
-        add_span_block::execute($cmid, '   ', [$room1], strtotime('2026-09-01 12:00:00'), strtotime('2026-09-01 13:00:00'));
+        update_span_block::execute(
+            $cmid,
+            999999,
+            'Ghost',
+            null,
+            [$room1],
+            strtotime('2026-09-01 12:00:00'),
+            strtotime('2026-09-01 13:00:00')
+        );
     }
 
     /**
@@ -154,11 +182,19 @@ final class add_span_block_test extends advanced_testcase {
     public function test_requires_manageschedule_capability(): void {
         $this->resetAfterTest();
 
-        [$course, $cmid, , $room1] = $this->create_fixture();
+        [$course, $cmid, , $room1, , $slotid] = $this->create_fixture();
         $student = $this->getDataGenerator()->create_and_enrol($course, 'student');
         $this->setUser($student);
 
         $this->expectException(\required_capability_exception::class);
-        add_span_block::execute($cmid, 'Lunch', [$room1], strtotime('2026-09-01 12:00:00'), strtotime('2026-09-01 13:00:00'));
+        update_span_block::execute(
+            $cmid,
+            $slotid,
+            'Hijacked',
+            null,
+            [$room1],
+            strtotime('2026-09-01 12:00:00'),
+            strtotime('2026-09-01 13:00:00')
+        );
     }
 }

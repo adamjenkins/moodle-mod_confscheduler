@@ -87,11 +87,29 @@ export const unscheduleSlot = (cmid, slotid) => Ajax.call([{
  * @param {Number[]} roomids Room id(s) this block spans
  * @param {Number} starttime Unix timestamp
  * @param {Number} endtime Unix timestamp
+ * @param {String|null} colour Hex colour (e.g. #3366cc) to theme this block, or null
  * @return {Promise}
  */
-export const addSpanBlock = (cmid, label, roomids, starttime, endtime) => Ajax.call([{
+export const addSpanBlock = (cmid, label, roomids, starttime, endtime, colour) => Ajax.call([{
     methodname: 'mod_confscheduler_add_span_block',
-    args: {cmid, label, roomids, starttime, endtime},
+    args: {cmid, label, roomids, starttime, endtime, colour},
+}])[0];
+
+/**
+ * Edits an existing column-spanning block in place (label, colour, time range, room-range).
+ *
+ * @param {Number} cmid The confscheduler course-module id
+ * @param {Number} slotid The confscheduler_slot id to update (must be a span block)
+ * @param {String} label The span-block label
+ * @param {Number[]} roomids Room id(s) this block spans
+ * @param {Number} starttime Unix timestamp
+ * @param {Number} endtime Unix timestamp
+ * @param {String|null} colour Hex colour (e.g. #3366cc) to theme this block, or null
+ * @return {Promise}
+ */
+export const updateSpanBlock = (cmid, slotid, label, roomids, starttime, endtime, colour) => Ajax.call([{
+    methodname: 'mod_confscheduler_update_span_block',
+    args: {cmid, slotid, label, roomids, starttime, endtime, colour},
 }])[0];
 
 /**

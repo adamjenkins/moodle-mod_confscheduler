@@ -57,6 +57,29 @@ class mod_confscheduler_mod_form extends moodleform_mod {
 
         $this->standard_intro_elements();
 
+        // Conference start/end dates (Revision round 1, 2026-07-03): purely an
+        // organiser-declared setting, not currently derived from or validated against
+        // any scheduled slot -- see confscheduler.conferencestart/conferenceend's
+        // db/install.xml comments. Deliberately in the General section (not a separate
+        // settings screen), per the user's explicit feedback.
+        $mform->addElement(
+            'date_time_selector',
+            'conferencestart',
+            get_string('conferencestart', 'mod_confscheduler'),
+            ['optional' => true]
+        );
+        $mform->setDefault('conferencestart', 0);
+        $mform->addHelpButton('conferencestart', 'conferencestart', 'mod_confscheduler');
+
+        $mform->addElement(
+            'date_time_selector',
+            'conferenceend',
+            get_string('conferenceend', 'mod_confscheduler'),
+            ['optional' => true]
+        );
+        $mform->setDefault('conferenceend', 0);
+        $mform->addHelpButton('conferenceend', 'conferenceend', 'mod_confscheduler');
+
         // Which mod_confprogram instance this scheduler pulls accepted submissions from.
         $options = [0 => get_string('choosedots')];
         // Note: get_coursemodules_in_course('confprogram', $courseid) is an alternative,
@@ -136,6 +159,13 @@ class mod_confscheduler_mod_form extends moodleform_mod {
 
         if (isset($data['gapminutes']) && (int) $data['gapminutes'] < 0) {
             $errors['gapminutes'] = get_string('error:invalidnumber', 'mod_confscheduler');
+        }
+
+        if (
+            !empty($data['conferencestart']) && !empty($data['conferenceend'])
+                && $data['conferenceend'] < $data['conferencestart']
+        ) {
+            $errors['conferenceend'] = get_string('error:conferenceendbeforestart', 'mod_confscheduler');
         }
 
         return $errors;

@@ -532,6 +532,170 @@ final class api_test extends advanced_testcase {
     }
 
     /**
+     * add_slot() accepts a valid hex colour for a span block (submissionid null) and
+     * persists it.
+     */
+    public function test_add_slot_accepts_colour_for_span_block(): void {
+        global $DB;
+        $this->resetAfterTest();
+
+        [$confscheduler] = $this->create_full_fixture();
+        $roomid = api::add_room((int) $confscheduler->id, 'Main Hall');
+
+        $slotid = api::add_slot(
+            (int) $confscheduler->id,
+            [$roomid],
+            strtotime('2026-09-01 12:00:00'),
+            strtotime('2026-09-01 13:00:00'),
+            null,
+            'Lunch',
+            '#3366cc'
+        );
+
+        $this->assertSame('#3366cc', $DB->get_field('confscheduler_slot', 'colour', ['id' => $slotid]));
+    }
+
+    /**
+     * add_slot() rejects an invalid (non-null, non-hex) colour, the same way
+     * add_room()/update_room() already validate room colour.
+     */
+    public function test_add_slot_rejects_invalid_colour(): void {
+        $this->resetAfterTest();
+
+        [$confscheduler] = $this->create_full_fixture();
+        $roomid = api::add_room((int) $confscheduler->id, 'Main Hall');
+
+        $this->expectException(\invalid_parameter_exception::class);
+        api::add_slot(
+            (int) $confscheduler->id,
+            [$roomid],
+            strtotime('2026-09-01 12:00:00'),
+            strtotime('2026-09-01 13:00:00'),
+            null,
+            'Lunch',
+            'not-a-colour'
+        );
+    }
+
+    /**
+     * add_slot() refuses a non-null colour together with a non-null submissionid:
+     * colour theming applies only to span blocks (Revision round 1).
+     */
+    public function test_add_slot_rejects_colour_with_presentation_submission(): void {
+        $this->resetAfterTest();
+
+        [$confscheduler, $confprogram, $confsubmissions] = $this->create_full_fixture();
+        $roomid = api::add_room((int) $confscheduler->id, 'Main Hall');
+        $submissionid = $this->create_accepted_submission($confsubmissions, $confprogram);
+
+        $this->expectException(\invalid_parameter_exception::class);
+        api::add_slot(
+            (int) $confscheduler->id,
+            [$roomid],
+            strtotime('2026-09-01 10:00:00'),
+            strtotime('2026-09-01 10:30:00'),
+            $submissionid,
+            null,
+            '#3366cc'
+        );
+    }
+
+    /**
+     * update_span_block() edits a span block's label/colour/time/room-range in place.
+     */
+    public function test_update_span_block_edits_in_place(): void {
+        global $DB;
+        $this->resetAfterTest();
+
+        [$confscheduler] = $this->create_full_fixture();
+        $room1 = api::add_room((int) $confscheduler->id, 'A');
+        $room2 = api::add_room((int) $confscheduler->id, 'B');
+
+        $slotid = api::add_slot(
+            (int) $confscheduler->id,
+            [$room1],
+            strtotime('2026-09-01 12:00:00'),
+            strtotime('2026-09-01 13:00:00'),
+            null,
+            'Lunch',
+            '#3366cc'
+        );
+
+        api::update_span_block(
+            $slotid,
+            'Plenary',
+            '#ff0000',
+            [$room1, $room2],
+            strtotime('2026-09-01 14:00:00'),
+            strtotime('2026-09-01 15:00:00')
+        );
+
+        $slot = $DB->get_record('confscheduler_slot', ['id' => $slotid]);
+        $this->assertSame('Plenary', $slot->label);
+        $this->assertSame('#ff0000', $slot->colour);
+        $this->assertEquals(strtotime('2026-09-01 14:00:00'), (int) $slot->starttime);
+        $this->assertEquals(strtotime('2026-09-01 15:00:00'), (int) $slot->endtime);
+        $this->assertSame(2, $DB->count_records('confscheduler_slotroom', ['slotid' => $slotid]));
+    }
+
+    /**
+     * update_span_block() rejects an invalid hex colour.
+     */
+    public function test_update_span_block_rejects_invalid_colour(): void {
+        $this->resetAfterTest();
+
+        [$confscheduler] = $this->create_full_fixture();
+        $roomid = api::add_room((int) $confscheduler->id, 'Main Hall');
+        $slotid = api::add_slot(
+            (int) $confscheduler->id,
+            [$roomid],
+            strtotime('2026-09-01 12:00:00'),
+            strtotime('2026-09-01 13:00:00'),
+            null,
+            'Lunch'
+        );
+
+        $this->expectException(\invalid_parameter_exception::class);
+        api::update_span_block(
+            $slotid,
+            'Lunch',
+            'nope',
+            [$roomid],
+            strtotime('2026-09-01 12:00:00'),
+            strtotime('2026-09-01 13:00:00')
+        );
+    }
+
+    /**
+     * update_span_block() refuses to operate on a presentation slot (submissionid
+     * non-null): colour/label editing is scoped to span blocks only.
+     */
+    public function test_update_span_block_rejects_presentation_slot(): void {
+        $this->resetAfterTest();
+
+        [$confscheduler, $confprogram, $confsubmissions] = $this->create_full_fixture();
+        $roomid = api::add_room((int) $confscheduler->id, 'Main Hall');
+        $submissionid = $this->create_accepted_submission($confsubmissions, $confprogram);
+        $slotid = api::add_slot(
+            (int) $confscheduler->id,
+            [$roomid],
+            strtotime('2026-09-01 10:00:00'),
+            strtotime('2026-09-01 10:30:00'),
+            $submissionid
+        );
+
+        $this->expectException(\moodle_exception::class);
+        api::update_span_block(
+            $slotid,
+            'Not allowed',
+            null,
+            [$roomid],
+            strtotime('2026-09-01 10:00:00'),
+            strtotime('2026-09-01 10:30:00')
+        );
+    }
+
+    /**
      * update_slot() reschedules a slot and excludes the slot's own current
      * confscheduler_slotroom rows from the overlap/GapSnap check against itself.
      */

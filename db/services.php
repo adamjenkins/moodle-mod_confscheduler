@@ -61,6 +61,13 @@ $functions = [
         'ajax'         => true,
         'capabilities' => 'mod/confscheduler:manageschedule',
     ],
+    'mod_confscheduler_update_span_block' => [
+        'classname'    => 'mod_confscheduler\external\update_span_block',
+        'description'  => 'Edits an existing column-spanning block (label, colour, time range, room-range) in place.',
+        'type'         => 'write',
+        'ajax'         => true,
+        'capabilities' => 'mod/confscheduler:manageschedule',
+    ],
     'mod_confscheduler_add_room' => [
         'classname'    => 'mod_confscheduler\external\add_room',
         'description'  => 'Adds a room (column) to a confscheduler instance.',

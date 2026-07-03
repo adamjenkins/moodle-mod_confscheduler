@@ -236,6 +236,27 @@
     padding: 0;
 }
 
+/* Span blocks previously supported only add/delete; this button (Revision round 1)
+   opens the same modal used to add one, pre-filled, to edit it in place. Positioned
+   top-right, mirroring .mod_confscheduler-block-fav's slot on presentation blocks
+   (span blocks never have a favourite star, so there's no collision). */
+.mod_confscheduler-block-edit-span {
+    position: absolute;
+    top: 1px;
+    right: 2px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 0.9rem;
+    line-height: 1;
+    color: inherit;
+    padding: 0;
+}
+
+.mod_confscheduler-block-span .mod_confscheduler-block-label {
+    margin-top: 1rem;
+}
+
 .mod_confscheduler-block-title {
     font-weight: 600;
     margin-top: 1rem;
@@ -259,12 +280,21 @@
 }
 
 .mod_confscheduler-track-pill {
+    display: inline-block;
     background: #3366cc;
     color: #fff;
     border-radius: 10px;
     padding: 0 0.4rem;
     font-size: 0.6rem;
     white-space: nowrap;
+    margin-bottom: 0.5em;
+    text-decoration: none;
+}
+
+a.mod_confscheduler-track-pill:hover,
+a.mod_confscheduler-track-pill:focus {
+    text-decoration: underline;
+    color: #fff;
 }
 
 .mod_confscheduler-block-roomtime {
@@ -291,13 +321,22 @@
     overflow: auto;
 }
 
+/*
+ * Dark mode support is DISABLED for now (Revision round 1 feedback, 2026-07-03): the
+ * plugin must always render its light-mode styling regardless of site/browser/OS theme
+ * preference. The rules below are kept (not deleted) since they are real design work
+ * that may be reintroduced later -- wrapped in a selector that can never match
+ * (":root.mod_confscheduler-dark-mode-disabled-pending-reintroduction" is never applied
+ * to anything) so they stay inert without losing the CSS itself. Re-enable by restoring
+ * the plain "@media (prefers-color-scheme: dark)" query.
+ */
 @media (prefers-color-scheme: dark) {
-    .mod_confscheduler-room-headers,
-    .mod_confscheduler-fullscreen {
+    :root.mod_confscheduler-dark-mode-disabled-pending-reintroduction .mod_confscheduler-room-headers,
+    :root.mod_confscheduler-dark-mode-disabled-pending-reintroduction .mod_confscheduler-fullscreen {
         background: #1d1f21;
     }
 
-    .mod_confscheduler-block {
+    :root.mod_confscheduler-dark-mode-disabled-pending-reintroduction .mod_confscheduler-block {
         background: #2a2d2f;
         color: #eee;
     }

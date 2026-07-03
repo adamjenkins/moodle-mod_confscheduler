@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" ?>
-<XMLDB PATH="mod/confscheduler/db" VERSION="2026070402" COMMENT="XMLDB file for Moodle mod/confscheduler"
+<XMLDB PATH="mod/confscheduler/db" VERSION="2026070405" COMMENT="XMLDB file for Moodle mod/confscheduler"
     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
     xsi:noNamespaceSchemaLocation="../../../lib/xmldb/xmldb.xsd">
   <TABLES>
@@ -11,6 +11,8 @@
         <FIELD NAME="intro" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="Activity description shown on course page"/>
         <FIELD NAME="introformat" TYPE="int" LENGTH="4" NOTNULL="true" SEQUENCE="false" DEFAULT="0" COMMENT="Format of the intro field"/>
         <FIELD NAME="confprogramcmid" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" DEFAULT="0" COMMENT="Course-module id of the mod_confprogram instance this scheduler pulls accepted submissions from"/>
+        <FIELD NAME="conferencestart" TYPE="int" LENGTH="10" NOTNULL="false" SEQUENCE="false" COMMENT="Organiser-set conference start date/time, unix timestamp; null if not set. Not currently derived from or validated against any scheduled slot -- purely an organiser-declared setting (Revision round 1, 2026-07-03)"/>
+        <FIELD NAME="conferenceend" TYPE="int" LENGTH="10" NOTNULL="false" SEQUENCE="false" COMMENT="Organiser-set conference end date/time, unix timestamp; null if not set. See conferencestart's comment"/>
         <FIELD NAME="gapminutes" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" DEFAULT="0" COMMENT="GapSnap: minimum gap, in minutes, enforced between presentations in the same room while dragging"/>
         <FIELD NAME="timecreated" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" DEFAULT="0"/>
         <FIELD NAME="timemodified" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" DEFAULT="0"/>
@@ -39,6 +41,7 @@
         <FIELD NAME="confscheduler" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" DEFAULT="0" COMMENT="Foreign key to confscheduler table"/>
         <FIELD NAME="submissionid" TYPE="int" LENGTH="10" NOTNULL="false" SEQUENCE="false" COMMENT="References mod_confsubmissions's confsubmissions_submission.id. Not a real foreign key: it is a cross-plugin reference into another activity's table. Null for a column-spanning block with no presentation"/>
         <FIELD NAME="label" TYPE="char" LENGTH="255" NOTNULL="false" SEQUENCE="false" COMMENT="Used only when submissionid is null, e.g. Lunch Break"/>
+        <FIELD NAME="colour" TYPE="char" LENGTH="7" NOTNULL="false" SEQUENCE="false" COMMENT="Hex colour (e.g. #3366cc) used to theme a span block (submissionid null); null means no theme/default styling. Not applicable to presentation slots (Revision round 1, 2026-07-03)"/>
         <FIELD NAME="starttime" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" DEFAULT="0"/>
         <FIELD NAME="endtime" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" DEFAULT="0"/>
         <FIELD NAME="timecreated" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" DEFAULT="0"/>

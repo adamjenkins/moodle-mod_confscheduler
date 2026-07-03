@@ -113,6 +113,46 @@ final class get_grid_data_test extends advanced_testcase {
     }
 
     /**
+     * A span block's colour is surfaced in the payload (Revision round 1,
+     * 2026-07-03), but a presentation slot's 'colour' is always null even though
+     * the underlying column exists on every confscheduler_slot row.
+     */
+    public function test_payload_includes_span_block_colour(): void {
+        $this->resetAfterTest();
+
+        [$course, $cmid, $confscheduler, , $submissionid] = $this->create_fixture();
+        $teacher = $this->getDataGenerator()->create_and_enrol($course, 'editingteacher');
+        $this->setUser($teacher);
+
+        $roomid = api::add_room((int) $confscheduler->id, 'Main Hall');
+        api::add_slot(
+            (int) $confscheduler->id,
+            [$roomid],
+            strtotime('2026-09-01 09:00:00'),
+            strtotime('2026-09-01 09:30:00'),
+            null,
+            'Plenary',
+            '#3366cc'
+        );
+        api::add_slot(
+            (int) $confscheduler->id,
+            [$roomid],
+            strtotime('2026-09-01 10:00:00'),
+            strtotime('2026-09-01 10:30:00'),
+            $submissionid
+        );
+
+        $result = get_grid_data::execute($cmid);
+        $bylabel = [];
+        foreach ($result['slots'] as $slot) {
+            $bylabel[$slot['label'] ?? 'presentation'] = $slot;
+        }
+
+        $this->assertSame('#3366cc', $bylabel['Plenary']['colour']);
+        $this->assertNull($bylabel['presentation']['colour']);
+    }
+
+    /**
      * A user with viewschedule but not manageschedule (a plain student) can still
      * read the grid data, since this endpoint also backs the future read-only
      * Display mode.

@@ -19,6 +19,7 @@ import Notification from 'core/notification';
 import {getString} from 'core/str';
 import * as Repository from 'mod_confscheduler/repository';
 import * as DayUtils from 'mod_confscheduler/day_utils';
+import * as ColourUtils from 'mod_confscheduler/colour_utils';
 
 /**
  * Read-only Display-mode schedule grid (Phase 3.5), for users holding only
@@ -51,6 +52,11 @@ import * as DayUtils from 'mod_confscheduler/day_utils';
  * controls (colour/black-and-white, paper size, orientation) implemented
  * entirely via CSS (@media print / a dynamically-written @page rule); see
  * styles.css.
+ *
+ * Room/span-block colour contrast (Revision round 1, 2026-07-03): wherever a
+ * room's or span block's chosen colour is used as a background, the shared
+ * amd/src/colour_utils.js helper picks black or white text automatically. See
+ * amd/src/scheduler_grid.js for the identical treatment in edit mode.
  *
  * @module     mod_confscheduler/scheduler_display
  * @copyright  2026 Adam Jenkins <adam@wisecat.net>
@@ -175,6 +181,41 @@ const openProgramDetail = (confprogramcmid, submissionid) => Ajax.call([{
 })).catch(Notification.exception);
 
 /**
+ * Builds a track pill element (an <a> linking to the linked mod_confprogram instance's
+ * accepted-submissions list, filtered to this track, when a programUrl/trackid are
+ * available; otherwise a plain, non-interactive <span>). Mirrors
+ * scheduler_grid.js's identical helper (kept duplicated rather than factored into a
+ * shared module: it is a two-line, DOM-producing helper, not the kind of pure
+ * data-only logic amd/src/day_utils.js/colour_utils.js share).
+ *
+ * @param {String|null} programUrl The linked mod_confprogram activity's base view URL (already has ?id=...), or null
+ * @param {Number|null} trackid The confsubmissions_track id, or null
+ * @param {String} trackname The track's display name
+ * @param {String|null} filterbytrackstr The raw (unsubstituted) 'filterbytrack' lang string, or null
+ * @return {HTMLElement}
+ */
+const buildTrackPill = (programUrl, trackid, trackname, filterbytrackstr) => {
+    if (programUrl && trackid) {
+        const pill = document.createElement('a');
+        pill.className = 'mod_confscheduler-track-pill';
+        pill.href = `${programUrl}&trackid=${trackid}`;
+        pill.textContent = trackname;
+        // Descriptive accessible name beyond the bare track name (WCAG "link purpose"):
+        // the visible text alone doesn't convey that activating it navigates to a
+        // filtered list on a different activity.
+        if (filterbytrackstr) {
+            pill.setAttribute('aria-label', filterbytrackstr.replace('{$a}', trackname));
+        }
+        return pill;
+    }
+
+    const pill = document.createElement('span');
+    pill.className = 'mod_confscheduler-track-pill';
+    pill.textContent = trackname;
+    return pill;
+};
+
+/**
  * Renders a single read-only scheduled block (presentation or column-spanning label
  * block) and appends it to the grid's columns container.
  *
@@ -206,6 +247,14 @@ const renderBlock = (state, columnsWrap, slot) => {
     block.style.height = Math.max(20, timeToY(state.dayStart, slot.endtime) - timeToY(state.dayStart, slot.starttime)) + 'px';
 
     if (isSpanBlock) {
+        if (slot.colour) {
+            block.style.backgroundColor = slot.colour;
+            const textColour = ColourUtils.contrastTextColour(slot.colour);
+            if (textColour) {
+                block.style.color = textColour;
+            }
+        }
+
         const label = document.createElement('div');
         label.className = 'mod_confscheduler-block-label';
         label.textContent = slot.label || '';
@@ -249,17 +298,18 @@ const renderBlock = (state, columnsWrap, slot) => {
         speakers.textContent = slot.speakers || '';
         link.appendChild(speakers);
 
+        block.appendChild(link);
+
+        // The track pill is its own <a> (Revision round 1, click-through to the linked
+        // mod_confprogram list filtered to this track) and is deliberately kept OUTSIDE
+        // .mod_confscheduler-block-link above: nesting an <a> inside another <a> is
+        // invalid HTML and would make the pill's own click target unreliable.
         const footer = document.createElement('div');
         footer.className = 'mod_confscheduler-block-footer';
         if (slot.track) {
-            const pill = document.createElement('span');
-            pill.className = 'mod_confscheduler-track-pill';
-            pill.textContent = slot.track;
-            footer.appendChild(pill);
+            footer.appendChild(buildTrackPill(state.programUrl, slot.trackid, slot.track, state.strings.filterbytrack));
         }
-        link.appendChild(footer);
-
-        block.appendChild(link);
+        block.appendChild(footer);
     }
 
     const roomNames = slot.roomids
@@ -299,6 +349,10 @@ const renderHeaders = (state) => {
         header.dataset.roomid = room.id;
         if (room.colour) {
             header.style.backgroundColor = room.colour;
+            const textColour = ColourUtils.contrastTextColour(room.colour);
+            if (textColour) {
+                header.style.color = textColour;
+            }
         }
 
         const name = document.createElement('span');
@@ -535,7 +589,10 @@ export const init = async(cmid, confschedulerid, confprogramcmid, programurl, ca
         return;
     }
 
-    const favourite = await getString('favourite', 'mod_confscheduler');
+    const [favourite, filterbytrack] = await Promise.all([
+        getString('favourite', 'mod_confscheduler'),
+        getString('filterbytrack', 'mod_confscheduler'),
+    ]);
 
     const state = {
         cmid,
@@ -550,7 +607,7 @@ export const init = async(cmid, confschedulerid, confprogramcmid, programurl, ca
         selectedDay: null,
         dayStart: 0,
         myTimetableActive: readMyTimetableState(cmid),
-        strings: {favourite},
+        strings: {favourite, filterbytrack},
     };
 
     const myTimetableBtn = root.querySelector('.mod_confscheduler-mytimetable-toggle');

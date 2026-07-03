@@ -2,6 +2,59 @@
 
 ## Unreleased
 
+- Revision round 1 (user feedback, 2026-07-03): dark mode disabled, room/span-block
+  colour auto-contrast text, conference start/end date settings, track-pill spacing +
+  click-through, span-block colour picker + edit-in-place. Schema bumped twice
+  (`2026070404` conference dates, `2026070405` span-block colour); see `db/upgrade.php`.
+  - **Dark mode disabled**: `styles.css`'s `@media (prefers-color-scheme: dark)` rules
+    are now wrapped under a selector that can never match, rather than deleted --
+    real design work kept inert, not lost, per the explicit "may be reintroduced
+    later" feedback. The plugin now always renders its light-mode styling.
+  - **Room/span-block colour auto-contrast text**: a new shared, pure
+    `amd/src/colour_utils.js` module (`hexToRgb()`/`perceivedBrightness()`/
+    `contrastTextColour()`) picks black or white text automatically for any element
+    whose background is a room's or span block's chosen hex colour, using the YIQ
+    "perceived brightness" formula (not full gamma-corrected WCAG relative
+    luminance -- simpler, no gamma-correction step, and sufficient for a binary
+    black/white text choice; threshold 128 on the 0-255 scale). Wired into room
+    column headers in both `scheduler_grid.js` and `scheduler_display.js`, and into
+    span blocks (see below) in both modules.
+  - **Conference start/end dates**: new nullable `confscheduler.conferencestart`/
+    `conferenceend` unix-timestamp fields, settable via `date_time_selector` elements
+    in `mod_form.php`'s **General** section (not a separate settings screen, per
+    explicit feedback). Not derived from or validated against any scheduled slot yet
+    -- purely an organiser-declared setting. Non-blocking validation (`conferenceend`
+    must be after `conferencestart` when both are set) matches
+    `mod_confsubmissions`'s `timeopen`/`timeclose` validation convention. The
+    `date_time_selector`'s "optional" checkbox yields `0` (not `null`) when
+    unchecked; `lib.php`'s new `confscheduler_normalise_conference_dates()` converts
+    that to a real `null` before storage, to match the nullable column semantics.
+  - **Track pill spacing + click-through**: `.mod_confscheduler-track-pill` now has
+    `margin-bottom: 0.5em`. Track pills (grid blocks, the unscheduled panel, and
+    Display-mode blocks) are now real `<a>` links to the linked `mod_confprogram`
+    instance's accepted-submissions list, filtered to that track
+    (`mod/confprogram/view.php?id=<confprogramcmid>&trackid=<id>`), with a
+    descriptive `aria-label` beyond the bare track name. Requires a new
+    `grid_data.php`/`get_grid_data.php` `trackid` field alongside the existing
+    `track` name, and `view.php` now resolves the linked `mod_confprogram` activity's
+    base URL for both edit and Display mode (previously Display-mode-only). A small,
+    narrowly-scoped, additive change to the sibling `mod_confprogram` plugin makes
+    this filter actually work there -- see that plugin's own changelog entry.
+  - **Span-block colour picker + edit-after-creation**: new nullable
+    `confscheduler_slot.colour` column (same type/length as
+    `confscheduler_room.colour`), validated the same way via `api::validate_colour()`,
+    applying only to label-only span-block slots (`submissionid IS NULL`) --
+    `add_slot()` now rejects a non-null colour given together with a non-null
+    submissionid. `templates/spanblock_form.mustache` gained a colour picker + "no
+    colour" checkbox (mirroring `room_form.mustache`) and a hidden `slotid` field so
+    the same modal serves both add and edit. Span blocks were previously add/delete
+    only; a new `mod_confscheduler_update_span_block` AJAX endpoint (backed by a new
+    `api::update_span_block()`, which refuses to operate on a presentation slot) and
+    an edit (pencil) button on each span block now support editing label/colour/
+    time/room-range in place, following the exact `scheduler_context_trait`
+    IDOR-scoping pattern (instance-scoped slot id, identical not-found/wrong-instance
+    message) every other write endpoint here already uses.
+
 - Phase 3.5: read-only Display mode, "my timetable" toggle, day/page pagination
   (shared between Display and edit modes), and print support. All client-side
   over the existing `get_grid_data` payload -- no new AJAX endpoints, no

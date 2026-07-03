@@ -24,16 +24,25 @@ use core_external\external_value;
 use mod_confscheduler\api;
 
 /**
- * AJAX-only external function that creates a column-spanning block (e.g.
- * "Lunch" or "Plenary") with no presentation: a labelled slot spanning one or
- * more adjacent room columns, created via a simple form/modal rather than
- * drag-and-drop.
+ * AJAX-only external function that edits an existing column-spanning block
+ * (label, colour, time range, room-range) in place.
+ *
+ * Span blocks previously supported only add/delete via add_span_block.php;
+ * this is the edit-in-place path added in Revision round 1 (2026-07-03). The
+ * given slotid is scoped to this confscheduler instance
+ * (require_slot_in_instance()) before being handed to
+ * \mod_confscheduler\api::update_span_block(), the same IDOR-prevention
+ * pattern every other write endpoint in this plugin uses (see
+ * scheduler_context_trait's docblock); api::update_span_block() itself then
+ * refuses to operate on anything but a span block (submissionid IS NULL),
+ * which is a data-integrity check, not a capability/instance-scoping one, so
+ * it belongs in the api layer rather than here.
  *
  * @package    mod_confscheduler
  * @copyright  2026 Adam Jenkins <adam@wisecat.net>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-class add_span_block extends external_api {
+class update_span_block extends external_api {
     use scheduler_context_trait;
 
     /**
@@ -43,49 +52,53 @@ class add_span_block extends external_api {
      */
     public static function execute_parameters(): external_function_parameters {
         return new external_function_parameters([
-            'cmid'  => new external_value(PARAM_INT, 'The confscheduler course-module id'),
-            'label' => new external_value(PARAM_TEXT, 'The span-block label, e.g. "Lunch Break"'),
+            'cmid'   => new external_value(PARAM_INT, 'The confscheduler course-module id'),
+            'slotid' => new external_value(PARAM_INT, 'The confscheduler_slot id to update (must be a span block)'),
+            'label'  => new external_value(PARAM_TEXT, 'The span-block label, e.g. "Lunch Break"'),
+            'colour' => new external_value(
+                PARAM_TEXT,
+                'Hex colour (e.g. #3366cc) to theme this block, or null',
+                VALUE_DEFAULT,
+                null
+            ),
             'roomids' => new external_multiple_structure(
                 new external_value(PARAM_INT, 'Room id'),
                 'Room id(s) this block spans'
             ),
             'starttime' => new external_value(PARAM_INT, 'Unix timestamp'),
             'endtime'   => new external_value(PARAM_INT, 'Unix timestamp'),
-            'colour'    => new external_value(
-                PARAM_TEXT,
-                'Hex colour (e.g. #3366cc) to theme this block, or null',
-                VALUE_DEFAULT,
-                null
-            ),
         ]);
     }
 
     /**
-     * Creates a span block.
+     * Updates a span block.
      *
      * @param int $cmid The confscheduler course-module id
+     * @param int $slotid The confscheduler_slot id to update
      * @param string $label The span-block label
+     * @param string|null $colour Hex colour (e.g. #3366cc), or null
      * @param int[] $roomids Room id(s) this block spans
      * @param int $starttime Unix timestamp
      * @param int $endtime Unix timestamp
-     * @param string|null $colour Hex colour (e.g. #3366cc), or null
-     * @return array{slotid: int}
+     * @return array{success: bool}
      */
     public static function execute(
         int $cmid,
+        int $slotid,
         string $label,
+        ?string $colour,
         array $roomids,
         int $starttime,
-        int $endtime,
-        ?string $colour = null
+        int $endtime
     ): array {
         $params = self::validate_parameters(self::execute_parameters(), [
             'cmid'      => $cmid,
+            'slotid'    => $slotid,
             'label'     => $label,
+            'colour'    => $colour,
             'roomids'   => $roomids,
             'starttime' => $starttime,
             'endtime'   => $endtime,
-            'colour'    => $colour,
         ]);
 
         if (trim($params['label']) === '') {
@@ -93,18 +106,18 @@ class add_span_block extends external_api {
         }
 
         [, , $confscheduler] = self::require_manage($params['cmid']);
+        self::require_slot_in_instance((int) $confscheduler->id, $params['slotid']);
 
-        $slotid = api::add_slot(
-            (int) $confscheduler->id,
+        api::update_span_block(
+            $params['slotid'],
+            $params['label'],
+            $params['colour'],
             $params['roomids'],
             $params['starttime'],
-            $params['endtime'],
-            null,
-            $params['label'],
-            $params['colour']
+            $params['endtime']
         );
 
-        return ['slotid' => $slotid];
+        return ['success' => true];
     }
 
     /**
@@ -114,7 +127,7 @@ class add_span_block extends external_api {
      */
     public static function execute_returns(): external_single_structure {
         return new external_single_structure([
-            'slotid' => new external_value(PARAM_INT, 'The newly created confscheduler_slot id'),
+            'success' => new external_value(PARAM_BOOL, 'Whether the update succeeded'),
         ]);
     }
 }

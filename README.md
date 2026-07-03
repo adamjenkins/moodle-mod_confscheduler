@@ -11,9 +11,10 @@ Part of the [Conference Tools](https://github.com/adamjenkins/moodle-conference-
 
 ## What it does
 
-- **Edit mode**: a time × room grid. Drag accepted presentations from an unscheduled panel into slots, and reschedule by dragging within the grid. Rooms are editable, colour-themeable, and re-orderable. "GapSnap" enforces a configurable gap between presentations while dragging. An autoscheduler can populate a timespan automatically, prioritising same-session and same-track grouping. Column-spanning blocks support plenaries/lunch. A day selector pages a multi-day schedule one calendar day at a time.
+- **Edit mode**: a time × room grid. Drag accepted presentations from an unscheduled panel into slots, and reschedule by dragging within the grid. Rooms are editable, colour-themeable, and re-orderable, with column header text colour automatically switching between black/white for legibility against the chosen colour. "GapSnap" enforces a configurable gap between presentations while dragging. An autoscheduler can populate a timespan automatically, prioritising same-session and same-track grouping. Column-spanning blocks (with their own optional colour theme, same auto-contrast text) support plenaries/lunch, and are fully editable in place after creation, not just add/delete. Track pill badges link through to the linked `mod_confprogram` instance's accepted-submissions list, filtered to that track. A day selector pages a multi-day schedule one calendar day at a time.
 - **Display mode** (`mod/confscheduler:viewschedule` without `:manageschedule`): a read-only rendering of the same grid data. Blocks link to the presentation's `mod_confprogram` page (both a real `<a href>` fallback and, with JS, an in-place modal identical to `mod_confprogram`'s own). A "my timetable" toggle highlights favourited presentations and greys out the rest, persisted in `sessionStorage` per instance. The same day selector as edit mode pages a multi-day schedule. Printable in colour or black & white, at A4/A3/A2 in either orientation, via CSS only (no PDF generation).
 - Implements the `\mod_confscheduler\api::get_schedule_for_submission()` contract that `mod_confprogram`'s Display phase reads for time/room info, and calls `mod_confprogram`'s `api::add_favourite()`/`remove_favourite()` directly to keep favourites in sync both ways.
+- Organisers can declare conference start/end dates in the activity's General settings section (purely informational for now -- not yet derived from or validated against scheduled slots). Dark mode is currently disabled site-wide for this plugin (the CSS is kept, just inert) pending a possible future reintroduction.
 
 ## Architecture notes
 
@@ -131,6 +132,36 @@ Part of the [Conference Tools](https://github.com/adamjenkins/moodle-conference-
   unscheduled submission has no time yet, so there is no day to scope it
   to), and the "my timetable"/print controls are Display-mode-only per
   spec, not added to the edit grid.
+- **Colour contrast is a shared pure helper, like day/page pagination
+  (Revision round 1, 2026-07-03)**: `amd/src/colour_utils.js` (YIQ "perceived
+  brightness", not full gamma-corrected WCAG relative luminance -- simpler
+  and sufficient for a binary black/white text choice) is used by both
+  `scheduler_grid.js` and `scheduler_display.js` wherever a room's or span
+  block's chosen hex colour is used as a background, following the same
+  "factor genuinely shared pure logic into its own module, don't share the
+  DOM-heavy rendering code itself" pattern `day_utils.js` established in
+  Phase 3.5.
+- **Track-pill click-through needed one narrowly-scoped addition to
+  `mod_confprogram`**: unlike the presentation-detail link-through (which
+  calls an already-public `mod_confprogram` external function with zero
+  changes to that plugin), filtering the accepted-submissions list by track
+  required a new `trackid` query parameter on `mod_confprogram`'s own
+  `view.php`, plus a new `display_list::filter_by_track()` method there.
+  This is the one place in this phase that touches the sibling plugin
+  (authorised narrowly for this feature only) -- it follows the exact
+  pattern that file's existing `day` query parameter already uses (a
+  request parameter that only narrows an already-instance-scoped list), and
+  the trackid is verified to belong to the confsubmissions instance this
+  confprogram vets before its name is ever echoed back, the same
+  chain-of-custody discipline `RELATIONS.md` documents for every other
+  caller-supplied cross-plugin id in this project.
+- **Span blocks previously had no edit path**: only add/delete existed.
+  `api::update_span_block()` (backed by a new
+  `mod_confscheduler_update_span_block` AJAX endpoint) refuses to operate on
+  anything but a span block (`submissionid IS NULL`) -- a data-integrity
+  check, not a capability check, so it lives in `classes/api.php` rather
+  than the external function, per this class's own documented split between
+  the two kinds of checks.
 
 ## Requirements
 

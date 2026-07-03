@@ -62,8 +62,22 @@ $PAGE->set_context($context);
 
 $canmanage = has_capability('mod/confscheduler:manageschedule', $context);
 
+// Track-pill click-through (Revision round 1, 2026-07-03) needs the linked
+// mod_confprogram activity's base view URL in both edit and Display mode -- resolved
+// once here rather than duplicated. confprogramcmid is a trusted DB field (set via
+// mod_form.php's course-scoped activity picker, never from request input at read
+// time); display_link::program_url() still resolves it defensively (MUST_EXIST) in
+// case the linked activity has since been deleted (the edit-mode grid already
+// assumes this resolves, via classes/local/grid_data.php's own MUST_EXIST lookup, so
+// this introduces no new failure mode for that mode).
+$programurl = display_link::program_url($confscheduler);
+
 if ($canmanage) {
-    $PAGE->requires->js_call_amd('mod_confscheduler/scheduler_grid', 'init', [$cm->id, (int) $confscheduler->id]);
+    $PAGE->requires->js_call_amd('mod_confscheduler/scheduler_grid', 'init', [
+        $cm->id,
+        (int) $confscheduler->id,
+        $programurl->out(false),
+    ]);
 }
 
 echo $OUTPUT->header();
@@ -84,11 +98,7 @@ if ($canmanage) {
         'canmanage'       => true,
     ]);
 } else {
-    // Read-only Display mode (Phase 3.5). confprogramcmid is a trusted DB field (set via
-    // mod_form.php's course-scoped activity picker, never from request input at read
-    // time); display_link::program_url() still resolves it defensively (MUST_EXIST) in
-    // case the linked activity has since been deleted.
-    $programurl = display_link::program_url($confscheduler);
+    // Read-only Display mode (Phase 3.5). $programurl was already resolved above.
 
     // Guests cannot meaningfully favourite (there is no per-guest persisted state to
     // toggle), matching the same isguestuser() exclusion mod_confprogram's own

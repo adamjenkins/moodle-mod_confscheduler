@@ -96,10 +96,12 @@ class grid_data {
                 'starttime'    => (int) $slot->starttime,
                 'endtime'      => (int) $slot->endtime,
                 'label'        => $slot->label,
+                'colour'       => $slot->submissionid === null ? ($slot->colour ?? null) : null,
                 'submissionid' => $slot->submissionid !== null ? (int) $slot->submissionid : null,
                 'title'        => null,
                 'speakers'     => null,
                 'track'        => null,
+                'trackid'      => null,
                 'favourited'   => false,
             ];
 
@@ -107,11 +109,13 @@ class grid_data {
                 $scheduledsubmissionids[] = (int) $slot->submissionid;
                 $submission = submissions_api::get_submission((int) $slot->submissionid);
                 if ($submission) {
-                    $entry['title'] = format_string($submission->title);
+                    $entry['title'] = format_string($submission->title, true, ['escape' => false]);
                     $entry['speakers'] = self::format_speakers((int) $submission->id);
-                    $entry['track'] = !empty($submission->trackid) && isset($tracksbyid[(int) $submission->trackid])
-                        ? format_string($tracksbyid[(int) $submission->trackid])
+                    $hastrack = !empty($submission->trackid) && isset($tracksbyid[(int) $submission->trackid]);
+                    $entry['track'] = $hastrack
+                        ? format_string($tracksbyid[(int) $submission->trackid], true, ['escape' => false])
                         : null;
+                    $entry['trackid'] = $hastrack ? (int) $submission->trackid : null;
                     $entry['favourited'] = \mod_confprogram\api::is_favourited($userid, (int) $submission->id);
                 }
             }
@@ -127,14 +131,16 @@ class grid_data {
             if (in_array((int) $submission->id, $scheduledsubmissionids, true)) {
                 continue;
             }
+            $hastrack = !empty($submission->trackid) && isset($tracksbyid[(int) $submission->trackid]);
             $unscheduledout[] = [
                 'submissionid' => (int) $submission->id,
-                'title'        => format_string($submission->title),
+                'title'        => format_string($submission->title, true, ['escape' => false]),
                 'speakers'     => self::format_speakers((int) $submission->id),
-                'track'        => !empty($submission->trackid) && isset($tracksbyid[(int) $submission->trackid])
-                    ? format_string($tracksbyid[(int) $submission->trackid])
+                'track'        => $hastrack
+                    ? format_string($tracksbyid[(int) $submission->trackid], true, ['escape' => false])
                     : null,
-                'sessiontag'   => format_string($sessiontags[(int) $submission->id] ?? ''),
+                'trackid'      => $hastrack ? (int) $submission->trackid : null,
+                'sessiontag'   => format_string($sessiontags[(int) $submission->id] ?? '', true, ['escape' => false]),
             ];
         }
 

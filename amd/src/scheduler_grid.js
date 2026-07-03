@@ -23,6 +23,7 @@ import Templates from 'core/templates';
 import {getString, getStrings} from 'core/str';
 import * as Repository from 'mod_confscheduler/repository';
 import * as DayUtils from 'mod_confscheduler/day_utils';
+import * as ColourUtils from 'mod_confscheduler/colour_utils';
 
 /**
  * Edit-mode drag-and-drop schedule grid (Phase 3.3).
@@ -56,6 +57,12 @@ import * as DayUtils from 'mod_confscheduler/day_utils';
  * particular day. Drag-and-drop math is untouched by this: it still operates
  * on absolute unix timestamps derived from the currently-rendered day's own
  * time axis, exactly as before.
+ *
+ * Room/span-block colour contrast (Revision round 1, 2026-07-03): wherever a
+ * room's or span block's chosen colour is used as a background, the shared
+ * amd/src/colour_utils.js helper picks black or white text automatically so
+ * there is never a black-on-dark or white-on-light legibility failure. See
+ * amd/src/scheduler_display.js for the identical treatment in read-only mode.
  *
  * @module     mod_confscheduler/scheduler_grid
  * @copyright  2026 Adam Jenkins <adam@wisecat.net>
@@ -100,6 +107,56 @@ const snapTime = (timestamp, minutes) => Math.round(timestamp / (minutes * 60)) 
  * @return {String}
  */
 const formatTime = (timestamp) => new Date(timestamp * 1000).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
+
+/**
+ * Formats a unix timestamp as a datetime-local input value (YYYY-MM-DDTHH:mm) in the
+ * browser's local timezone -- the inverse of the `new Date(value).getTime() / 1000`
+ * parsing this module already does when reading a datetime-local input back out. Used
+ * to pre-fill the span-block modal's start/end fields when editing an existing block.
+ *
+ * @param {Number} timestamp Unix timestamp (seconds)
+ * @return {String}
+ */
+const toDatetimeLocalValue = (timestamp) => {
+    const date = new Date(timestamp * 1000);
+    const pad = (value) => String(value).padStart(2, '0');
+    const datepart = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+    const timepart = `${pad(date.getHours())}:${pad(date.getMinutes())}`;
+    return `${datepart}T${timepart}`;
+};
+
+/**
+ * Builds a track pill element (an <a> linking to the linked mod_confprogram instance's
+ * accepted-submissions list, filtered to this track, when a programUrl/trackid are
+ * available; otherwise a plain, non-interactive <span>) for a slot/unscheduled-panel
+ * entry carrying a 'track'/'trackid' pair.
+ *
+ * @param {String|null} programUrl The linked mod_confprogram activity's base view URL (already has ?id=...), or null
+ * @param {Number|null} trackid The confsubmissions_track id, or null
+ * @param {String} trackname The track's display name
+ * @param {String|null} filterbytrackstr The raw (unsubstituted) 'filterbytrack' lang string, or null
+ * @return {HTMLElement}
+ */
+const buildTrackPill = (programUrl, trackid, trackname, filterbytrackstr) => {
+    if (programUrl && trackid) {
+        const pill = document.createElement('a');
+        pill.className = 'mod_confscheduler-track-pill';
+        pill.href = `${programUrl}&trackid=${trackid}`;
+        pill.textContent = trackname;
+        // Descriptive accessible name beyond the bare track name (WCAG "link purpose"):
+        // the visible text alone doesn't convey that activating it navigates to a
+        // filtered list on a different activity.
+        if (filterbytrackstr) {
+            pill.setAttribute('aria-label', filterbytrackstr.replace('{$a}', trackname));
+        }
+        return pill;
+    }
+
+    const pill = document.createElement('span');
+    pill.className = 'mod_confscheduler-track-pill';
+    pill.textContent = trackname;
+    return pill;
+};
 
 /**
  * Converts a unix timestamp to a Y pixel offset within the grid body, relative to state.timelineStart.
@@ -264,6 +321,10 @@ const renderHeaders = (state) => {
         header.dataset.roomid = room.id;
         if (room.colour) {
             header.style.backgroundColor = room.colour;
+            const textColour = ColourUtils.contrastTextColour(room.colour);
+            if (textColour) {
+                header.style.color = textColour;
+            }
         }
 
         const handle = document.createElement('span');
@@ -404,6 +465,21 @@ const renderBlock = (state, columnsWrap, slot) => {
     block.appendChild(removeBtn);
 
     if (isSpanBlock) {
+        if (slot.colour) {
+            block.style.backgroundColor = slot.colour;
+            const textColour = ColourUtils.contrastTextColour(slot.colour);
+            if (textColour) {
+                block.style.color = textColour;
+            }
+        }
+
+        const editBtn = document.createElement('button');
+        editBtn.type = 'button';
+        editBtn.className = 'mod_confscheduler-block-edit-span';
+        editBtn.setAttribute('aria-label', state.strings.editspanblock);
+        editBtn.innerHTML = '&#9998;';
+        block.appendChild(editBtn);
+
         const label = document.createElement('div');
         label.className = 'mod_confscheduler-block-label';
         label.textContent = slot.label || '';
@@ -431,10 +507,7 @@ const renderBlock = (state, columnsWrap, slot) => {
         const footer = document.createElement('div');
         footer.className = 'mod_confscheduler-block-footer';
         if (slot.track) {
-            const pill = document.createElement('span');
-            pill.className = 'mod_confscheduler-track-pill';
-            pill.textContent = slot.track;
-            footer.appendChild(pill);
+            footer.appendChild(buildTrackPill(state.programUrl, slot.trackid, slot.track, state.strings.filterbytrack));
         }
         footer.appendChild(document.createElement('span')).className = 'mod_confscheduler-block-roomtime-spacer';
         block.appendChild(footer);
@@ -486,10 +559,7 @@ const renderUnscheduledPanel = (state) => {
         card.appendChild(speakers);
 
         if (item.track) {
-            const pill = document.createElement('span');
-            pill.className = 'mod_confscheduler-track-pill';
-            pill.textContent = item.track;
-            card.appendChild(pill);
+            card.appendChild(buildTrackPill(state.programUrl, item.trackid, item.track, state.strings.filterbytrack));
         }
 
         const sessiontag = document.createElement('input');
@@ -756,18 +826,46 @@ const openRoomModal = async(state, roomid) => {
 };
 
 /**
- * Opens the "add span block" modal (column-spanning Lunch/Plenary-style block).
+ * Opens the "add span block"/"edit span block" modal (column-spanning
+ * Lunch/Plenary-style block): the same modal is used for both actions, pre-filled with
+ * the existing block's label/colour/times/room-range when $slot is given (Revision
+ * round 1, 2026-07-03 -- span blocks previously supported only add/delete).
  *
  * @param {Object} state The module state object
+ * @param {Object|null} slot The existing slot entry (from state.slots) to edit, or null to add a new block
  * @return {Promise}
  */
-const openSpanBlockModal = async(state) => {
+const openSpanBlockModal = async(state, slot = null) => {
+    const isEdit = Boolean(slot);
+
+    let startroomid = null;
+    let endroomid = null;
+    if (isEdit) {
+        const indices = slot.roomids
+            .map((id) => state.rooms.findIndex((room) => room.id === id))
+            .filter((index) => index >= 0);
+        if (indices.length) {
+            startroomid = state.rooms[Math.min(...indices)].id;
+            endroomid = state.rooms[Math.max(...indices)].id;
+        }
+    }
+
     const body = await Templates.render('mod_confscheduler/spanblock_form', {
-        rooms: state.rooms.map((room) => ({id: room.id, name: room.name})),
+        slotid: isEdit ? slot.id : '',
+        label: isEdit ? (slot.label || '') : '',
+        colour: isEdit ? slot.colour : null,
+        starttime: isEdit ? toDatetimeLocalValue(slot.starttime) : '',
+        endtime: isEdit ? toDatetimeLocalValue(slot.endtime) : '',
+        rooms: state.rooms.map((room) => ({
+            id: room.id,
+            name: room.name,
+            startselected: room.id === startroomid,
+            endselected: room.id === endroomid,
+        })),
     });
 
     const modal = await ModalSaveCancel.create({
-        title: state.strings.addspanblock,
+        title: isEdit ? state.strings.editspanblock : state.strings.addspanblock,
         body,
         show: true,
         removeOnClose: true,
@@ -777,11 +875,14 @@ const openSpanBlockModal = async(state) => {
         event.preventDefault();
 
         const form = modal.getRoot()[0].querySelector('.mod_confscheduler-spanblock-form');
+        const slotid = Number(form.querySelector('[name=slotid]').value) || null;
         const label = form.querySelector('[name=label]').value.trim();
         const startroom = Number(form.querySelector('[name=startroom]').value);
         const endroom = Number(form.querySelector('[name=endroom]').value);
         const starttimeValue = form.querySelector('[name=starttime]').value;
         const endtimeValue = form.querySelector('[name=endtime]').value;
+        const nocolour = form.querySelector('[name=nocolour]').checked;
+        const colour = nocolour ? null : form.querySelector('[name=colour]').value;
 
         if (label === '' || !starttimeValue || !endtimeValue) {
             return;
@@ -799,7 +900,11 @@ const openSpanBlockModal = async(state) => {
         const starttime = Math.floor(new Date(starttimeValue).getTime() / 1000);
         const endtime = Math.floor(new Date(endtimeValue).getTime() / 1000);
 
-        Repository.addSpanBlock(state.cmid, label, roomids, starttime, endtime).then(() => {
+        const promise = slotid
+            ? Repository.updateSpanBlock(state.cmid, slotid, label, roomids, starttime, endtime, colour)
+            : Repository.addSpanBlock(state.cmid, label, roomids, starttime, endtime, colour);
+
+        promise.then(() => {
             modal.destroy();
             return fetchAndRenderBody(state);
         }).catch(Notification.exception);
@@ -966,6 +1071,16 @@ const bindEvents = (state) => {
             return;
         }
 
+        const editSpanBtn = event.target.closest('.mod_confscheduler-block-edit-span');
+        if (editSpanBtn) {
+            const slotid = Number(editSpanBtn.closest('.mod_confscheduler-block').dataset.slotid);
+            const slot = state.slots.find((candidate) => candidate.id === slotid);
+            if (slot) {
+                openSpanBlockModal(state, slot);
+            }
+            return;
+        }
+
         const addRoomBtn = event.target.closest('.mod_confscheduler-add-room');
         if (addRoomBtn) {
             openRoomModal(state, null);
@@ -974,7 +1089,7 @@ const bindEvents = (state) => {
 
         const addSpanBtn = event.target.closest('.mod_confscheduler-add-spanblock');
         if (addSpanBtn) {
-            openSpanBlockModal(state);
+            openSpanBlockModal(state, null);
             return;
         }
 
@@ -1005,6 +1120,12 @@ const bindEvents = (state) => {
     });
 
     const startDrag = (event) => {
+        // Track pills are real <a> links (Revision round 1): let a click on one navigate
+        // normally rather than being captured as a drag/schedule-drag start.
+        if (event.target.closest('.mod_confscheduler-track-pill')) {
+            return;
+        }
+
         const resizeHandle = event.target.closest('.mod_confscheduler-block-resize');
         if (resizeHandle) {
             beginResizeDrag(state, event, resizeHandle.closest('.mod_confscheduler-block'));
@@ -1055,9 +1176,11 @@ const bindEvents = (state) => {
  *
  * @param {Number} cmid The confscheduler course-module id
  * @param {Number} confschedulerid The confscheduler instance id
+ * @param {String|null} programurl The linked mod_confprogram activity's base view URL (already has ?id=...),
+ *        used to build track-pill click-through links (Revision round 1), or null if it could not be resolved
  * @return {Promise}
  */
-export const init = async(cmid, confschedulerid) => {
+export const init = async(cmid, confschedulerid, programurl = null) => {
     const root = document.getElementById('mod_confscheduler-grid-root');
     if (!root) {
         return;
@@ -1065,8 +1188,8 @@ export const init = async(cmid, confschedulerid) => {
 
     const [
         unschedule, favourite, editroom, deleteroom, confirmdeleteroom,
-        cancel, movecolumn, addroom, addspanblock, autoschedulerrun,
-        sessiontag, sessiontagplaceholder,
+        cancel, movecolumn, addroom, addspanblock, editspanblock, autoschedulerrun,
+        sessiontag, sessiontagplaceholder, filterbytrack,
     ] = await getStrings([
         {key: 'unschedule', component: 'mod_confscheduler'},
         {key: 'favourite', component: 'mod_confscheduler'},
@@ -1077,14 +1200,17 @@ export const init = async(cmid, confschedulerid) => {
         {key: 'movecolumn', component: 'mod_confscheduler'},
         {key: 'addroom', component: 'mod_confscheduler'},
         {key: 'addspanblock', component: 'mod_confscheduler'},
+        {key: 'editspanblock', component: 'mod_confscheduler'},
         {key: 'autoschedulerrun', component: 'mod_confscheduler'},
         {key: 'sessiontag', component: 'mod_confscheduler'},
         {key: 'sessiontagplaceholder', component: 'mod_confscheduler'},
+        {key: 'filterbytrack', component: 'mod_confscheduler'},
     ]);
 
     const state = {
         cmid,
         confschedulerid,
+        programUrl: programurl,
         root,
         rooms: [],
         allSlots: [],
@@ -1099,8 +1225,8 @@ export const init = async(cmid, confschedulerid) => {
         sortableList: null,
         strings: {
             unschedule, favourite, editroom, deleteroom, confirmdeleteroom,
-            cancel, movecolumn, addroom, addspanblock, autoschedulerrun,
-            sessiontag, sessiontagplaceholder,
+            cancel, movecolumn, addroom, addspanblock, editspanblock, autoschedulerrun,
+            sessiontag, sessiontagplaceholder, filterbytrack,
         },
     };
 

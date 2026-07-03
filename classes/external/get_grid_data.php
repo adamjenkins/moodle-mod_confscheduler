@@ -95,10 +95,12 @@ class get_grid_data extends external_api {
                     'starttime'    => new external_value(PARAM_INT, 'Unix timestamp'),
                     'endtime'      => new external_value(PARAM_INT, 'Unix timestamp'),
                     'label'        => new external_value(PARAM_TEXT, 'Span-block label, or null', VALUE_DEFAULT, null),
+                    'colour'       => new external_value(PARAM_TEXT, 'Span-block hex colour, or null', VALUE_DEFAULT, null),
                     'submissionid' => new external_value(PARAM_INT, 'Submission id, or null for a span-block', VALUE_DEFAULT, null),
                     'title'        => new external_value(PARAM_TEXT, 'Submission title, or null', VALUE_DEFAULT, null),
                     'speakers'     => new external_value(PARAM_TEXT, 'Comma-joined speaker names, or null', VALUE_DEFAULT, null),
                     'track'        => new external_value(PARAM_TEXT, 'Track name, or null', VALUE_DEFAULT, null),
+                    'trackid'      => new external_value(PARAM_INT, 'Track id, or null', VALUE_DEFAULT, null),
                     'favourited'   => new external_value(PARAM_BOOL, 'Whether the current user has favourited this presentation'),
                 ])
             ),
@@ -108,6 +110,7 @@ class get_grid_data extends external_api {
                     'title'        => new external_value(PARAM_TEXT, 'Submission title'),
                     'speakers'     => new external_value(PARAM_TEXT, 'Comma-joined speaker names'),
                     'track'        => new external_value(PARAM_TEXT, 'Track name, or null', VALUE_DEFAULT, null),
+                    'trackid'      => new external_value(PARAM_INT, 'Track id, or null', VALUE_DEFAULT, null),
                     'sessiontag'   => new external_value(PARAM_TEXT, 'Session-tag label, or an empty string if untagged'),
                 ])
             ),

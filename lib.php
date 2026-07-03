@@ -68,6 +68,8 @@ function confscheduler_add_instance(stdClass $data, ?mod_confscheduler_mod_form 
         $data->gapminutes = 0;
     }
 
+    confscheduler_normalise_conference_dates($data);
+
     return $DB->insert_record('confscheduler', $data);
 }
 
@@ -84,7 +86,27 @@ function confscheduler_update_instance(stdClass $data, ?mod_confscheduler_mod_fo
     $data->timemodified = time();
     $data->id = $data->instance;
 
+    confscheduler_normalise_conference_dates($data);
+
     return $DB->update_record('confscheduler', $data);
+}
+
+/**
+ * Normalises the optional conference start/end date_time_selector fields: that element
+ * yields 0 (not null) when its "enable" checkbox is unchecked, but
+ * confscheduler.conferencestart/conferenceend are nullable columns (Revision round 1,
+ * 2026-07-03) -- an explicit "not set" is represented as null, not the timestamp 0.
+ *
+ * @param stdClass $data Data from the settings form, modified in place
+ * @return void
+ */
+function confscheduler_normalise_conference_dates(stdClass $data): void {
+    if (empty($data->conferencestart)) {
+        $data->conferencestart = null;
+    }
+    if (empty($data->conferenceend)) {
+        $data->conferenceend = null;
+    }
 }
 
 /**

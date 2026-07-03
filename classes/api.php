@@ -479,10 +479,13 @@ class api {
      * @param int $endtime Unix timestamp
      * @param int|null $submissionid The mod_confsubmissions confsubmissions_submission id; null for a span-block
      * @param string|null $label Used only when submissionid is null, e.g. "Lunch Break"
+     * @param string|null $colour A hex colour (e.g. #3366cc) to theme a span block with; must be null when
+     *        $submissionid is non-null (colour theming applies only to span blocks, Revision round 1)
      * @return int The confscheduler_slot id
      * @throws \moodle_exception if the submission's chain of custody is invalid, or the placement
      *         overlaps/violates GapSnap
-     * @throws \invalid_parameter_exception if a room does not belong to this instance
+     * @throws \invalid_parameter_exception if a room does not belong to this instance, $colour is set and not a
+     *         valid hex colour, or $colour is given together with a non-null $submissionid
      */
     public static function add_slot(
         int $confschedulerid,
@@ -490,9 +493,15 @@ class api {
         int $starttime,
         int $endtime,
         ?int $submissionid = null,
-        ?string $label = null
+        ?string $label = null,
+        ?string $colour = null
     ): int {
         global $DB;
+
+        self::validate_colour($colour);
+        if ($colour !== null && $submissionid !== null) {
+            throw new \invalid_parameter_exception(get_string('error:notaspanblock', 'mod_confscheduler'));
+        }
 
         $confscheduler = $DB->get_record('confscheduler', ['id' => $confschedulerid], '*', MUST_EXIST);
 
@@ -514,6 +523,7 @@ class api {
             'confscheduler' => $confschedulerid,
             'submissionid'  => $submissionid,
             'label'         => $label,
+            'colour'        => $colour,
             'starttime'     => $starttime,
             'endtime'       => $endtime,
             'timecreated'   => $now,
@@ -566,6 +576,78 @@ class api {
 
         $DB->update_record('confscheduler_slot', (object) [
             'id'           => $slot->id,
+            'starttime'    => $starttime,
+            'endtime'      => $endtime,
+            'timemodified' => time(),
+        ]);
+
+        $DB->delete_records('confscheduler_slotroom', ['slotid' => $slotid]);
+        foreach (array_unique(array_map('intval', $roomids)) as $roomid) {
+            $DB->insert_record('confscheduler_slotroom', (object) [
+                'slotid' => $slotid,
+                'roomid' => $roomid,
+            ]);
+        }
+    }
+
+    /**
+     * Updates an existing span block's label, colour, time range, and room-range.
+     *
+     * Span blocks (submissionid IS NULL) previously supported only add/delete; this
+     * (Revision round 1, 2026-07-03) is the edit-in-place path. Deliberately refuses to
+     * operate on a presentation slot (submissionid non-null) -- editing a presentation's
+     * label/colour has no meaning, and colour theming is scoped to span blocks only, so
+     * this is a data-integrity check that belongs here (see this class's docblock on
+     * where capability checks vs. data-integrity checks live), not merely a capability
+     * check delegated to the caller.
+     *
+     * Re-runs the same GapSnap/overlap validation as update_slot(), excluding the slot's
+     * own current confscheduler_slotroom rows from the conflict check.
+     *
+     * @param int $slotid The confscheduler_slot id (must be a span block)
+     * @param string $label The new label
+     * @param string|null $colour A hex colour (e.g. #3366cc), or null to clear the theme
+     * @param int[] $roomids The new room id(s) this block should span
+     * @param int $starttime Unix timestamp
+     * @param int $endtime Unix timestamp
+     * @return void
+     * @throws \moodle_exception if the slot is not a span block, or the new placement overlaps/violates GapSnap
+     * @throws \invalid_parameter_exception if a room does not belong to this instance, or $colour is set and
+     *         not a valid hex colour
+     */
+    public static function update_span_block(
+        int $slotid,
+        string $label,
+        ?string $colour,
+        array $roomids,
+        int $starttime,
+        int $endtime
+    ): void {
+        global $DB;
+
+        self::validate_colour($colour);
+
+        $slot = $DB->get_record('confscheduler_slot', ['id' => $slotid], '*', MUST_EXIST);
+        if ($slot->submissionid !== null) {
+            throw new \moodle_exception('error:notaspanblock', 'mod_confscheduler');
+        }
+
+        $confscheduler = $DB->get_record('confscheduler', ['id' => $slot->confscheduler], '*', MUST_EXIST);
+
+        self::validate_placement(
+            (int) $slot->confscheduler,
+            $roomids,
+            $starttime,
+            $endtime,
+            null,
+            (int) $confscheduler->gapminutes,
+            (int) $slotid
+        );
+
+        $DB->update_record('confscheduler_slot', (object) [
+            'id'           => $slot->id,
+            'label'        => $label,
+            'colour'       => $colour,
             'starttime'    => $starttime,
             'endtime'      => $endtime,
             'timemodified' => time(),
