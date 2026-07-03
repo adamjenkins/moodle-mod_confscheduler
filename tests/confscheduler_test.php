@@ -125,13 +125,21 @@ final class confscheduler_test extends advanced_testcase {
         ]);
 
         $roomid = api::add_room((int) $confscheduler->id, 'Main Hall');
-        $slotid = api::add_slot(
-            (int) $confscheduler->id,
-            [$roomid],
-            strtotime('2026-09-01 10:00:00'),
-            strtotime('2026-09-01 10:30:00'),
-            42
-        );
+
+        // Inserted directly via $DB rather than through api::add_slot(): this test is only
+        // about confscheduler_delete_instance()'s cascade, not about the submissionid=42
+        // chain-of-custody validation add_slot() now enforces (see api_test.php for that).
+        $now = time();
+        $slotid = $DB->insert_record('confscheduler_slot', (object) [
+            'confscheduler' => $confscheduler->id,
+            'submissionid'  => 42,
+            'label'         => null,
+            'starttime'     => strtotime('2026-09-01 10:00:00'),
+            'endtime'       => strtotime('2026-09-01 10:30:00'),
+            'timecreated'   => $now,
+            'timemodified'  => $now,
+        ]);
+        $DB->insert_record('confscheduler_slotroom', (object) ['slotid' => $slotid, 'roomid' => $roomid]);
 
         $this->assertTrue($DB->record_exists('confscheduler_slotroom', ['slotid' => $slotid]));
 

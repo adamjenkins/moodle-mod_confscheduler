@@ -1,0 +1,49 @@
+{{!
+    This file is part of Moodle - http://moodle.org/
+
+    Moodle is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    Moodle is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
+}}
+{{!
+    @template mod_confscheduler/room_form
+
+    Modal body for adding or editing a room (column). Used for both actions;
+    roomid is present (and js sets it as a hidden field) only when editing.
+
+    Context variables required for this template:
+    * roomid int|null - the confscheduler_room id, when editing an existing room
+    * name string - the current room name (empty when adding)
+    * colour string|null - the current hex colour, or null
+
+    Example context (json):
+    {
+        "roomid": 3,
+        "name": "Main Hall",
+        "colour": "#3366cc"
+    }
+}}
+<form class="mod_confscheduler-room-form">
+    <input type="hidden" name="roomid" value="{{roomid}}">
+    <div class="form-group">
+        <label for="mod_confscheduler-room-name">{{#str}} roomname, mod_confscheduler {{/str}}</label>
+        <input type="text" class="form-control" id="mod_confscheduler-room-name" name="name" value="{{name}}" required maxlength="255">
+    </div>
+    <div class="form-group">
+        <label for="mod_confscheduler-room-colour">{{#str}} roomcolour, mod_confscheduler {{/str}}</label>
+        <input type="color" class="form-control form-control-color" id="mod_confscheduler-room-colour" name="colour" value="{{#colour}}{{colour}}{{/colour}}{{^colour}}#3366cc{{/colour}}">
+        <div class="form-check mt-1">
+            <input type="checkbox" class="form-check-input" id="mod_confscheduler-room-nocolour" name="nocolour" {{^colour}}checked{{/colour}}>
+            <label class="form-check-label" for="mod_confscheduler-room-nocolour">{{#str}} nocolour, mod_confscheduler {{/str}}</label>
+        </div>
+    </div>
+</form>

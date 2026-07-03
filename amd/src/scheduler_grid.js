@@ -1,0 +1,930 @@
+// This file is part of Moodle - http://moodle.org/
+//
+// Moodle is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// Moodle is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
+
+import $ from 'jquery';
+import Dragdrop from 'core/dragdrop';
+import SortableList from 'core/sortable_list';
+import ModalSaveCancel from 'core/modal_save_cancel';
+import ModalEvents from 'core/modal_events';
+import Notification from 'core/notification';
+import Templates from 'core/templates';
+import {getStrings} from 'core/str';
+import * as Repository from 'mod_confscheduler/repository';
+
+/**
+ * Edit-mode drag-and-drop schedule grid (Phase 3.3).
+ *
+ * Renders entirely from data fetched via mod_confscheduler_get_grid_data
+ * (never from PHP-rendered grid markup): rooms as columns, time on the
+ * vertical axis, an "unscheduled" panel of accepted-but-not-yet-scheduled
+ * submissions, and scheduled blocks positioned/sized proportional to their
+ * duration. Every mutation (schedule/reschedule/unschedule, room CRUD,
+ * reorder, favourite) goes through the corresponding AJAX write endpoint;
+ * this module never writes to confscheduler's tables itself.
+ *
+ * Drag-and-drop uses core/dragdrop for free-form placement (scheduling an
+ * unscheduled submission, moving or resizing a scheduled block) and
+ * core/sortable_list for 1D column-header reordering, per this project's
+ * README architecture decision. GapSnap is enforced authoritatively
+ * server-side (see \mod_confscheduler\api::validate_placement()); the
+ * client-side snap-to-5-minutes on drop is a UX convenience only. Because the
+ * real block element is never moved/mutated in the DOM until the server
+ * confirms success, a rejected drag "reverts" for free: the block simply
+ * stays where it always was, and Notification.exception() surfaces the
+ * server's error.
+ *
+ * Known simplification: the vertical timeline is a single continuous range
+ * spanning the earliest to latest scheduled time (or a default 08:00-18:00
+ * window when nothing is scheduled yet) with no day/page selector. For a
+ * schedule spanning multiple days this will render as one long scrollable
+ * timeline rather than paginating by day; a day selector is left as a
+ * follow-up (Phase 3.5, read-only Display mode, already plans a day
+ * grouping -- see \mod_confprogram\local\display_list::group_by_day() this
+ * project already has for the analogous list view).
+ *
+ * @module     mod_confscheduler/scheduler_grid
+ * @copyright  2026 Adam Jenkins <adam@wisecat.net>
+ * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
+ */
+
+/** @type {Number} Fixed column width in pixels; keep in sync with styles.css .mod_confscheduler-room-header/-room-column. */
+const COLUMN_WIDTH = 200;
+
+/** @type {Number} Vertical px/minute of scheduled time; keep in sync with styles.css's hour gridline spacing. */
+const PX_PER_MINUTE = 2.4;
+
+/** @type {Number} Client-side snap granularity, in minutes, applied to drop positions for UX only. */
+const SNAP_MINUTES = 5;
+
+/** @type {Number} Default duration, in minutes, given to a newly-scheduled block dragged from the unscheduled panel. */
+const DEFAULT_DURATION_MINUTES = 30;
+
+/**
+ * Clamps a value between a minimum and maximum (inclusive).
+ *
+ * @param {Number} value
+ * @param {Number} min
+ * @param {Number} max
+ * @return {Number}
+ */
+const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
+
+/**
+ * Rounds a unix timestamp to the nearest multiple of the given number of minutes.
+ *
+ * @param {Number} timestamp Unix timestamp (seconds)
+ * @param {Number} minutes Snap granularity in minutes
+ * @return {Number} The snapped unix timestamp (seconds)
+ */
+const snapTime = (timestamp, minutes) => Math.round(timestamp / (minutes * 60)) * (minutes * 60);
+
+/**
+ * Formats a unix timestamp as a short local time (e.g. "14:05").
+ *
+ * @param {Number} timestamp Unix timestamp (seconds)
+ * @return {String}
+ */
+const formatTime = (timestamp) => new Date(timestamp * 1000).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
+
+/**
+ * Converts a unix timestamp to a Y pixel offset within the grid body, relative to state.timelineStart.
+ *
+ * @param {Object} state The module state object
+ * @param {Number} timestamp Unix timestamp (seconds)
+ * @return {Number} Pixel offset
+ */
+const timeToY = (state, timestamp) => (timestamp - state.timelineStart) / 60 * PX_PER_MINUTE;
+
+/**
+ * Converts a Y pixel offset within the grid body back to a unix timestamp.
+ *
+ * @param {Object} state The module state object
+ * @param {Number} y Pixel offset
+ * @return {Number} Unix timestamp (seconds)
+ */
+const yToTime = (state, y) => state.timelineStart + Math.round((y / PX_PER_MINUTE)) * 60;
+
+/**
+ * Computes the visible timeline range (state.timelineStart/timelineEnd) from the currently loaded slots,
+ * padded by 30 minutes at each end and rounded to whole hours, with an 8-hour minimum span.
+ *
+ * @param {Object} state The module state object
+ */
+const computeTimeline = (state) => {
+    const times = [];
+    state.slots.forEach((slot) => {
+        times.push(slot.starttime);
+        times.push(slot.endtime);
+    });
+
+    let start;
+    let end;
+    if (times.length) {
+        start = Math.min(...times);
+        end = Math.max(...times);
+    } else {
+        const today = new Date();
+        today.setHours(8, 0, 0, 0);
+        start = Math.floor(today.getTime() / 1000);
+        end = start + (10 * 3600);
+    }
+
+    start = (Math.floor(start / 3600) * 3600) - 1800;
+    end = (Math.ceil(end / 3600) * 3600) + 1800;
+    if (end - start < 8 * 3600) {
+        end = start + (8 * 3600);
+    }
+
+    state.timelineStart = start;
+    state.timelineEnd = end;
+};
+
+/**
+ * Re-fetches the grid payload and re-renders everything (headers, body, unscheduled panel).
+ * Used at startup and after any room CRUD/reorder action.
+ *
+ * @param {Object} state The module state object
+ * @return {Promise}
+ */
+const fetchAndRenderAll = (state) => Repository.getGridData(state.cmid).then((data) => {
+    state.rooms = data.rooms;
+    state.slots = data.slots;
+    state.unscheduled = data.unscheduled;
+    state.gapminutes = data.gapminutes;
+    renderHeaders(state);
+    renderBody(state);
+    renderUnscheduledPanel(state);
+    return null;
+}).catch(Notification.exception);
+
+/**
+ * Re-fetches the grid payload and re-renders only the body/unscheduled panel (not the room headers).
+ * Used after slot mutations (schedule/reschedule/unschedule), where the room set itself is unchanged,
+ * so the core/sortable_list instance bound to the header row does not need rebuilding.
+ *
+ * @param {Object} state The module state object
+ * @return {Promise}
+ */
+const fetchAndRenderBody = (state) => Repository.getGridData(state.cmid).then((data) => {
+    state.rooms = data.rooms;
+    state.slots = data.slots;
+    state.unscheduled = data.unscheduled;
+    state.gapminutes = data.gapminutes;
+    renderBody(state);
+    renderUnscheduledPanel(state);
+    return null;
+}).catch(Notification.exception);
+
+/**
+ * Renders the room column headers, including the drag handle (core/sortable_list) and edit/delete buttons.
+ *
+ * @param {Object} state The module state object
+ */
+const renderHeaders = (state) => {
+    const scrollEl = state.root.querySelector('.mod_confscheduler-grid-scroll');
+    const existing = state.root.querySelector('.mod_confscheduler-room-headers');
+    if (existing) {
+        existing.remove();
+    }
+
+    const headerRow = document.createElement('div');
+    headerRow.className = 'mod_confscheduler-room-headers';
+
+    const spacer = document.createElement('div');
+    spacer.className = 'mod_confscheduler-time-header-spacer';
+    headerRow.appendChild(spacer);
+
+    state.rooms.forEach((room) => {
+        const header = document.createElement('div');
+        header.className = 'mod_confscheduler-room-header';
+        header.dataset.roomid = room.id;
+        if (room.colour) {
+            header.style.backgroundColor = room.colour;
+        }
+
+        const handle = document.createElement('span');
+        handle.className = 'mod_confscheduler-room-draghandle';
+        handle.setAttribute('data-drag-type', 'move');
+        handle.setAttribute('tabindex', '0');
+        handle.setAttribute('role', 'button');
+        handle.setAttribute('aria-label', state.strings.movecolumn);
+        handle.textContent = '⋮⋮';
+        header.appendChild(handle);
+
+        const name = document.createElement('span');
+        name.className = 'mod_confscheduler-room-name';
+        name.textContent = room.name;
+        header.appendChild(name);
+
+        const actions = document.createElement('span');
+        actions.className = 'mod_confscheduler-room-header-actions';
+
+        const editBtn = document.createElement('button');
+        editBtn.type = 'button';
+        editBtn.className = 'mod_confscheduler-room-header-edit';
+        editBtn.setAttribute('aria-label', state.strings.editroom);
+        editBtn.innerHTML = '&#9998;';
+        actions.appendChild(editBtn);
+
+        const deleteBtn = document.createElement('button');
+        deleteBtn.type = 'button';
+        deleteBtn.className = 'mod_confscheduler-room-header-delete';
+        deleteBtn.setAttribute('aria-label', state.strings.deleteroom);
+        deleteBtn.innerHTML = '&#128465;';
+        actions.appendChild(deleteBtn);
+
+        header.appendChild(actions);
+        headerRow.appendChild(header);
+    });
+
+    const gridEl = state.root.querySelector('.mod_confscheduler-grid');
+    scrollEl.insertBefore(headerRow, gridEl);
+
+    // core/sortable_list has no public teardown API; re-instantiating on a freshly-built
+    // header row each time (rather than trying to reuse one instance across room set
+    // changes) avoids stale references to removed DOM nodes.
+    state.sortableList = new SortableList('.mod_confscheduler-room-headers', {isHorizontal: true});
+    $(headerRow).on(SortableList.EVENTS.DROP, () => {
+        const roomidsinorder = Array.from(headerRow.querySelectorAll('.mod_confscheduler-room-header'))
+            .map((el) => Number(el.dataset.roomid));
+        Repository.reorderRooms(state.cmid, roomidsinorder)
+            .then(() => fetchAndRenderAll(state))
+            .catch(Notification.exception);
+    });
+};
+
+/**
+ * Renders the grid body: the time axis and, per room, an absolutely-positioned column containing
+ * every scheduled block (single-room and column-spanning alike).
+ *
+ * @param {Object} state The module state object
+ */
+const renderBody = (state) => {
+    computeTimeline(state);
+
+    const gridEl = state.root.querySelector('.mod_confscheduler-grid');
+    gridEl.innerHTML = '';
+
+    const totalHeight = timeToY(state, state.timelineEnd);
+
+    const timeAxis = document.createElement('div');
+    timeAxis.className = 'mod_confscheduler-time-axis';
+    timeAxis.style.height = totalHeight + 'px';
+    for (let hour = Math.ceil(state.timelineStart / 3600) * 3600; hour <= state.timelineEnd; hour += 3600) {
+        const label = document.createElement('div');
+        label.className = 'mod_confscheduler-time-label';
+        label.style.top = timeToY(state, hour) + 'px';
+        label.textContent = formatTime(hour);
+        timeAxis.appendChild(label);
+    }
+    gridEl.appendChild(timeAxis);
+
+    const columnsWrap = document.createElement('div');
+    columnsWrap.className = 'mod_confscheduler-columns';
+    columnsWrap.style.width = (Math.max(state.rooms.length, 1) * COLUMN_WIDTH) + 'px';
+    columnsWrap.style.height = totalHeight + 'px';
+
+    state.rooms.forEach((room) => {
+        const column = document.createElement('div');
+        column.className = 'mod_confscheduler-room-column';
+        column.dataset.roomid = room.id;
+        if (room.colour) {
+            column.style.setProperty('--mod_confscheduler-room-colour', room.colour);
+            column.classList.add('has-colour');
+        }
+        columnsWrap.appendChild(column);
+    });
+
+    gridEl.appendChild(columnsWrap);
+    state.columnsWrap = columnsWrap;
+
+    state.slots.forEach((slot) => renderBlock(state, columnsWrap, slot));
+};
+
+/**
+ * Renders a single scheduled block (presentation or column-spanning label block) and appends it to
+ * the grid's columns container, absolutely positioned by room index (left/width) and time (top/height).
+ *
+ * @param {Object} state The module state object
+ * @param {HTMLElement} columnsWrap The .mod_confscheduler-columns container
+ * @param {Object} slot A slot entry as returned by mod_confscheduler_get_grid_data
+ */
+const renderBlock = (state, columnsWrap, slot) => {
+    const indices = slot.roomids
+        .map((id) => state.rooms.findIndex((room) => room.id === id))
+        .filter((index) => index >= 0);
+    if (!indices.length) {
+        return;
+    }
+    const minIndex = Math.min(...indices);
+    const maxIndex = Math.max(...indices);
+    const span = maxIndex - minIndex + 1;
+    const isSpanBlock = slot.submissionid === null;
+
+    const block = document.createElement('div');
+    block.className = 'mod_confscheduler-block' + (isSpanBlock ? ' mod_confscheduler-block-span' : '');
+    block.dataset.slotid = slot.id;
+    block.dataset.roomids = JSON.stringify(slot.roomids);
+    block.dataset.starttime = slot.starttime;
+    block.dataset.endtime = slot.endtime;
+    block.style.left = (minIndex * COLUMN_WIDTH) + 'px';
+    block.style.width = (span * COLUMN_WIDTH - 6) + 'px';
+    block.style.top = timeToY(state, slot.starttime) + 'px';
+    block.style.height = Math.max(20, timeToY(state, slot.endtime) - timeToY(state, slot.starttime)) + 'px';
+
+    const removeBtn = document.createElement('button');
+    removeBtn.type = 'button';
+    removeBtn.className = 'mod_confscheduler-block-remove';
+    removeBtn.setAttribute('aria-label', state.strings.unschedule);
+    removeBtn.textContent = '×';
+    block.appendChild(removeBtn);
+
+    if (isSpanBlock) {
+        const label = document.createElement('div');
+        label.className = 'mod_confscheduler-block-label';
+        label.textContent = slot.label || '';
+        block.appendChild(label);
+    } else {
+        const favBtn = document.createElement('button');
+        favBtn.type = 'button';
+        favBtn.className = 'mod_confscheduler-block-fav';
+        favBtn.dataset.favourited = slot.favourited ? '1' : '0';
+        favBtn.setAttribute('aria-pressed', slot.favourited ? 'true' : 'false');
+        favBtn.setAttribute('aria-label', state.strings.favourite);
+        favBtn.innerHTML = slot.favourited ? '&#9733;' : '&#9734;';
+        block.appendChild(favBtn);
+
+        const title = document.createElement('div');
+        title.className = 'mod_confscheduler-block-title';
+        title.textContent = slot.title || '';
+        block.appendChild(title);
+
+        const speakers = document.createElement('div');
+        speakers.className = 'mod_confscheduler-block-speakers';
+        speakers.textContent = slot.speakers || '';
+        block.appendChild(speakers);
+
+        const footer = document.createElement('div');
+        footer.className = 'mod_confscheduler-block-footer';
+        if (slot.track) {
+            const pill = document.createElement('span');
+            pill.className = 'mod_confscheduler-track-pill';
+            pill.textContent = slot.track;
+            footer.appendChild(pill);
+        }
+        footer.appendChild(document.createElement('span')).className = 'mod_confscheduler-block-roomtime-spacer';
+        block.appendChild(footer);
+    }
+
+    const roomNames = slot.roomids
+        .map((id) => (state.rooms.find((room) => room.id === id) || {}).name)
+        .filter(Boolean)
+        .join(', ');
+    const roomTime = document.createElement('div');
+    roomTime.className = 'mod_confscheduler-block-roomtime';
+    roomTime.textContent = `${roomNames}, ${formatTime(slot.starttime)}–${formatTime(slot.endtime)}`;
+    block.appendChild(roomTime);
+
+    const resizeHandle = document.createElement('div');
+    resizeHandle.className = 'mod_confscheduler-block-resize';
+    resizeHandle.setAttribute('aria-hidden', 'true');
+    block.appendChild(resizeHandle);
+
+    columnsWrap.appendChild(block);
+};
+
+/**
+ * Renders the "unscheduled" panel: accepted submissions not yet placed in the grid.
+ *
+ * @param {Object} state The module state object
+ */
+const renderUnscheduledPanel = (state) => {
+    const list = state.root.querySelector('.mod_confscheduler-unscheduled-list');
+    if (!list) {
+        return;
+    }
+    list.innerHTML = '';
+
+    state.unscheduled.forEach((item) => {
+        const card = document.createElement('div');
+        card.className = 'mod_confscheduler-unscheduled-card';
+        card.setAttribute('role', 'listitem');
+        card.dataset.submissionid = item.submissionid;
+
+        const title = document.createElement('div');
+        title.className = 'mod_confscheduler-unscheduled-title';
+        title.textContent = item.title;
+        card.appendChild(title);
+
+        const speakers = document.createElement('div');
+        speakers.className = 'mod_confscheduler-unscheduled-speakers';
+        speakers.textContent = item.speakers;
+        card.appendChild(speakers);
+
+        if (item.track) {
+            const pill = document.createElement('span');
+            pill.className = 'mod_confscheduler-track-pill';
+            pill.textContent = item.track;
+            card.appendChild(pill);
+        }
+
+        list.appendChild(card);
+    });
+};
+
+/**
+ * Begins a free-form drag of an already-scheduled block, to move it to a new time/room.
+ * On drop, the new position is computed from where the drag proxy was released, snapped to
+ * SNAP_MINUTES, and sent to the server; the real block element is left untouched until then,
+ * so a server rejection needs no explicit "revert" beyond removing the proxy.
+ *
+ * @param {Object} state The module state object
+ * @param {Event} event The originating mousedown/touchstart event
+ * @param {HTMLElement} blockEl The block being dragged
+ */
+const beginMoveDrag = (state, event, blockEl) => {
+    const prepared = Dragdrop.prepare(event);
+    if (!prepared.start) {
+        return;
+    }
+
+    const rect = blockEl.getBoundingClientRect();
+    const proxy = $(blockEl.cloneNode(true));
+    proxy.find('.mod_confscheduler-block-resize').remove();
+    proxy.addClass('mod_confscheduler-drag-proxy');
+    proxy.css({
+        position: 'absolute',
+        top: (rect.top + window.scrollY) + 'px',
+        left: (rect.left + window.scrollX) + 'px',
+        width: rect.width + 'px',
+        height: rect.height + 'px',
+        zIndex: 10000,
+        opacity: 0.85,
+        pointerEvents: 'none',
+    });
+    $('body').append(proxy);
+    blockEl.classList.add('mod_confscheduler-block-dragging');
+
+    const slotid = Number(blockEl.dataset.slotid);
+    const starttime = Number(blockEl.dataset.starttime);
+    const endtime = Number(blockEl.dataset.endtime);
+    const duration = endtime - starttime;
+    const roomids = JSON.parse(blockEl.dataset.roomids);
+    const span = roomids.length;
+
+    Dragdrop.start(event, proxy, () => {}, (pageX, pageY, proxyEl) => {
+        const offset = proxyEl.offset();
+        proxyEl.remove();
+        blockEl.classList.remove('mod_confscheduler-block-dragging');
+
+        if (!state.rooms.length) {
+            return;
+        }
+
+        const columnsRect = state.columnsWrap.getBoundingClientRect();
+        const relX = offset.left - (columnsRect.left + window.scrollX);
+        const relY = offset.top - (columnsRect.top + window.scrollY);
+
+        const index = clamp(Math.round(relX / COLUMN_WIDTH), 0, Math.max(state.rooms.length - span, 0));
+        const newStart = snapTime(yToTime(state, relY), SNAP_MINUTES);
+        const newEnd = newStart + duration;
+        const newRoomids = state.rooms.slice(index, index + span).map((room) => room.id);
+
+        if (newStart === starttime && JSON.stringify(newRoomids) === JSON.stringify(roomids)) {
+            return;
+        }
+
+        Repository.rescheduleSlot(state.cmid, slotid, newRoomids, newStart, newEnd)
+            .then(() => fetchAndRenderBody(state))
+            .catch(Notification.exception);
+    });
+};
+
+/**
+ * Begins a vertical-only drag of a block's resize handle, to change only its end time.
+ *
+ * @param {Object} state The module state object
+ * @param {Event} event The originating mousedown/touchstart event
+ * @param {HTMLElement} blockEl The block whose resize handle is being dragged
+ */
+const beginResizeDrag = (state, event, blockEl) => {
+    const prepared = Dragdrop.prepare(event);
+    if (!prepared.start) {
+        return;
+    }
+
+    const rect = blockEl.getBoundingClientRect();
+    const proxy = $('<div class="mod_confscheduler-resize-proxy"></div>');
+    proxy.css({
+        position: 'absolute',
+        top: (rect.bottom + window.scrollY) + 'px',
+        left: (rect.left + window.scrollX) + 'px',
+        width: rect.width + 'px',
+        height: '4px',
+        zIndex: 10000,
+        pointerEvents: 'none',
+    });
+    $('body').append(proxy);
+    blockEl.classList.add('mod_confscheduler-block-dragging');
+
+    const slotid = Number(blockEl.dataset.slotid);
+    const starttime = Number(blockEl.dataset.starttime);
+    const currentEnd = Number(blockEl.dataset.endtime);
+    const roomids = JSON.parse(blockEl.dataset.roomids);
+
+    Dragdrop.start(event, proxy, () => {}, (pageX, pageY, proxyEl) => {
+        const offset = proxyEl.offset();
+        proxyEl.remove();
+        blockEl.classList.remove('mod_confscheduler-block-dragging');
+
+        const columnsRect = state.columnsWrap.getBoundingClientRect();
+        const relY = offset.top - (columnsRect.top + window.scrollY);
+
+        let newEnd = snapTime(yToTime(state, relY), SNAP_MINUTES);
+        if (newEnd <= starttime) {
+            newEnd = starttime + (SNAP_MINUTES * 60);
+        }
+        if (newEnd === currentEnd) {
+            return;
+        }
+
+        Repository.rescheduleSlot(state.cmid, slotid, roomids, starttime, newEnd)
+            .then(() => fetchAndRenderBody(state))
+            .catch(Notification.exception);
+    });
+};
+
+/**
+ * Begins a free-form drag of an unscheduled-panel card into the grid, to schedule it.
+ * The new block is given a fixed DEFAULT_DURATION_MINUTES duration; the block's height
+ * (and hence its end time) can then be adjusted with the resize handle once scheduled.
+ *
+ * @param {Object} state The module state object
+ * @param {Event} event The originating mousedown/touchstart event
+ * @param {HTMLElement} cardEl The unscheduled-panel card being dragged
+ */
+const beginScheduleDrag = (state, event, cardEl) => {
+    const prepared = Dragdrop.prepare(event);
+    if (!prepared.start) {
+        return;
+    }
+
+    const rect = cardEl.getBoundingClientRect();
+    const proxy = $(cardEl.cloneNode(true));
+    proxy.addClass('mod_confscheduler-drag-proxy');
+    proxy.css({
+        position: 'absolute',
+        top: (rect.top + window.scrollY) + 'px',
+        left: (rect.left + window.scrollX) + 'px',
+        width: rect.width + 'px',
+        zIndex: 10000,
+        opacity: 0.85,
+        pointerEvents: 'none',
+    });
+    $('body').append(proxy);
+
+    const submissionid = Number(cardEl.dataset.submissionid);
+    const duration = DEFAULT_DURATION_MINUTES * 60;
+
+    Dragdrop.start(event, proxy, () => {}, (pageX, pageY, proxyEl) => {
+        const offset = proxyEl.offset();
+        proxyEl.remove();
+
+        if (!state.rooms.length) {
+            return;
+        }
+
+        const columnsRect = state.columnsWrap.getBoundingClientRect();
+        const relX = offset.left - (columnsRect.left + window.scrollX);
+        const relY = offset.top - (columnsRect.top + window.scrollY);
+
+        if (relX < 0 || relX >= state.rooms.length * COLUMN_WIDTH || relY < 0) {
+            // Dropped outside the grid: leave the card in the unscheduled panel, no-op.
+            return;
+        }
+
+        const index = clamp(Math.floor(relX / COLUMN_WIDTH), 0, state.rooms.length - 1);
+        const start = snapTime(yToTime(state, relY), SNAP_MINUTES);
+        const roomids = [state.rooms[index].id];
+
+        Repository.scheduleSubmission(state.cmid, submissionid, roomids, start, start + duration)
+            .then(() => fetchAndRenderAll(state))
+            .catch(Notification.exception);
+    });
+};
+
+/**
+ * Opens the add/edit room modal.
+ *
+ * @param {Object} state The module state object
+ * @param {Number|null} roomid The room id to edit, or null to add a new room
+ * @return {Promise}
+ */
+const openRoomModal = async(state, roomid) => {
+    const room = roomid ? state.rooms.find((candidate) => candidate.id === roomid) : null;
+
+    const body = await Templates.render('mod_confscheduler/room_form', {
+        roomid: roomid || '',
+        name: room ? room.name : '',
+        colour: room ? room.colour : null,
+    });
+
+    const modal = await ModalSaveCancel.create({
+        title: roomid ? state.strings.editroom : state.strings.addroom,
+        body,
+        show: true,
+        removeOnClose: true,
+    });
+
+    modal.getRoot().on(ModalEvents.save, (event) => {
+        event.preventDefault();
+
+        const form = modal.getRoot()[0].querySelector('.mod_confscheduler-room-form');
+        const name = form.querySelector('[name=name]').value.trim();
+        const nocolour = form.querySelector('[name=nocolour]').checked;
+        const colour = nocolour ? null : form.querySelector('[name=colour]').value;
+
+        if (name === '') {
+            return;
+        }
+
+        const promise = roomid
+            ? Repository.updateRoom(state.cmid, roomid, name, colour)
+            : Repository.addRoom(state.cmid, name, colour);
+
+        promise.then(() => {
+            modal.destroy();
+            return fetchAndRenderAll(state);
+        }).catch(Notification.exception);
+    });
+};
+
+/**
+ * Opens the "add span block" modal (column-spanning Lunch/Plenary-style block).
+ *
+ * @param {Object} state The module state object
+ * @return {Promise}
+ */
+const openSpanBlockModal = async(state) => {
+    const body = await Templates.render('mod_confscheduler/spanblock_form', {
+        rooms: state.rooms.map((room) => ({id: room.id, name: room.name})),
+    });
+
+    const modal = await ModalSaveCancel.create({
+        title: state.strings.addspanblock,
+        body,
+        show: true,
+        removeOnClose: true,
+    });
+
+    modal.getRoot().on(ModalEvents.save, (event) => {
+        event.preventDefault();
+
+        const form = modal.getRoot()[0].querySelector('.mod_confscheduler-spanblock-form');
+        const label = form.querySelector('[name=label]').value.trim();
+        const startroom = Number(form.querySelector('[name=startroom]').value);
+        const endroom = Number(form.querySelector('[name=endroom]').value);
+        const starttimeValue = form.querySelector('[name=starttime]').value;
+        const endtimeValue = form.querySelector('[name=endtime]').value;
+
+        if (label === '' || !starttimeValue || !endtimeValue) {
+            return;
+        }
+
+        const startIndex = state.rooms.findIndex((room) => room.id === startroom);
+        const endIndex = state.rooms.findIndex((room) => room.id === endroom);
+        if (startIndex === -1 || endIndex === -1) {
+            return;
+        }
+        const lo = Math.min(startIndex, endIndex);
+        const hi = Math.max(startIndex, endIndex);
+        const roomids = state.rooms.slice(lo, hi + 1).map((room) => room.id);
+
+        const starttime = Math.floor(new Date(starttimeValue).getTime() / 1000);
+        const endtime = Math.floor(new Date(endtimeValue).getTime() / 1000);
+
+        Repository.addSpanBlock(state.cmid, label, roomids, starttime, endtime).then(() => {
+            modal.destroy();
+            return fetchAndRenderBody(state);
+        }).catch(Notification.exception);
+    });
+};
+
+/**
+ * Confirms and deletes a room.
+ *
+ * @param {Object} state The module state object
+ * @param {Number} roomid The confscheduler_room id to delete
+ */
+const onDeleteRoomClick = (state, roomid) => {
+    Notification.confirm(
+        state.strings.deleteroom,
+        state.strings.confirmdeleteroom,
+        state.strings.deleteroom,
+        state.strings.cancel,
+        () => {
+            Repository.deleteRoom(state.cmid, roomid)
+                .then(() => fetchAndRenderAll(state))
+                .catch(Notification.exception);
+        }
+    );
+};
+
+/**
+ * Toggles the favourite star on a scheduled presentation block, updating the star instantly
+ * once the server confirms the new state (no page reload, no full grid re-render).
+ *
+ * @param {Object} state The module state object
+ * @param {HTMLElement} favBtn The favourite-toggle button that was clicked
+ */
+const onFavouriteClick = (state, favBtn) => {
+    const block = favBtn.closest('.mod_confscheduler-block');
+    const slotid = Number(block.dataset.slotid);
+    const target = favBtn.dataset.favourited !== '1';
+
+    favBtn.disabled = true;
+    // Wrapped in Promise.resolve(): Ajax.call() returns a jQuery Deferred-backed
+    // thenable, which implements then()/catch() but (unlike a native Promise) has
+    // no finally() -- Promise.resolve() adopts it into a real native Promise so
+    // finally() below works reliably.
+    Promise.resolve(Repository.toggleFavourite(state.cmid, slotid, target)).then((result) => {
+        favBtn.dataset.favourited = result.favourited ? '1' : '0';
+        favBtn.setAttribute('aria-pressed', result.favourited ? 'true' : 'false');
+        favBtn.innerHTML = result.favourited ? '&#9733;' : '&#9734;';
+        return result;
+    }).catch(Notification.exception).finally(() => {
+        favBtn.disabled = false;
+    });
+};
+
+/**
+ * Unschedules a block.
+ *
+ * @param {Object} state The module state object
+ * @param {HTMLElement} block The block to unschedule
+ */
+const onUnscheduleClick = (state, block) => {
+    const slotid = Number(block.dataset.slotid);
+    Repository.unscheduleSlot(state.cmid, slotid)
+        .then(() => fetchAndRenderAll(state))
+        .catch(Notification.exception);
+};
+
+/**
+ * Toggles fullscreen mode on the whole grid component via the Fullscreen API.
+ *
+ * @param {Object} state The module state object
+ */
+const toggleFullscreen = (state) => {
+    if (!document.fullscreenElement) {
+        state.root.requestFullscreen().catch(() => {
+            // Fullscreen can be refused by the browser/user; nothing to recover, just stay windowed.
+        });
+    } else {
+        document.exitFullscreen().catch(() => {});
+    }
+};
+
+/**
+ * Binds all delegated event listeners for the grid component. Called once at init.
+ *
+ * @param {Object} state The module state object
+ */
+const bindEvents = (state) => {
+    state.root.addEventListener('click', (event) => {
+        const removeBtn = event.target.closest('.mod_confscheduler-block-remove');
+        if (removeBtn) {
+            onUnscheduleClick(state, removeBtn.closest('.mod_confscheduler-block'));
+            return;
+        }
+
+        const favBtn = event.target.closest('.mod_confscheduler-block-fav');
+        if (favBtn) {
+            onFavouriteClick(state, favBtn);
+            return;
+        }
+
+        const addRoomBtn = event.target.closest('.mod_confscheduler-add-room');
+        if (addRoomBtn) {
+            openRoomModal(state, null);
+            return;
+        }
+
+        const addSpanBtn = event.target.closest('.mod_confscheduler-add-spanblock');
+        if (addSpanBtn) {
+            openSpanBlockModal(state);
+            return;
+        }
+
+        const fsBtn = event.target.closest('.mod_confscheduler-fullscreen-toggle');
+        if (fsBtn) {
+            toggleFullscreen(state);
+            return;
+        }
+
+        const editRoomBtn = event.target.closest('.mod_confscheduler-room-header-edit');
+        if (editRoomBtn) {
+            const header = editRoomBtn.closest('.mod_confscheduler-room-header');
+            openRoomModal(state, Number(header.dataset.roomid));
+            return;
+        }
+
+        const deleteRoomBtn = event.target.closest('.mod_confscheduler-room-header-delete');
+        if (deleteRoomBtn) {
+            const header = deleteRoomBtn.closest('.mod_confscheduler-room-header');
+            onDeleteRoomClick(state, Number(header.dataset.roomid));
+        }
+    });
+
+    const startDrag = (event) => {
+        const resizeHandle = event.target.closest('.mod_confscheduler-block-resize');
+        if (resizeHandle) {
+            beginResizeDrag(state, event, resizeHandle.closest('.mod_confscheduler-block'));
+            return;
+        }
+
+        const block = event.target.closest('.mod_confscheduler-block');
+        if (block && !event.target.closest('button')) {
+            beginMoveDrag(state, event, block);
+            return;
+        }
+
+        const card = event.target.closest('.mod_confscheduler-unscheduled-card');
+        if (card) {
+            beginScheduleDrag(state, event, card);
+        }
+    };
+    state.root.addEventListener('mousedown', startDrag);
+    state.root.addEventListener('touchstart', startDrag, {passive: false});
+
+    document.addEventListener('fullscreenchange', () => {
+        const isFullscreen = document.fullscreenElement === state.root;
+        state.root.classList.toggle('mod_confscheduler-fullscreen', isFullscreen);
+        const fsBtn = state.root.querySelector('.mod_confscheduler-fullscreen-toggle');
+        if (fsBtn) {
+            fsBtn.setAttribute('aria-pressed', isFullscreen ? 'true' : 'false');
+        }
+    });
+};
+
+/**
+ * Initialises the schedule grid for a confscheduler instance. Called from view.php.
+ *
+ * @param {Number} cmid The confscheduler course-module id
+ * @param {Number} confschedulerid The confscheduler instance id
+ * @return {Promise}
+ */
+export const init = async(cmid, confschedulerid) => {
+    const root = document.getElementById('mod_confscheduler-grid-root');
+    if (!root) {
+        return;
+    }
+
+    const [
+        unschedule, favourite, editroom, deleteroom, confirmdeleteroom,
+        cancel, movecolumn, addroom, addspanblock,
+    ] = await getStrings([
+        {key: 'unschedule', component: 'mod_confscheduler'},
+        {key: 'favourite', component: 'mod_confscheduler'},
+        {key: 'editroom', component: 'mod_confscheduler'},
+        {key: 'deleteroom', component: 'mod_confscheduler'},
+        {key: 'confirmdeleteroom', component: 'mod_confscheduler'},
+        {key: 'cancel', component: 'core'},
+        {key: 'movecolumn', component: 'mod_confscheduler'},
+        {key: 'addroom', component: 'mod_confscheduler'},
+        {key: 'addspanblock', component: 'mod_confscheduler'},
+    ]);
+
+    const state = {
+        cmid,
+        confschedulerid,
+        root,
+        rooms: [],
+        slots: [],
+        unscheduled: [],
+        gapminutes: 0,
+        timelineStart: 0,
+        timelineEnd: 0,
+        columnsWrap: null,
+        sortableList: null,
+        strings: {
+            unschedule, favourite, editroom, deleteroom, confirmdeleteroom,
+            cancel, movecolumn, addroom, addspanblock,
+        },
+    };
+
+    bindEvents(state);
+    await fetchAndRenderAll(state);
+};

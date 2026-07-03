@@ -17,10 +17,16 @@
 /**
  * Main view page for mod_confscheduler.
  *
- * Stub only: renders a placeholder heading. The full time x room drag-and-drop
- * grid (edit mode) and read-only printable schedule (display mode) are a
- * follow-up task; see classes/api.php for the data-access methods that page
- * will be built on.
+ * Edit mode (mod/confscheduler:manageschedule): renders the grid shell only.
+ * All grid data (rooms, slots, unscheduled submissions) is fetched via the
+ * mod_confscheduler_get_grid_data AJAX endpoint from amd/src/scheduler_grid.js
+ * once the page loads, and every mutation (schedule/reschedule/unschedule,
+ * room CRUD, favourite toggle) goes through the same validated AJAX write
+ * paths -- nothing here pre-renders grid data as PHP-generated HTML.
+ *
+ * Users with only mod/confscheduler:viewschedule (not :manageschedule) get a
+ * simple placeholder: the read-only Display mode is Phase 3.5, out of scope
+ * here.
  *
  * @package    mod_confscheduler
  * @copyright  2026 Adam Jenkins <adam@wisecat.net>
@@ -49,6 +55,12 @@ $PAGE->set_title(format_string($confscheduler->name));
 $PAGE->set_heading(format_string($course->fullname));
 $PAGE->set_context($context);
 
+$canmanage = has_capability('mod/confscheduler:manageschedule', $context);
+
+if ($canmanage) {
+    $PAGE->requires->js_call_amd('mod_confscheduler/scheduler_grid', 'init', [$cm->id, (int) $confscheduler->id]);
+}
+
 echo $OUTPUT->header();
 echo $OUTPUT->heading(format_string($confscheduler->name));
 
@@ -60,7 +72,16 @@ if ($confscheduler->intro) {
     );
 }
 
-// Stub only: the time x room grid (view/edit mode) is not yet implemented here.
-echo $OUTPUT->notification(get_string('gridnotbuiltyet', 'mod_confscheduler'), 'info');
+if ($canmanage) {
+    echo $OUTPUT->render_from_template('mod_confscheduler/grid', [
+        'cmid'            => $cm->id,
+        'confschedulerid' => (int) $confscheduler->id,
+        'canmanage'       => true,
+    ]);
+} else {
+    // Read-only Display mode (Phase 3.5) is out of scope for this build; a
+    // manageschedule-holder still sees the full edit grid above.
+    echo $OUTPUT->notification(get_string('displaymodenotbuiltyet', 'mod_confscheduler'), 'info');
+}
 
 echo $OUTPUT->footer();

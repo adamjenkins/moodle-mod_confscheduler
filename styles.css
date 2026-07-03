@@ -1,0 +1,299 @@
+/* This file is part of Moodle - http://moodle.org/
+ *
+ * Moodle is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * Moodle is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
+/*
+ * Styles for the mod_confscheduler edit-mode drag-and-drop grid
+ * (amd/src/scheduler_grid.js).
+ *
+ * Sizing constants below (200px column width, 70px time-axis width, 144px
+ * hour gridline spacing = 2.4px/minute * 60) must stay in sync with the
+ * COLUMN_WIDTH/PX_PER_MINUTE constants in amd/src/scheduler_grid.js.
+ */
+
+.mod_confscheduler-toolbar {
+    gap: 0.5rem;
+}
+
+.mod_confscheduler-body {
+    display: flex;
+    gap: 1rem;
+    align-items: flex-start;
+}
+
+.mod_confscheduler-unscheduled-panel {
+    flex: 0 0 260px;
+    max-height: 80vh;
+    overflow-y: auto;
+    border: 1px solid rgba(0, 0, 0, 0.15);
+    border-radius: 4px;
+    padding: 0.5rem;
+}
+
+.mod_confscheduler-unscheduled-panel h3 {
+    font-size: 1rem;
+    margin-bottom: 0.5rem;
+}
+
+.mod_confscheduler-unscheduled-card {
+    border: 1px solid rgba(0, 0, 0, 0.15);
+    border-radius: 4px;
+    background: #fff;
+    padding: 0.4rem 0.5rem;
+    margin-bottom: 0.5rem;
+    cursor: grab;
+}
+
+.mod_confscheduler-unscheduled-title {
+    font-weight: 600;
+    font-size: 0.85rem;
+}
+
+.mod_confscheduler-unscheduled-speakers {
+    font-size: 0.75rem;
+    color: #555;
+}
+
+.mod_confscheduler-grid-scroll {
+    flex: 1 1 auto;
+    overflow-x: auto;
+    min-width: 0;
+}
+
+.mod_confscheduler-room-headers {
+    display: flex;
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    background: #fff;
+}
+
+.mod_confscheduler-time-header-spacer {
+    flex: 0 0 70px;
+    width: 70px;
+}
+
+.mod_confscheduler-room-header {
+    flex: 0 0 200px;
+    width: 200px;
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.25rem 0.4rem;
+    border: 1px solid rgba(0, 0, 0, 0.15);
+    background-color: #eef1f5;
+}
+
+.mod_confscheduler-room-draghandle {
+    cursor: grab;
+    color: #888;
+}
+
+.mod_confscheduler-room-name {
+    flex: 1 1 auto;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.mod_confscheduler-room-header-actions button {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 0 0.15rem;
+}
+
+.mod_confscheduler-grid {
+    display: flex;
+    position: relative;
+}
+
+.mod_confscheduler-time-axis {
+    flex: 0 0 70px;
+    width: 70px;
+    position: relative;
+    border-right: 1px solid rgba(0, 0, 0, 0.15);
+}
+
+.mod_confscheduler-time-label {
+    position: absolute;
+    left: 0;
+    right: 4px;
+    text-align: right;
+    font-size: 0.7rem;
+    color: #666;
+    transform: translateY(-50%);
+}
+
+.mod_confscheduler-columns {
+    position: relative;
+    display: flex;
+}
+
+.mod_confscheduler-room-column {
+    flex: 0 0 200px;
+    width: 200px;
+    box-sizing: border-box;
+    position: relative;
+    border-right: 1px solid rgba(0, 0, 0, 0.08);
+    background-image: repeating-linear-gradient(
+        to bottom,
+        rgba(0, 0, 0, 0.06) 0,
+        rgba(0, 0, 0, 0.06) 1px,
+        transparent 1px,
+        transparent 144px
+    );
+}
+
+/* Pale tint of the room colour behind blocks, via a low-opacity overlay rather than a
+   second stored colour value: the header itself uses the saturated colour directly. */
+.mod_confscheduler-room-column.has-colour::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-color: var(--mod_confscheduler-room-colour);
+    opacity: 0.12;
+    pointer-events: none;
+    z-index: 0;
+}
+
+.mod_confscheduler-block {
+    position: absolute;
+    z-index: 1;
+    box-sizing: border-box;
+    border-radius: 4px;
+    border: 1px solid rgba(0, 0, 0, 0.2);
+    background: #fff;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+    padding: 0.25rem 0.4rem;
+    overflow: hidden;
+    font-size: 0.75rem;
+    cursor: grab;
+}
+
+.mod_confscheduler-block-span {
+    text-align: center;
+    font-weight: 600;
+    background-image: repeating-linear-gradient(
+        45deg,
+        rgba(0, 0, 0, 0.03),
+        rgba(0, 0, 0, 0.03) 8px,
+        transparent 8px,
+        transparent 16px
+    );
+}
+
+.mod_confscheduler-block-dragging {
+    opacity: 0.35;
+}
+
+.mod_confscheduler-drag-proxy {
+    opacity: 0.85;
+}
+
+.mod_confscheduler-block-remove {
+    position: absolute;
+    top: 1px;
+    left: 2px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 0.9rem;
+    line-height: 1;
+    color: #900;
+    padding: 0;
+}
+
+.mod_confscheduler-block-fav {
+    position: absolute;
+    top: 1px;
+    right: 2px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 1rem;
+    line-height: 1;
+    color: #e6a700;
+    padding: 0;
+}
+
+.mod_confscheduler-block-title {
+    font-weight: 600;
+    margin-top: 1rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.mod_confscheduler-block-speakers {
+    font-size: 0.7rem;
+    color: #555;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.mod_confscheduler-block-footer {
+    display: flex;
+    justify-content: flex-start;
+    margin-top: 0.2rem;
+}
+
+.mod_confscheduler-track-pill {
+    background: #3366cc;
+    color: #fff;
+    border-radius: 10px;
+    padding: 0 0.4rem;
+    font-size: 0.6rem;
+    white-space: nowrap;
+}
+
+.mod_confscheduler-block-roomtime {
+    position: absolute;
+    bottom: 2px;
+    right: 4px;
+    font-size: 0.6rem;
+    color: #666;
+    white-space: nowrap;
+}
+
+.mod_confscheduler-block-resize {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 6px;
+    cursor: ns-resize;
+}
+
+.mod_confscheduler-fullscreen {
+    background: #fff;
+    padding: 0.5rem;
+    overflow: auto;
+}
+
+@media (prefers-color-scheme: dark) {
+    .mod_confscheduler-room-headers,
+    .mod_confscheduler-fullscreen {
+        background: #1d1f21;
+    }
+
+    .mod_confscheduler-block {
+        background: #2a2d2f;
+        color: #eee;
+    }
+}

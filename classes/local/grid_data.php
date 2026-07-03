@@ -1,0 +1,170 @@
+<?php
+// This file is part of Moodle - http://moodle.org/
+//
+// Moodle is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// Moodle is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
+
+namespace mod_confscheduler\local;
+
+use mod_confprogram\local\display_list;
+use mod_confsubmissions\api as submissions_api;
+
+/**
+ * Builds the decorated grid payload the AJAX get_grid_data endpoint returns:
+ * rooms in order, scheduled slots (with room(s), and, for presentation slots,
+ * title/speakers/track resolved from the sibling plugins), and the list of
+ * accepted-but-unscheduled submissions.
+ *
+ * Kept out of classes/external/get_grid_data.php (which stays a thin
+ * page-logic file matching the sibling plugins' external function
+ * conventions) so this is independently unit-testable without going through
+ * the external API's parameter validation machinery.
+ *
+ * This class does not check capabilities: the caller (get_grid_data external
+ * function) is responsible for require_capability('mod/confscheduler:viewschedule', ...)
+ * before calling build().
+ *
+ * @package    mod_confscheduler
+ * @copyright  2026 Adam Jenkins <adam@wisecat.net>
+ * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
+ */
+class grid_data {
+    /**
+     * Builds the full grid payload for a confscheduler instance.
+     *
+     * @param \stdClass $confscheduler The confscheduler record
+     * @param int $userid The current user id, used to resolve per-user favourited state
+     * @return array{rooms: array, slots: array, unscheduled: array, gapminutes: int}
+     */
+    public static function build(\stdClass $confscheduler, int $userid): array {
+        global $DB;
+
+        $confschedulerid = (int) $confscheduler->id;
+
+        $confprogramcm = get_coursemodule_from_id('confprogram', $confscheduler->confprogramcmid, 0, false, MUST_EXIST);
+        $confprogram = $DB->get_record('confprogram', ['id' => $confprogramcm->instance], '*', MUST_EXIST);
+        $confsubmissionscm = get_coursemodule_from_id(
+            'confsubmissions',
+            $confprogram->confsubmissionscmid,
+            0,
+            false,
+            MUST_EXIST
+        );
+
+        $rooms = \mod_confscheduler\api::get_rooms($confschedulerid);
+        $roomsout = [];
+        foreach ($rooms as $room) {
+            $roomsout[] = [
+                'id'        => (int) $room->id,
+                'name'      => $room->name,
+                'sortorder' => (int) $room->sortorder,
+                'colour'    => $room->colour,
+            ];
+        }
+
+        $tracksbyid = [];
+        foreach (submissions_api::get_tracks($confsubmissionscm->id) as $track) {
+            $tracksbyid[(int) $track->id] = $track->name;
+        }
+
+        $slots = \mod_confscheduler\api::get_slots($confschedulerid);
+        $slotroomsbyslot = [];
+        if ($slots) {
+            [$insql, $params] = $DB->get_in_or_equal(array_keys($slots), SQL_PARAMS_QM);
+            $slotroomrows = $DB->get_records_select('confscheduler_slotroom', "slotid $insql", $params);
+            foreach ($slotroomrows as $row) {
+                $slotroomsbyslot[(int) $row->slotid][] = (int) $row->roomid;
+            }
+        }
+
+        $scheduledsubmissionids = [];
+        $slotsout = [];
+        foreach ($slots as $slot) {
+            $entry = [
+                'id'           => (int) $slot->id,
+                'roomids'      => $slotroomsbyslot[(int) $slot->id] ?? [],
+                'starttime'    => (int) $slot->starttime,
+                'endtime'      => (int) $slot->endtime,
+                'label'        => $slot->label,
+                'submissionid' => $slot->submissionid !== null ? (int) $slot->submissionid : null,
+                'title'        => null,
+                'speakers'     => null,
+                'track'        => null,
+                'favourited'   => false,
+            ];
+
+            if ($slot->submissionid !== null) {
+                $scheduledsubmissionids[] = (int) $slot->submissionid;
+                $submission = submissions_api::get_submission((int) $slot->submissionid);
+                if ($submission) {
+                    $entry['title'] = format_string($submission->title);
+                    $entry['speakers'] = self::format_speakers((int) $submission->id);
+                    $entry['track'] = !empty($submission->trackid) && isset($tracksbyid[(int) $submission->trackid])
+                        ? format_string($tracksbyid[(int) $submission->trackid])
+                        : null;
+                    $entry['favourited'] = \mod_confprogram\api::is_favourited($userid, (int) $submission->id);
+                }
+            }
+
+            $slotsout[] = $entry;
+        }
+
+        $accepted = display_list::get_accepted_submissions((int) $confprogram->id, (int) $confsubmissionscm->instance);
+        $unscheduledout = [];
+        foreach ($accepted as $submission) {
+            if (in_array((int) $submission->id, $scheduledsubmissionids, true)) {
+                continue;
+            }
+            $unscheduledout[] = [
+                'submissionid' => (int) $submission->id,
+                'title'        => format_string($submission->title),
+                'speakers'     => self::format_speakers((int) $submission->id),
+                'track'        => !empty($submission->trackid) && isset($tracksbyid[(int) $submission->trackid])
+                    ? format_string($tracksbyid[(int) $submission->trackid])
+                    : null,
+            ];
+        }
+
+        return [
+            'rooms'       => $roomsout,
+            'slots'       => $slotsout,
+            'unscheduled' => $unscheduledout,
+            'gapminutes'  => (int) $confscheduler->gapminutes,
+        ];
+    }
+
+    /**
+     * Formats a submission's speaker names as a single comma-joined string,
+     * resolving enrolled-user speakers to their full name and falling back to
+     * the manually-entered name for non-user speakers.
+     *
+     * @param int $submissionid The confsubmissions_submission id
+     * @return string Comma-joined speaker display names
+     */
+    protected static function format_speakers(int $submissionid): string {
+        $names = [];
+        foreach (submissions_api::get_speakers($submissionid) as $speaker) {
+            if (!empty($speaker->userid)) {
+                $user = \core_user::get_user((int) $speaker->userid);
+                $name = $user ? fullname($user) : '';
+            } else {
+                $name = (string) ($speaker->name ?? '');
+            }
+            if ($name !== '') {
+                $names[] = $name;
+            }
+        }
+
+        return implode(', ', $names);
+    }
+}
