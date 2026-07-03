@@ -24,9 +24,12 @@
  * room CRUD, favourite toggle) goes through the same validated AJAX write
  * paths -- nothing here pre-renders grid data as PHP-generated HTML.
  *
- * Users with only mod/confscheduler:viewschedule (not :manageschedule) get a
- * simple placeholder: the read-only Display mode is Phase 3.5, out of scope
- * here.
+ * Display mode (mod/confscheduler:viewschedule only, not :manageschedule): a
+ * read-only rendering of the same grid data via amd/src/scheduler_display.js
+ * and templates/display.mustache (Phase 3.5) -- see that module's docblock
+ * for why it is a separate module from the edit grid rather than a shared
+ * renderer, and README.md's "Architecture notes" for the day-filtering
+ * sharing decision.
  *
  * @package    mod_confscheduler
  * @copyright  2026 Adam Jenkins <adam@wisecat.net>
@@ -35,6 +38,8 @@
 
 require_once('../../config.php');
 require_once($CFG->dirroot . '/mod/confscheduler/lib.php');
+
+use mod_confscheduler\local\display_link;
 
 $id = required_param('id', PARAM_INT);
 
@@ -79,9 +84,30 @@ if ($canmanage) {
         'canmanage'       => true,
     ]);
 } else {
-    // Read-only Display mode (Phase 3.5) is out of scope for this build; a
-    // manageschedule-holder still sees the full edit grid above.
-    echo $OUTPUT->notification(get_string('displaymodenotbuiltyet', 'mod_confscheduler'), 'info');
+    // Read-only Display mode (Phase 3.5). confprogramcmid is a trusted DB field (set via
+    // mod_form.php's course-scoped activity picker, never from request input at read
+    // time); display_link::program_url() still resolves it defensively (MUST_EXIST) in
+    // case the linked activity has since been deleted.
+    $programurl = display_link::program_url($confscheduler);
+
+    // Guests cannot meaningfully favourite (there is no per-guest persisted state to
+    // toggle), matching the same isguestuser() exclusion mod_confprogram's own
+    // Display-phase list applies to its favourite-star column.
+    $canfavourite = !isguestuser() && has_capability('mod/confscheduler:favourite', $context);
+
+    echo $OUTPUT->render_from_template('mod_confscheduler/display', [
+        'cmid'            => $cm->id,
+        'confschedulerid' => (int) $confscheduler->id,
+        'canfavourite'    => $canfavourite,
+    ]);
+
+    $PAGE->requires->js_call_amd('mod_confscheduler/scheduler_display', 'init', [
+        $cm->id,
+        (int) $confscheduler->id,
+        (int) $confscheduler->confprogramcmid,
+        $programurl->out(false),
+        $canfavourite,
+    ]);
 }
 
 echo $OUTPUT->footer();

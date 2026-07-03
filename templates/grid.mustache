@@ -40,8 +40,8 @@
      class="mod_confscheduler-grid-container"
      data-cmid="{{cmid}}"
      data-confschedulerid="{{confschedulerid}}">
-    <div class="mod_confscheduler-toolbar d-flex justify-content-between align-items-center mb-2">
-        <div class="mod_confscheduler-toolbar-actions">
+    <div class="mod_confscheduler-toolbar d-flex flex-wrap justify-content-between align-items-center mb-2">
+        <div class="mod_confscheduler-toolbar-actions d-flex flex-wrap align-items-center">
             {{#canmanage}}
             <button type="button" class="btn btn-secondary btn-sm mod_confscheduler-add-room">
                 {{#str}} addroom, mod_confscheduler {{/str}}
@@ -53,6 +53,8 @@
                 {{#str}} autoschedulerrun, mod_confscheduler {{/str}}
             </button>
             {{/canmanage}}
+            <label class="mx-2 mb-0" for="mod_confscheduler-day-select">{{#str}} day, mod_confscheduler {{/str}}</label>
+            <select id="mod_confscheduler-day-select" class="mod_confscheduler-day-select form-control form-control-sm" hidden></select>
         </div>
         <button type="button" class="btn btn-outline-secondary btn-sm mod_confscheduler-fullscreen-toggle" aria-pressed="false">
             {{#str}} fullscreen, mod_confscheduler {{/str}}

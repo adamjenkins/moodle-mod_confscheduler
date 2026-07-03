@@ -302,3 +302,119 @@
         color: #eee;
     }
 }
+
+/*
+ * Read-only Display mode (Phase 3.5, amd/src/scheduler_display.js).
+ *
+ * Blocks reuse the .mod_confscheduler-block/-title/-speakers/-footer/-roomtime/
+ * -track-pill classes above (and their sizing constants) so edit-mode and Display-mode
+ * blocks look identical apart from the missing drag/remove/resize affordances; only
+ * .mod_confscheduler-block-readonly-specific rules live below.
+ */
+
+.mod_confscheduler-block-readonly {
+    cursor: default;
+}
+
+.mod_confscheduler-block-link {
+    display: block;
+    color: inherit;
+    text-decoration: none;
+}
+
+.mod_confscheduler-block-link:hover .mod_confscheduler-block-title,
+.mod_confscheduler-block-link:focus .mod_confscheduler-block-title {
+    text-decoration: underline;
+}
+
+.mod_confscheduler-block-fav-readonly {
+    position: absolute;
+    top: 1px;
+    right: 2px;
+    font-size: 1rem;
+    line-height: 1;
+    color: #e6a700;
+    cursor: default;
+}
+
+/* "My timetable" toggle: grey out every non-favourited block, and lift the
+   favourited ones slightly so they stay legible/scannable against the greyed rest. */
+.mod_confscheduler-mytimetable-active .mod_confscheduler-block:not([data-favourited="1"]) {
+    opacity: 0.35;
+    filter: grayscale(60%);
+}
+
+.mod_confscheduler-mytimetable-active .mod_confscheduler-block[data-favourited="1"] {
+    box-shadow: 0 0 0 2px #e6a700, 0 1px 2px rgba(0, 0, 0, 0.15);
+    z-index: 2;
+}
+
+.mod_confscheduler-mytimetable-toggle.active {
+    background-color: #e6a700;
+    border-color: #e6a700;
+    color: #1d1f21;
+}
+
+.mod_confscheduler-print-controls fieldset {
+    border: 0;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+}
+
+/*
+ * Print support (Phase 3.5): colour/black-and-white and A4/A3/A2 portrait/landscape,
+ * entirely via CSS -- no PDF generation. Paper size/orientation is applied as a
+ * dynamically-written @page rule (see scheduler_display.js's applyPageSize(); @page
+ * cannot itself be scoped under a class selector, so a dedicated <style> element's
+ * content is rewritten instead). Black & white mode strips the room colour-theming
+ * down to plain borders/text via the .mod_confscheduler-print-bw class below, applied
+ * unconditionally (it only has any visual effect inside @media print).
+ */
+@media print {
+    /* Compound selector (two classes) deliberately, not just .mod_confscheduler-print-toolbar:
+       the toolbar also carries Bootstrap's .d-flex utility class, whose own
+       "display: flex !important" rule has equal specificity to a single-class selector here
+       and would otherwise win the cascade tiebreak by simply being loaded later in the
+       aggregated theme CSS. Two classes gives this rule strictly higher specificity, so it
+       wins regardless of load order. */
+    .mod_confscheduler-toolbar.mod_confscheduler-print-toolbar {
+        display: none !important;
+    }
+
+    .mod_confscheduler-grid-scroll {
+        overflow: visible;
+    }
+
+    .mod_confscheduler-block {
+        box-shadow: none;
+        border: 1px solid #000;
+        break-inside: avoid;
+    }
+
+    .mod_confscheduler-print-bw .mod_confscheduler-room-header {
+        background-color: #fff !important;
+        color: #000;
+        border: 1px solid #000;
+    }
+
+    .mod_confscheduler-print-bw .mod_confscheduler-room-column.has-colour::before {
+        display: none;
+    }
+
+    .mod_confscheduler-print-bw .mod_confscheduler-block {
+        background: #fff !important;
+        color: #000;
+    }
+
+    .mod_confscheduler-print-bw .mod_confscheduler-track-pill {
+        background: #fff !important;
+        color: #000 !important;
+        border: 1px solid #000;
+    }
+
+    .mod_confscheduler-print-bw .mod_confscheduler-block-fav,
+    .mod_confscheduler-print-bw .mod_confscheduler-block-fav-readonly {
+        color: #000;
+    }
+}

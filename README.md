@@ -11,8 +11,8 @@ Part of the [Conference Tools](https://github.com/adamjenkins/moodle-conference-
 
 ## What it does
 
-- **Edit mode**: a time × room grid. Drag accepted presentations from an unscheduled panel into slots, and reschedule by dragging within the grid. Rooms are editable, colour-themeable, and re-orderable. "GapSnap" enforces a configurable gap between presentations while dragging. An autoscheduler can populate a timespan automatically, prioritising same-session and same-track grouping. Column-spanning blocks support plenaries/lunch.
-- **Display mode**: read-only blocks link to the presentation's `mod_confprogram` page, with a "my timetable" highlight toggle synced with favourites. Printable in colour or black & white, at A4/A3/A2 in either orientation.
+- **Edit mode**: a time × room grid. Drag accepted presentations from an unscheduled panel into slots, and reschedule by dragging within the grid. Rooms are editable, colour-themeable, and re-orderable. "GapSnap" enforces a configurable gap between presentations while dragging. An autoscheduler can populate a timespan automatically, prioritising same-session and same-track grouping. Column-spanning blocks support plenaries/lunch. A day selector pages a multi-day schedule one calendar day at a time.
+- **Display mode** (`mod/confscheduler:viewschedule` without `:manageschedule`): a read-only rendering of the same grid data. Blocks link to the presentation's `mod_confprogram` page (both a real `<a href>` fallback and, with JS, an in-place modal identical to `mod_confprogram`'s own). A "my timetable" toggle highlights favourited presentations and greys out the rest, persisted in `sessionStorage` per instance. The same day selector as edit mode pages a multi-day schedule. Printable in colour or black & white, at A4/A3/A2 in either orientation, via CSS only (no PDF generation).
 - Implements the `\mod_confscheduler\api::get_schedule_for_submission()` contract that `mod_confprogram`'s Display phase reads for time/room info, and calls `mod_confprogram`'s `api::add_favourite()`/`remove_favourite()` directly to keep favourites in sync both ways.
 
 ## Architecture notes
@@ -60,6 +60,77 @@ Part of the [Conference Tools](https://github.com/adamjenkins/moodle-conference-
   placement — there is no separate "simulate then commit" step. This trades
   a little redundant validation-query overhead for a guarantee that the
   autoscheduler can never place something `add_slot()` would have refused.
+- **Display mode is a separate AMD module, not a shared renderer with an
+  edit/read-only flag (Phase 3.5)**: `amd/src/scheduler_grid.js`'s block
+  rendering is tightly interleaved with `core/dragdrop` state — drag
+  proxies, resize handles, mid-drag reads of a block's own `dataset` — and
+  threading a `canEdit`/read-only flag through every one of those code paths
+  would have made the already-shipped, security-reviewed drag-and-drop grid
+  harder to read for no real benefit to either mode (a read-only caller has
+  no use for any of that state machinery). `amd/src/scheduler_display.js` is
+  instead a smaller, dedicated module that duplicates only the minimal
+  block-positioning math (`COLUMN_WIDTH`/`PX_PER_MINUTE`, kept in comments
+  cross-referencing the edit grid's copies the same way `styles.css` already
+  cross-references both), fetches the same `mod_confscheduler_get_grid_data`
+  payload, and renders it without any drag affordances. The genuinely
+  *shared* logic — day-boundary computation — **is** factored out, into
+  `amd/src/day_utils.js` (pure, framework-agnostic: no DOM access, no
+  module-level state), and used by both modules; see the next point.
+- **Day/page pagination is shared between edit and Display modes (Phase
+  3.5)**: `amd/src/day_utils.js` groups a slot list by local calendar day
+  and picks a sensible default (today if the schedule spans it, else the
+  earliest day). Both `scheduler_grid.js` and `scheduler_display.js` render
+  one day's slots at a time via a day `<select>` in their toolbar. Adding
+  this to the edit grid (not just Display mode, where it was clearly
+  needed) was judged low-risk rather than a large rewrite of already-shipped
+  DnD code, because day filtering only narrows *which slots feed*
+  `computeTimeline()`/`renderBody()`'s rendering — the drag/resize/drop
+  handlers themselves already operated on absolute unix timestamps derived
+  from `state.timelineStart` (already recomputed on every render), so
+  scoping that to one day's bounds instead of the whole instance's needed no
+  changes to the handlers themselves, only to what range they're computed
+  over. This was verified live after the change (not just assumed safe): an
+  adversarial drag that would overlap a neighbouring block was correctly
+  rejected by the server with the block reverting in place, and a valid
+  drag on the day-filtered timeline correctly persisted the new time.
+- **Presentation-detail link-through calls `mod_confprogram`'s own AJAX
+  endpoint directly, cross-plugin (Phase 3.5)**: a Display-mode block's
+  primary link is a real `<a href>` to the linked `mod_confprogram`
+  activity's own view page (built by `classes/local/display_link.php`,
+  unit-tested) — the honest fallback destination, since `mod_confprogram`
+  has no URL-parameter convention to deep-link a specific submission's
+  detail modal, and per this project's cross-plugin rules `mod_confprogram`
+  must not be modified to add one. When JS is available, clicking the block
+  instead calls `mod_confprogram`'s own public
+  `mod_confprogram_get_submission_detail` external function directly (the
+  identical AJAX call `mod_confprogram`'s own list view makes,
+  `amd/src/programlist.js`) and shows the same `core/modal` it would show on
+  its own page. This introduces no new IDOR surface: that endpoint is
+  already independently hardened (capability + Display-phase embargo +
+  accept-decision + instance checks, all internal to `mod_confprogram`) and
+  already globally callable by anyone who can reach `webservice/ajax.php`
+  with the right capability, regardless of which plugin's JS happens to call
+  it — calling it from here does not weaken any of those checks.
+- **Print support is CSS-only (Phase 3.5)**: colour/black-and-white and
+  A4/A3/A2 portrait/landscape are implemented via `@media print` rules plus
+  a dynamically-written `@page` rule (`@page` cannot itself be scoped under
+  a class selector, so `scheduler_display.js`'s `applyPageSize()` rewrites a
+  dedicated `<style>` element's content on each control change instead of
+  pre-declaring every combination as static CSS). A live adversarial check
+  caught a real bug here during verification: the print toolbar's own
+  `.d-flex` Bootstrap utility class carries `display: flex !important`,
+  which has equal specificity to a single-class `!important` hide rule and
+  was winning the cascade tiebreak by load order, so the toolbar was not
+  actually hiding under `@media print` despite the rule being present.
+  Fixed with a two-class compound selector
+  (`.mod_confscheduler-toolbar.mod_confscheduler-print-toolbar`), which has
+  strictly higher specificity and wins regardless of load order. No PDF
+  generation, per the project's explicit non-goal for this phase.
+- **Known follow-up, not built this phase**: the edit-mode grid's
+  unscheduled-presentations panel is not day-scoped (by design — an
+  unscheduled submission has no time yet, so there is no day to scope it
+  to), and the "my timetable"/print controls are Display-mode-only per
+  spec, not added to the edit grid.
 
 ## Requirements
 

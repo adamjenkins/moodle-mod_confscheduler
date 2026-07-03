@@ -22,6 +22,7 @@ import Notification from 'core/notification';
 import Templates from 'core/templates';
 import {getString, getStrings} from 'core/str';
 import * as Repository from 'mod_confscheduler/repository';
+import * as DayUtils from 'mod_confscheduler/day_utils';
 
 /**
  * Edit-mode drag-and-drop schedule grid (Phase 3.3).
@@ -45,14 +46,16 @@ import * as Repository from 'mod_confscheduler/repository';
  * stays where it always was, and Notification.exception() surfaces the
  * server's error.
  *
- * Known simplification: the vertical timeline is a single continuous range
- * spanning the earliest to latest scheduled time (or a default 08:00-18:00
- * window when nothing is scheduled yet) with no day/page selector. For a
- * schedule spanning multiple days this will render as one long scrollable
- * timeline rather than paginating by day; a day selector is left as a
- * follow-up (Phase 3.5, read-only Display mode, already plans a day
- * grouping -- see \mod_confprogram\local\display_list::group_by_day() this
- * project already has for the analogous list view).
+ * Day/page pagination (Phase 3.5): the grid renders one calendar day's slots
+ * at a time via a day <select> in the toolbar, using the shared, pure
+ * amd/src/day_utils.js helpers (also used by the read-only Display-mode
+ * module) to group state.allSlots by day and pick a sensible default. Only
+ * the vertical timeline/body rendering is day-scoped (state.slots is the
+ * current day's subset of state.allSlots); room headers and the unscheduled
+ * panel are unaffected by day selection, since neither is itself tied to a
+ * particular day. Drag-and-drop math is untouched by this: it still operates
+ * on absolute unix timestamps derived from the currently-rendered day's own
+ * time axis, exactly as before.
  *
  * @module     mod_confscheduler/scheduler_grid
  * @copyright  2026 Adam Jenkins <adam@wisecat.net>
@@ -160,10 +163,12 @@ const computeTimeline = (state) => {
  */
 const fetchAndRenderAll = (state) => Repository.getGridData(state.cmid).then((data) => {
     state.rooms = data.rooms;
-    state.slots = data.slots;
+    state.allSlots = data.slots;
     state.unscheduled = data.unscheduled;
     state.gapminutes = data.gapminutes;
+    applyDayFilter(state);
     renderHeaders(state);
+    renderDaySelector(state);
     renderBody(state);
     renderUnscheduledPanel(state);
     return null;
@@ -179,13 +184,60 @@ const fetchAndRenderAll = (state) => Repository.getGridData(state.cmid).then((da
  */
 const fetchAndRenderBody = (state) => Repository.getGridData(state.cmid).then((data) => {
     state.rooms = data.rooms;
-    state.slots = data.slots;
+    state.allSlots = data.slots;
     state.unscheduled = data.unscheduled;
     state.gapminutes = data.gapminutes;
+    applyDayFilter(state);
+    renderDaySelector(state);
     renderBody(state);
     renderUnscheduledPanel(state);
     return null;
 }).catch(Notification.exception);
+
+/**
+ * Groups state.allSlots by day, picks/keeps a selected day, and sets state.slots to that
+ * day's subset -- the only array computeTimeline()/renderBody() read from. Room headers
+ * and the unscheduled panel are rendered from state.rooms/state.unscheduled directly, so
+ * they are unaffected by which day is selected.
+ *
+ * @param {Object} state The module state object
+ */
+const applyDayFilter = (state) => {
+    const groups = DayUtils.groupSlotsByDay(state.allSlots);
+    state.dayKeys = DayUtils.sortedDayKeys(groups);
+    if (!state.selectedDay || !state.dayKeys.includes(state.selectedDay)) {
+        state.selectedDay = DayUtils.defaultDayKey(state.dayKeys);
+    }
+    state.slots = state.selectedDay ? (groups[state.selectedDay] || []) : [];
+};
+
+/**
+ * Renders the day-selector <select> options and wires it to re-filter/re-render the body
+ * on change. A no-op (element left hidden) when there is nothing scheduled yet.
+ *
+ * @param {Object} state The module state object
+ */
+const renderDaySelector = (state) => {
+    const select = state.root.querySelector('.mod_confscheduler-day-select');
+    if (!select) {
+        return;
+    }
+    select.innerHTML = '';
+
+    if (!state.dayKeys.length) {
+        select.hidden = true;
+        return;
+    }
+    select.hidden = false;
+
+    state.dayKeys.forEach((key) => {
+        const option = document.createElement('option');
+        option.value = key;
+        option.textContent = DayUtils.formatDayLabel(key);
+        option.selected = key === state.selectedDay;
+        select.appendChild(option);
+    });
+};
 
 /**
  * Renders the room column headers, including the drag handle (core/sortable_list) and edit/delete buttons.
@@ -977,6 +1029,14 @@ const bindEvents = (state) => {
         const sessiontagInput = event.target.closest('.mod_confscheduler-unscheduled-sessiontag');
         if (sessiontagInput) {
             onSessionTagChange(state, sessiontagInput);
+            return;
+        }
+
+        const daySelect = event.target.closest('.mod_confscheduler-day-select');
+        if (daySelect) {
+            state.selectedDay = daySelect.value;
+            applyDayFilter(state);
+            renderBody(state);
         }
     });
 
@@ -1027,7 +1087,10 @@ export const init = async(cmid, confschedulerid) => {
         confschedulerid,
         root,
         rooms: [],
+        allSlots: [],
         slots: [],
+        dayKeys: [],
+        selectedDay: null,
         unscheduled: [],
         gapminutes: 0,
         timelineStart: 0,
