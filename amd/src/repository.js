@@ -157,3 +157,31 @@ export const toggleFavourite = (cmid, slotid, favourited) => Ajax.call([{
     methodname: 'mod_confscheduler_toggle_favourite',
     args: {cmid, slotid, favourited},
 }])[0];
+
+/**
+ * Runs the autoscheduler over a time window.
+ *
+ * @param {Number} cmid The confscheduler course-module id
+ * @param {Number} windowstart Unix timestamp; start of the window to schedule into
+ * @param {Number} windowend Unix timestamp; end of the window to schedule into
+ * @param {Number} defaultdurationminutes Duration, in minutes, given to every placed submission
+ * @param {Boolean} clearfirst Whether to first clear existing slots that overlap the window
+ * @return {Promise}
+ */
+export const runAutoscheduler = (cmid, windowstart, windowend, defaultdurationminutes, clearfirst) => Ajax.call([{
+    methodname: 'mod_confscheduler_run_autoscheduler',
+    args: {cmid, windowstart, windowend, defaultdurationminutes, clearfirst},
+}])[0];
+
+/**
+ * Sets or clears a submission's "session" grouping label (used by the autoscheduler).
+ *
+ * @param {Number} cmid The confscheduler course-module id
+ * @param {Number} submissionid The confsubmissions_submission id to tag
+ * @param {String} label The session label; an empty string clears the tag
+ * @return {Promise}
+ */
+export const setSessionTag = (cmid, submissionid, label) => Ajax.call([{
+    methodname: 'mod_confscheduler_set_session_tag',
+    args: {cmid, submissionid, label},
+}])[0];

@@ -38,6 +38,28 @@ Part of the [Conference Tools](https://github.com/adamjenkins/moodle-conference-
   unique (not per-course), so an unvalidated write could leak another
   course's schedule data into this course's Display phase. See `SUMMARY.md`
   in the coordination repo for the full finding.
+- **"Session" grouping is plugin-local (Phase 3.4)**: the autoscheduler's
+  "keep same-session presentations consecutive" priority needs a "session"
+  grouping concept, but no such concept exists anywhere in the shipped
+  `mod_confsubmissions`/`mod_confprogram` schema — only "track" does. Rather
+  than modifying those already-shipped, committed, security-reviewed sibling
+  plugins, `confscheduler_sessiontag` (a table local to this plugin, FK'd to
+  `confscheduler` and cross-plugin-referencing a `confsubmissions_submission`
+  id the same way `confscheduler_slot.submissionid` already does) implements
+  it as an organiser-assigned label scoped entirely to a single
+  `confscheduler` instance. Two submissions sharing the same non-empty label
+  within the same instance are "the same session" for the autoscheduler; see
+  `classes/api.php`'s `set_session_tag()`/`get_session_tags()`/
+  `run_autoscheduler()` docblocks for the full design and the exact
+  placement algorithm.
+- **Autoscheduler placement search**: `run_autoscheduler()` deliberately does
+  not re-implement `validate_placement()`'s GapSnap/overlap math a second
+  time. Every candidate placement it considers is attempted via `add_slot()`
+  itself (wrapped in a try/catch): a rejected candidate is simply skipped in
+  favour of the next one, and a successful attempt IS the real, final
+  placement — there is no separate "simulate then commit" step. This trades
+  a little redundant validation-query overhead for a guarantee that the
+  autoscheduler can never place something `add_slot()` would have refused.
 
 ## Requirements
 

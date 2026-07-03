@@ -20,7 +20,7 @@ import ModalSaveCancel from 'core/modal_save_cancel';
 import ModalEvents from 'core/modal_events';
 import Notification from 'core/notification';
 import Templates from 'core/templates';
-import {getStrings} from 'core/str';
+import {getString, getStrings} from 'core/str';
 import * as Repository from 'mod_confscheduler/repository';
 
 /**
@@ -440,7 +440,39 @@ const renderUnscheduledPanel = (state) => {
             card.appendChild(pill);
         }
 
+        const sessiontag = document.createElement('input');
+        sessiontag.type = 'text';
+        sessiontag.className = 'form-control form-control-sm mod_confscheduler-unscheduled-sessiontag';
+        sessiontag.maxLength = 255;
+        sessiontag.value = item.sessiontag || '';
+        sessiontag.placeholder = state.strings.sessiontagplaceholder;
+        sessiontag.setAttribute('aria-label', state.strings.sessiontag);
+        sessiontag.dataset.submissionid = item.submissionid;
+        card.appendChild(sessiontag);
+
         list.appendChild(card);
+    });
+};
+
+/**
+ * Saves a submission's session-tag label after the organiser edits the
+ * inline input in the unscheduled panel. No grid re-render is needed: the
+ * session tag never changes which submissions are scheduled/unscheduled, it
+ * only affects a later autoscheduler run.
+ *
+ * @param {Object} state The module state object
+ * @param {HTMLElement} inputEl The session-tag input that changed
+ */
+const onSessionTagChange = (state, inputEl) => {
+    const submissionid = Number(inputEl.dataset.submissionid);
+    const label = inputEl.value.trim();
+
+    inputEl.disabled = true;
+    Promise.resolve(Repository.setSessionTag(state.cmid, submissionid, label)).then((result) => {
+        inputEl.value = result.label;
+        return result;
+    }).catch(Notification.exception).finally(() => {
+        inputEl.disabled = false;
     });
 };
 
@@ -723,6 +755,72 @@ const openSpanBlockModal = async(state) => {
 };
 
 /**
+ * Shows the result summary after an autoscheduler run: how many were
+ * scheduled/skipped, and (when any were skipped) why each one was.
+ *
+ * @param {Object} state The module state object
+ * @param {Object} result The mod_confscheduler_run_autoscheduler result
+ * @return {Promise}
+ */
+const showAutoschedulerSummary = (state, result) => getString(
+    'autoschedulersummary',
+    'mod_confscheduler',
+    {scheduled: result.scheduled, skipped: result.skipped}
+).then((summary) => {
+    let message = summary;
+    if (result.skippedreasons && result.skippedreasons.length) {
+        const lines = result.skippedreasons.map((entry) => `${entry.title}: ${entry.reason}`);
+        message += ' ' + lines.join(' ');
+    }
+    Notification.alert(state.strings.autoschedulerrun, message);
+    return null;
+}).catch(Notification.exception);
+
+/**
+ * Opens the "run autoscheduler" modal: a time window, a default duration
+ * applied to every submission it places, and a "clear first" checkbox.
+ *
+ * @param {Object} state The module state object
+ * @return {Promise}
+ */
+const openAutoschedulerModal = async(state) => {
+    const body = await Templates.render('mod_confscheduler/autoscheduler_form', {});
+
+    const modal = await ModalSaveCancel.create({
+        title: state.strings.autoschedulerrun,
+        body,
+        show: true,
+        removeOnClose: true,
+    });
+
+    modal.getRoot().on(ModalEvents.save, (event) => {
+        event.preventDefault();
+
+        const form = modal.getRoot()[0].querySelector('.mod_confscheduler-autoscheduler-form');
+        const windowstartValue = form.querySelector('[name=windowstart]').value;
+        const windowendValue = form.querySelector('[name=windowend]').value;
+        const duration = Number(form.querySelector('[name=defaultdurationminutes]').value);
+        const clearfirst = form.querySelector('[name=clearfirst]').checked;
+
+        if (!windowstartValue || !windowendValue || !duration || duration <= 0) {
+            return;
+        }
+
+        const windowstart = Math.floor(new Date(windowstartValue).getTime() / 1000);
+        const windowend = Math.floor(new Date(windowendValue).getTime() / 1000);
+        if (windowend <= windowstart) {
+            return;
+        }
+
+        Repository.runAutoscheduler(state.cmid, windowstart, windowend, duration, clearfirst).then((result) => {
+            modal.destroy();
+            showAutoschedulerSummary(state, result);
+            return fetchAndRenderAll(state);
+        }).catch(Notification.exception);
+    });
+};
+
+/**
  * Confirms and deletes a room.
  *
  * @param {Object} state The module state object
@@ -828,6 +926,12 @@ const bindEvents = (state) => {
             return;
         }
 
+        const autoschedulerBtn = event.target.closest('.mod_confscheduler-run-autoscheduler');
+        if (autoschedulerBtn) {
+            openAutoschedulerModal(state);
+            return;
+        }
+
         const fsBtn = event.target.closest('.mod_confscheduler-fullscreen-toggle');
         if (fsBtn) {
             toggleFullscreen(state);
@@ -862,12 +966,19 @@ const bindEvents = (state) => {
         }
 
         const card = event.target.closest('.mod_confscheduler-unscheduled-card');
-        if (card) {
+        if (card && !event.target.closest('input')) {
             beginScheduleDrag(state, event, card);
         }
     };
     state.root.addEventListener('mousedown', startDrag);
     state.root.addEventListener('touchstart', startDrag, {passive: false});
+
+    state.root.addEventListener('change', (event) => {
+        const sessiontagInput = event.target.closest('.mod_confscheduler-unscheduled-sessiontag');
+        if (sessiontagInput) {
+            onSessionTagChange(state, sessiontagInput);
+        }
+    });
 
     document.addEventListener('fullscreenchange', () => {
         const isFullscreen = document.fullscreenElement === state.root;
@@ -894,7 +1005,8 @@ export const init = async(cmid, confschedulerid) => {
 
     const [
         unschedule, favourite, editroom, deleteroom, confirmdeleteroom,
-        cancel, movecolumn, addroom, addspanblock,
+        cancel, movecolumn, addroom, addspanblock, autoschedulerrun,
+        sessiontag, sessiontagplaceholder,
     ] = await getStrings([
         {key: 'unschedule', component: 'mod_confscheduler'},
         {key: 'favourite', component: 'mod_confscheduler'},
@@ -905,6 +1017,9 @@ export const init = async(cmid, confschedulerid) => {
         {key: 'movecolumn', component: 'mod_confscheduler'},
         {key: 'addroom', component: 'mod_confscheduler'},
         {key: 'addspanblock', component: 'mod_confscheduler'},
+        {key: 'autoschedulerrun', component: 'mod_confscheduler'},
+        {key: 'sessiontag', component: 'mod_confscheduler'},
+        {key: 'sessiontagplaceholder', component: 'mod_confscheduler'},
     ]);
 
     const state = {
@@ -921,7 +1036,8 @@ export const init = async(cmid, confschedulerid) => {
         sortableList: null,
         strings: {
             unschedule, favourite, editroom, deleteroom, confirmdeleteroom,
-            cancel, movecolumn, addroom, addspanblock,
+            cancel, movecolumn, addroom, addspanblock, autoschedulerrun,
+            sessiontag, sessiontagplaceholder,
         },
     };
 

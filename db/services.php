@@ -96,4 +96,19 @@ $functions = [
         'ajax'         => true,
         'capabilities' => 'mod/confscheduler:favourite',
     ],
+    'mod_confscheduler_run_autoscheduler' => [
+        'classname'    => 'mod_confscheduler\external\run_autoscheduler',
+        'description'  => 'Runs the autoscheduler over a time window, placing as many accepted-but-unscheduled '
+            . 'submissions as it can.',
+        'type'         => 'write',
+        'ajax'         => true,
+        'capabilities' => 'mod/confscheduler:manageschedule',
+    ],
+    'mod_confscheduler_set_session_tag' => [
+        'classname'    => 'mod_confscheduler\external\set_session_tag',
+        'description'  => 'Sets or clears a submission\'s "session" grouping label, used by the autoscheduler.',
+        'type'         => 'write',
+        'ajax'         => true,
+        'capabilities' => 'mod/confscheduler:manageschedule',
+    ],
 ];

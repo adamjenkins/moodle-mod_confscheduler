@@ -594,4 +594,807 @@ class api {
         $DB->delete_records('confscheduler_slotroom', ['slotid' => $slotid]);
         $DB->delete_records('confscheduler_slot', ['id' => $slotid]);
     }
+
+    /**
+     * Sets, updates, or clears a submission's "session" grouping label within a
+     * confscheduler instance.
+     *
+     * Design decision (Phase 3.4): "session" (as in "keep same-session
+     * presentations consecutive") is not a concept that exists anywhere in the
+     * shipped mod_confsubmissions/mod_confprogram schema -- only "track" does.
+     * Rather than adding a session concept to those already-shipped,
+     * committed, security-reviewed sibling plugins, it is implemented here as
+     * a lightweight label scoped entirely to this confscheduler instance: two
+     * submissions sharing the same non-empty label within the same instance
+     * are "the same session" for the autoscheduler (see run_autoscheduler()).
+     * A row is stored only for a non-empty label; clearing deletes the row
+     * rather than storing an empty string, so get_session_tags() never needs
+     * to filter out empty-string entries.
+     *
+     * Requires the same chain-of-custody validation as add_slot(): submission
+     * ids are global (not scoped per course), so without this check a
+     * manageschedule holder in one course could tag a submission belonging to
+     * a different confprogram/confsubmissions instance chain.
+     *
+     * @param int $confschedulerid The confscheduler instance id
+     * @param int $submissionid The mod_confsubmissions confsubmissions_submission id
+     * @param string|null $label The session label; null or an empty/whitespace-only string clears the tag
+     * @return void
+     * @throws \moodle_exception if the submission's chain of custody is invalid
+     * @throws \invalid_parameter_exception if the label is longer than 255 characters
+     */
+    public static function set_session_tag(int $confschedulerid, int $submissionid, ?string $label): void {
+        global $DB;
+
+        $confscheduler = $DB->get_record('confscheduler', ['id' => $confschedulerid], '*', MUST_EXIST);
+        self::validate_submission_chain_of_custody($confscheduler, $submissionid);
+
+        $label = $label !== null ? trim($label) : null;
+        if ($label !== null && \core_text::strlen($label) > 255) {
+            throw new \invalid_parameter_exception(get_string('error:sessiontagtoolong', 'mod_confscheduler'));
+        }
+
+        $existing = $DB->get_record('confscheduler_sessiontag', [
+            'confscheduler' => $confschedulerid,
+            'submissionid'  => $submissionid,
+        ]);
+
+        if ($label === null || $label === '') {
+            if ($existing) {
+                $DB->delete_records('confscheduler_sessiontag', ['id' => $existing->id]);
+            }
+            return;
+        }
+
+        $now = time();
+        if ($existing) {
+            $DB->update_record('confscheduler_sessiontag', (object) [
+                'id'           => $existing->id,
+                'label'        => $label,
+                'timemodified' => $now,
+            ]);
+        } else {
+            $DB->insert_record('confscheduler_sessiontag', (object) [
+                'confscheduler' => $confschedulerid,
+                'submissionid'  => $submissionid,
+                'label'         => $label,
+                'timecreated'   => $now,
+                'timemodified'  => $now,
+            ]);
+        }
+    }
+
+    /**
+     * Returns every session-tag label set within a confscheduler instance.
+     *
+     * @param int $confschedulerid The confscheduler instance id
+     * @return array<int, string> [submissionid => label]
+     */
+    public static function get_session_tags(int $confschedulerid): array {
+        global $DB;
+
+        $rows = $DB->get_records(
+            'confscheduler_sessiontag',
+            ['confscheduler' => $confschedulerid],
+            '',
+            'submissionid, label'
+        );
+
+        $tags = [];
+        foreach ($rows as $row) {
+            $tags[(int) $row->submissionid] = $row->label;
+        }
+
+        return $tags;
+    }
+
+    /**
+     * Runs the autoscheduler: places as many accepted-but-unscheduled
+     * submissions as it can into the given time window, honouring GapSnap and
+     * overlap via add_slot() for every placement it makes.
+     *
+     * Candidate pool: exactly the same "accepted, unscheduled" set the grid's
+     * unscheduled panel shows (see \mod_confscheduler\local\grid_data::build()),
+     * each given the same $defaultdurationminutes duration (there is no
+     * per-submission duration field in the shipped schema).
+     *
+     * Placement priority (highest first):
+     *   1. Submissions sharing a non-empty session-tag label (see
+     *      set_session_tag()) are placed consecutively, in the same room, in
+     *      submission-id order within the group. "Consecutively" means back
+     *      to back with exactly the GapSnap minimum gap between them (0 if
+     *      gapminutes is 0) -- the minimum allowed gap, not a larger one. If
+     *      no single room can fit the whole group consecutively anywhere in
+     *      the window, each member of the group falls back to being placed
+     *      individually (priority-1 "same room, consecutive" is a quality
+     *      goal for the group; "get every accepted submission scheduled
+     *      somewhere" is the harder requirement -- see the partial-failure
+     *      note below).
+     *   2. Among the remaining (non-session-tagged) candidates, submissions
+     *      sharing a trackid are placed with a same-room preference (the room
+     *      the first successfully-placed member of the track group lands in
+     *      is preferred, but not required, for the rest) and a best-effort
+     *      preference for time slots that do not overlap another same-track
+     *      submission already scheduled in a *different* room.
+     *   3. Everything else (no session tag, no track) is placed with no
+     *      grouping preference.
+     * Processing order *within* each of the three tiers above is themselves
+     * shuffled (which session-tag group goes first, which track goes first,
+     * the order ungrouped submissions are attempted in) via the optional
+     * $seed parameter, so repeated runs over the same input vary while still
+     * respecting the priority rules -- see make_random_source()'s docblock
+     * for why a self-contained seedable generator is used instead of
+     * mt_srand()/shuffle() (which would mutate global PHP RNG state). The
+     * order rooms are searched in is *also* freshly shuffled for every
+     * individual placement attempt (see try_place_single()'s docblock) --
+     * without that, the room-preference mechanism used for track groups
+     * would be a no-op, since a fixed room order always fills the same
+     * "first" room to capacity before ever trying the next one anyway.
+     *
+     * Placement search: rather than re-implementing validate_placement()'s
+     * GapSnap/overlap math a second time (which would risk drifting out of
+     * sync with it), every candidate placement this method considers is
+     * attempted via add_slot() itself, wrapped in a try/catch (see
+     * attempt_place()) -- a rejected candidate throws, is caught, and the
+     * search moves on to the next candidate; nothing is written on a
+     * rejected attempt, and a successful attempt IS the real, final
+     * placement (there is no separate "simulate then commit" step). This
+     * trades a small amount of redundant validation-query overhead per
+     * rejected candidate for a guarantee that the autoscheduler can never
+     * place something add_slot() would have refused.
+     *
+     * Candidate start times, per room, are not a brute-force scan of the
+     * whole window: they are $windowstart plus (existing slot's endtime +
+     * gap) for every slot already in that room, restricted to times that
+     * still leave room for the full duration before $windowend. This mirrors
+     * how a human would look for the next free gap, and keeps the number of
+     * add_slot() attempts proportional to the number of slots already
+     * scheduled in a room, not to the window's length.
+     *
+     * If $clearfirst is true, every existing slot in this instance that
+     * overlaps [$windowstart, $windowend) (using the identical overlap
+     * definition validate_placement() uses: starttime < windowend AND endtime
+     * > windowstart) is deleted via delete_slot() before any new placement is
+     * attempted. Slots entirely outside the window are never touched.
+     *
+     * Partial failure is not fatal: a candidate that cannot be placed
+     * anywhere in the window after a reasonable search is skipped and
+     * recorded in the returned summary's skippedreasons, rather than
+     * aborting the whole run.
+     *
+     * @param int $confschedulerid The confscheduler instance id
+     * @param int $windowstart Unix timestamp; start of the window to schedule into
+     * @param int $windowend Unix timestamp; end of the window to schedule into
+     * @param int $defaultdurationminutes Duration, in minutes, given to every placed submission
+     * @param bool $clearfirst Whether to first clear existing slots that overlap the window
+     * @param int|null $seed Optional seed for deterministic randomisation (tests only); null (the
+     *        default) means production callers get a different, non-reproducible ordering each run
+     * @return array{scheduled: int, skipped: int, skippedreasons: array} Run summary
+     * @throws \invalid_parameter_exception if $windowend <= $windowstart, or $defaultdurationminutes <= 0
+     */
+    public static function run_autoscheduler(
+        int $confschedulerid,
+        int $windowstart,
+        int $windowend,
+        int $defaultdurationminutes,
+        bool $clearfirst,
+        ?int $seed = null
+    ): array {
+        global $DB;
+
+        if ($windowend <= $windowstart) {
+            throw new \invalid_parameter_exception(get_string('error:invalidtimerange', 'mod_confscheduler'));
+        }
+        if ($defaultdurationminutes <= 0) {
+            throw new \invalid_parameter_exception(get_string('error:invalidnumber', 'mod_confscheduler'));
+        }
+
+        $confscheduler = $DB->get_record('confscheduler', ['id' => $confschedulerid], '*', MUST_EXIST);
+        $gapseconds = (int) $confscheduler->gapminutes * MINSECS;
+        $durationseconds = $defaultdurationminutes * MINSECS;
+
+        if ($clearfirst) {
+            self::clear_slots_in_window($confschedulerid, $windowstart, $windowend);
+        }
+
+        $rooms = self::get_rooms($confschedulerid);
+        $roomids = array_values(array_map(static fn($room) => (int) $room->id, $rooms));
+
+        $randomsource = self::make_random_source($seed);
+
+        $summary = ['scheduled' => 0, 'skipped' => 0, 'skippedreasons' => []];
+
+        // Candidate pool: exactly what the grid's unscheduled panel shows, minus
+        // anything already scheduled (see grid_data::build() for the equivalent
+        // read-side logic this mirrors).
+        $confprogramcm = get_coursemodule_from_id('confprogram', $confscheduler->confprogramcmid, 0, false, MUST_EXIST);
+        $confprogram = $DB->get_record('confprogram', ['id' => $confprogramcm->instance], '*', MUST_EXIST);
+        $confsubmissionscm = get_coursemodule_from_id(
+            'confsubmissions',
+            $confprogram->confsubmissionscmid,
+            0,
+            false,
+            MUST_EXIST
+        );
+
+        $accepted = \mod_confprogram\local\display_list::get_accepted_submissions(
+            (int) $confprogram->id,
+            (int) $confsubmissionscm->instance
+        );
+
+        $alreadyscheduled = [];
+        foreach (self::get_slots($confschedulerid) as $slot) {
+            if ($slot->submissionid !== null) {
+                $alreadyscheduled[(int) $slot->submissionid] = true;
+            }
+        }
+
+        $candidates = [];
+        foreach ($accepted as $submission) {
+            $sid = (int) $submission->id;
+            if (isset($alreadyscheduled[$sid])) {
+                continue;
+            }
+            $candidates[$sid] = $submission;
+        }
+
+        if (empty($roomids)) {
+            foreach ($candidates as $submission) {
+                $summary['skipped']++;
+                $summary['skippedreasons'][] = self::autoscheduler_skip_reason($submission, 'noroomsconfigured');
+            }
+            return $summary;
+        }
+
+        // Group candidates: session-tag groups (priority 1) take every tagged
+        // candidate regardless of track; track groups (priority 2) are formed
+        // only from what's left; anything with neither is ungrouped.
+        $sessiontags = self::get_session_tags($confschedulerid);
+        $sessiongroups = [];
+        $trackgroups = [];
+        $ungrouped = [];
+        foreach ($candidates as $sid => $submission) {
+            $label = $sessiontags[$sid] ?? null;
+            if ($label !== null && $label !== '') {
+                $sessiongroups[$label][] = $submission;
+                continue;
+            }
+            $trackid = !empty($submission->trackid) ? (int) $submission->trackid : null;
+            if ($trackid !== null) {
+                $trackgroups[$trackid][] = $submission;
+            } else {
+                $ungrouped[] = $submission;
+            }
+        }
+
+        // Stable, deterministic order *within* a group (not shuffled -- only
+        // the order groups/submissions are processed IN is shuffled, per the
+        // docblock above).
+        $byidasc = static function (\stdClass $first, \stdClass $second): int {
+            return $first->id <=> $second->id;
+        };
+        foreach ($sessiongroups as &$members) {
+            usort($members, $byidasc);
+        }
+        unset($members);
+        foreach ($trackgroups as &$members) {
+            usort($members, $byidasc);
+        }
+        unset($members);
+
+        $sessionlabels = self::fisher_yates_shuffle(array_keys($sessiongroups), $randomsource);
+        $trackids = self::fisher_yates_shuffle(array_keys($trackgroups), $randomsource);
+        $ungrouped = self::fisher_yates_shuffle($ungrouped, $randomsource);
+
+        $trackidcache = [];
+
+        // Priority 1: session-tag groups.
+        foreach ($sessionlabels as $label) {
+            $members = $sessiongroups[$label];
+
+            $groupplaced = self::try_place_group_consecutive(
+                $confschedulerid,
+                $members,
+                $roomids,
+                $durationseconds,
+                $windowstart,
+                $windowend,
+                $gapseconds,
+                $randomsource
+            );
+
+            if ($groupplaced) {
+                $summary['scheduled'] += count($members);
+                continue;
+            }
+
+            foreach ($members as $submission) {
+                $placed = self::try_place_single(
+                    $confschedulerid,
+                    (int) $submission->id,
+                    $roomids,
+                    $durationseconds,
+                    $windowstart,
+                    $windowend,
+                    $gapseconds,
+                    null,
+                    $randomsource,
+                    null,
+                    $trackidcache
+                );
+                if ($placed !== null) {
+                    $summary['scheduled']++;
+                } else {
+                    $summary['skipped']++;
+                    $summary['skippedreasons'][] = self::autoscheduler_skip_reason($submission, 'nofit');
+                }
+            }
+        }
+
+        // Priority 2: track groups (same-room preference, soft same-track/
+        // different-room overlap avoidance).
+        foreach ($trackids as $trackid) {
+            $preferredroomid = null;
+            foreach ($trackgroups[$trackid] as $submission) {
+                $placed = self::try_place_single(
+                    $confschedulerid,
+                    (int) $submission->id,
+                    $roomids,
+                    $durationseconds,
+                    $windowstart,
+                    $windowend,
+                    $gapseconds,
+                    $preferredroomid,
+                    $randomsource,
+                    $trackid,
+                    $trackidcache
+                );
+                if ($placed !== null) {
+                    $summary['scheduled']++;
+                    if ($preferredroomid === null) {
+                        $preferredroomid = $placed['roomid'];
+                    }
+                } else {
+                    $summary['skipped']++;
+                    $summary['skippedreasons'][] = self::autoscheduler_skip_reason($submission, 'nofit');
+                }
+            }
+        }
+
+        // Everything else: no grouping preference.
+        foreach ($ungrouped as $submission) {
+            $placed = self::try_place_single(
+                $confschedulerid,
+                (int) $submission->id,
+                $roomids,
+                $durationseconds,
+                $windowstart,
+                $windowend,
+                $gapseconds,
+                null,
+                $randomsource,
+                null,
+                $trackidcache
+            );
+            if ($placed !== null) {
+                $summary['scheduled']++;
+            } else {
+                $summary['skipped']++;
+                $summary['skippedreasons'][] = self::autoscheduler_skip_reason($submission, 'nofit');
+            }
+        }
+
+        return $summary;
+    }
+
+    /**
+     * Deletes every existing slot in a confscheduler instance that overlaps a
+     * given window, using the identical overlap definition validate_placement()
+     * uses. Used by run_autoscheduler() when $clearfirst is true.
+     *
+     * @param int $confschedulerid The confscheduler instance id
+     * @param int $windowstart Unix timestamp
+     * @param int $windowend Unix timestamp
+     * @return void
+     */
+    protected static function clear_slots_in_window(int $confschedulerid, int $windowstart, int $windowend): void {
+        global $DB;
+
+        $slots = $DB->get_records_select(
+            'confscheduler_slot',
+            'confscheduler = :confschedulerid AND starttime < :windowend AND endtime > :windowstart',
+            ['confschedulerid' => $confschedulerid, 'windowend' => $windowend, 'windowstart' => $windowstart]
+        );
+
+        foreach ($slots as $slot) {
+            self::delete_slot((int) $slot->id);
+        }
+    }
+
+    /**
+     * Returns every currently-scheduled slot occupying a specific room, in
+     * start-time order. Queried fresh (not cached) each call, since
+     * run_autoscheduler() commits placements to the database as it goes, and
+     * each subsequent search must see them.
+     *
+     * @param int $confschedulerid The confscheduler instance id
+     * @param int $roomid The confscheduler_room id
+     * @return \stdClass[] Records with id, starttime, endtime, submissionid
+     */
+    protected static function get_slots_in_room(int $confschedulerid, int $roomid): array {
+        global $DB;
+
+        $sql = "SELECT s.id, s.starttime, s.endtime, s.submissionid
+                  FROM {confscheduler_slot} s
+                  JOIN {confscheduler_slotroom} sr ON sr.slotid = s.id
+                 WHERE s.confscheduler = :confschedulerid AND sr.roomid = :roomid
+              ORDER BY s.starttime ASC";
+
+        return array_values($DB->get_records_sql($sql, [
+            'confschedulerid' => $confschedulerid,
+            'roomid'          => $roomid,
+        ]));
+    }
+
+    /**
+     * Computes the candidate start times to try in a single room: the window
+     * start, plus (every existing slot's endtime + gap) in that room,
+     * restricted to times that still leave room for the full duration before
+     * the window ends. See run_autoscheduler()'s docblock for why this is
+     * used instead of a brute-force scan of the whole window.
+     *
+     * @param \stdClass[] $roomslots Slots already in the room (from get_slots_in_room())
+     * @param int $windowstart Unix timestamp
+     * @param int $windowend Unix timestamp
+     * @param int $durationseconds Duration the candidate must fit
+     * @param int $gapseconds The instance's configured GapSnap gap, in seconds
+     * @return int[] Sorted, de-duplicated candidate start times (unix timestamps)
+     */
+    protected static function candidate_start_times_for_room(
+        array $roomslots,
+        int $windowstart,
+        int $windowend,
+        int $durationseconds,
+        int $gapseconds
+    ): array {
+        $times = [$windowstart];
+        foreach ($roomslots as $slot) {
+            $times[] = (int) $slot->endtime + $gapseconds;
+        }
+
+        $times = array_values(array_unique($times));
+        sort($times);
+
+        return array_values(array_filter($times, static function (int $time) use ($windowstart, $windowend, $durationseconds) {
+            return $time >= $windowstart && ($time + $durationseconds) <= $windowend;
+        }));
+    }
+
+    /**
+     * Attempts a single candidate placement via add_slot(), swallowing a
+     * validation rejection (GapSnap/overlap/invalid room) rather than letting
+     * it propagate, so the caller's search can move on to the next candidate.
+     * A successful call here IS the real, final placement -- see
+     * run_autoscheduler()'s docblock for why nothing is "simulated" first.
+     *
+     * @param int $confschedulerid The confscheduler instance id
+     * @param int $roomid The room to attempt
+     * @param int $starttime Unix timestamp
+     * @param int $endtime Unix timestamp
+     * @param int $submissionid The confsubmissions_submission id being placed
+     * @return int|null The new confscheduler_slot id, or null if this candidate was rejected
+     */
+    protected static function attempt_place(
+        int $confschedulerid,
+        int $roomid,
+        int $starttime,
+        int $endtime,
+        int $submissionid
+    ): ?int {
+        try {
+            return self::add_slot($confschedulerid, [$roomid], $starttime, $endtime, $submissionid);
+        } catch (\moodle_exception $e) {
+            return null;
+        }
+    }
+
+    /**
+     * Whether a candidate [starttime, endtime) placement in $roomid would
+     * overlap another currently-scheduled submission that shares $trackid and
+     * is scheduled in a *different* room. Used only as a soft preference (see
+     * try_place_single()) -- never a hard constraint.
+     *
+     * @param int $confschedulerid The confscheduler instance id
+     * @param int $trackid The trackid to check against
+     * @param int $roomid The candidate's room (excluded from the search: only *other* rooms count)
+     * @param int $starttime Candidate start, unix timestamp
+     * @param int $endtime Candidate end, unix timestamp
+     * @param array $trackidcache Submission-id => trackid memo, shared across calls within one
+     *        run_autoscheduler() call to avoid repeat mod_confsubmissions lookups
+     * @return bool
+     */
+    protected static function track_overlaps_elsewhere(
+        int $confschedulerid,
+        int $trackid,
+        int $roomid,
+        int $starttime,
+        int $endtime,
+        array &$trackidcache
+    ): bool {
+        global $DB;
+
+        $sql = "SELECT s.id, s.starttime, s.endtime, s.submissionid
+                  FROM {confscheduler_slot} s
+                  JOIN {confscheduler_slotroom} sr ON sr.slotid = s.id
+                 WHERE s.confscheduler = :confschedulerid
+                   AND s.submissionid IS NOT NULL
+                   AND sr.roomid <> :roomid";
+        $slots = $DB->get_records_sql($sql, ['confschedulerid' => $confschedulerid, 'roomid' => $roomid]);
+
+        foreach ($slots as $slot) {
+            $overlaps = $starttime < (int) $slot->endtime && $endtime > (int) $slot->starttime;
+            if (!$overlaps) {
+                continue;
+            }
+
+            $othersubmissionid = (int) $slot->submissionid;
+            if (!array_key_exists($othersubmissionid, $trackidcache)) {
+                $othersubmission = \mod_confsubmissions\api::get_submission($othersubmissionid);
+                $trackidcache[$othersubmissionid] = ($othersubmission && !empty($othersubmission->trackid))
+                    ? (int) $othersubmission->trackid
+                    : null;
+            }
+
+            if ($trackidcache[$othersubmissionid] === $trackid) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Searches for, and commits, a single placement for one submission.
+     *
+     * Search order: when no $preferredroomid is given, rooms are tried in a
+     * FRESH shuffle of $roomids for this call (via $randomsource) rather than
+     * always $roomids's own (fixed) order -- if every call used the same
+     * fixed order, the greedy search would always fill the first room to
+     * capacity before ever trying the second, which would make
+     * $preferredroomid (see below) provably unable to change any outcome:
+     * the "preferred" room would always already BE whichever room a
+     * preference-less search tries first anyway. Shuffling per call makes
+     * "preferred room" a real, load-bearing preference rather than a no-op,
+     * and as a side effect spreads placements across rooms more realistically
+     * run to run. When $preferredroomid IS given, it is tried first, ahead of
+     * that call's shuffled order for the rest.
+     *
+     * Within a room, candidate start times come from
+     * candidate_start_times_for_room(). When $avoidtrackid is given, the
+     * resulting candidate list is stably partitioned into "does not overlap
+     * another $avoidtrackid submission in a different room" (tried first) and
+     * "does" (tried only as a fallback) -- see track_overlaps_elsewhere().
+     * The first candidate that add_slot() accepts wins.
+     *
+     * @param int $confschedulerid The confscheduler instance id
+     * @param int $submissionid The confsubmissions_submission id to place
+     * @param int[] $roomids All room ids in this instance
+     * @param int $durationseconds Duration this submission needs
+     * @param int $windowstart Unix timestamp
+     * @param int $windowend Unix timestamp
+     * @param int $gapseconds The instance's configured GapSnap gap, in seconds
+     * @param int|null $preferredroomid A room id to try first, or null for no preference
+     * @param \Closure $randomsource Source of randomness for this call's room-order shuffle (see make_random_source())
+     * @param int|null $avoidtrackid A trackid whose different-room overlaps should be avoided if possible, or null
+     * @param array $trackidcache Shared submission-id => trackid memo (see track_overlaps_elsewhere())
+     * @return array{slotid: int, roomid: int}|null The placement made, or null if none was possible
+     */
+    protected static function try_place_single(
+        int $confschedulerid,
+        int $submissionid,
+        array $roomids,
+        int $durationseconds,
+        int $windowstart,
+        int $windowend,
+        int $gapseconds,
+        ?int $preferredroomid,
+        \Closure $randomsource,
+        ?int $avoidtrackid,
+        array &$trackidcache
+    ): ?array {
+        $searchorder = self::fisher_yates_shuffle($roomids, $randomsource);
+        if ($preferredroomid !== null && in_array($preferredroomid, $roomids, true)) {
+            $searchorder = array_values(array_unique(array_merge([$preferredroomid], $searchorder)));
+        }
+
+        $candidates = [];
+        foreach ($searchorder as $roomid) {
+            $roomslots = self::get_slots_in_room($confschedulerid, $roomid);
+            $starts = self::candidate_start_times_for_room(
+                $roomslots,
+                $windowstart,
+                $windowend,
+                $durationseconds,
+                $gapseconds
+            );
+            foreach ($starts as $start) {
+                $candidates[] = ['roomid' => $roomid, 'starttime' => $start];
+            }
+        }
+
+        if ($avoidtrackid !== null) {
+            $good = [];
+            $bad = [];
+            foreach ($candidates as $candidate) {
+                $endtime = $candidate['starttime'] + $durationseconds;
+                $overlaps = self::track_overlaps_elsewhere(
+                    $confschedulerid,
+                    $avoidtrackid,
+                    $candidate['roomid'],
+                    $candidate['starttime'],
+                    $endtime,
+                    $trackidcache
+                );
+                if ($overlaps) {
+                    $bad[] = $candidate;
+                } else {
+                    $good[] = $candidate;
+                }
+            }
+            $candidates = array_merge($good, $bad);
+        }
+
+        foreach ($candidates as $candidate) {
+            $endtime = $candidate['starttime'] + $durationseconds;
+            $slotid = self::attempt_place(
+                $confschedulerid,
+                $candidate['roomid'],
+                $candidate['starttime'],
+                $endtime,
+                $submissionid
+            );
+            if ($slotid !== null) {
+                return ['slotid' => $slotid, 'roomid' => $candidate['roomid']];
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Attempts to place a whole session-tag group consecutively (back to
+     * back, with exactly the GapSnap minimum gap between members) in a single
+     * room. Tries every room, and within a room every candidate start time
+     * for the group's first member; if any member of the chain fails to
+     * place (or would run past $windowend), every slot placed so far in that
+     * attempt is rolled back via delete_slot() and the next candidate start
+     * time (or room) is tried. Returns as soon as one full chain succeeds
+     * (nothing is rolled back in that case: the chain IS the real placement).
+     *
+     * @param int $confschedulerid The confscheduler instance id
+     * @param \stdClass[] $members The group's submissions, in the order they should be placed
+     * @param int[] $roomids All room ids in this instance
+     * @param int $durationseconds Duration each member needs
+     * @param int $windowstart Unix timestamp
+     * @param int $windowend Unix timestamp
+     * @param int $gapseconds The instance's configured GapSnap gap, in seconds
+     * @param \Closure $randomsource Source of randomness for this call's room-order shuffle (see make_random_source())
+     * @return bool Whether the whole group was placed consecutively in one room
+     */
+    protected static function try_place_group_consecutive(
+        int $confschedulerid,
+        array $members,
+        array $roomids,
+        int $durationseconds,
+        int $windowstart,
+        int $windowend,
+        int $gapseconds,
+        \Closure $randomsource
+    ): bool {
+        foreach (self::fisher_yates_shuffle($roomids, $randomsource) as $roomid) {
+            $roomslots = self::get_slots_in_room($confschedulerid, $roomid);
+            $starts = self::candidate_start_times_for_room(
+                $roomslots,
+                $windowstart,
+                $windowend,
+                $durationseconds,
+                $gapseconds
+            );
+
+            foreach ($starts as $start) {
+                $placedslotids = [];
+                $currentstart = $start;
+                $ok = true;
+
+                foreach ($members as $submission) {
+                    $endtime = $currentstart + $durationseconds;
+                    if ($endtime > $windowend) {
+                        $ok = false;
+                        break;
+                    }
+
+                    $slotid = self::attempt_place($confschedulerid, $roomid, $currentstart, $endtime, (int) $submission->id);
+                    if ($slotid === null) {
+                        $ok = false;
+                        break;
+                    }
+
+                    $placedslotids[] = $slotid;
+                    $currentstart = $endtime + $gapseconds;
+                }
+
+                if ($ok) {
+                    return true;
+                }
+
+                foreach ($placedslotids as $slotid) {
+                    self::delete_slot($slotid);
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Builds a skippedreasons entry for the run_autoscheduler() summary.
+     *
+     * @param \stdClass $submission The submission that could not be placed
+     * @param string $reasoncode 'nofit' or 'noroomsconfigured'
+     * @return array{submissionid: int, title: string, reason: string}
+     */
+    protected static function autoscheduler_skip_reason(\stdClass $submission, string $reasoncode): array {
+        return [
+            'submissionid' => (int) $submission->id,
+            'title'        => format_string($submission->title),
+            'reason'       => get_string('autoscheduler' . $reasoncode, 'mod_confscheduler'),
+        ];
+    }
+
+    /**
+     * Returns a source of pseudo-random non-negative integers for
+     * fisher_yates_shuffle(), either seeded (deterministic, for tests) or
+     * unseeded (uses random_int(), for production).
+     *
+     * Deliberately does NOT use PHP's global mt_srand()/shuffle(): seeding
+     * the global Mersenne Twister would be a process-wide side effect (every
+     * later unrelated mt_rand()/shuffle() call in the same request would
+     * become deterministic too, since PHP has no API to save/restore the
+     * generator's internal state). This closure-based linear congruential
+     * generator is self-contained instead: its state lives only in the
+     * closure, so seeding it here can never affect anything else.
+     *
+     * @param int|null $seed Deterministic seed, or null for production randomness
+     * @return \Closure(): int
+     */
+    protected static function make_random_source(?int $seed): \Closure {
+        if ($seed === null) {
+            return static function (): int {
+                return random_int(0, PHP_INT_MAX - 1);
+            };
+        }
+
+        $state = $seed;
+        return static function () use (&$state): int {
+            $state = ($state * 1103515245 + 12345) % 2147483648;
+            return (int) abs($state);
+        };
+    }
+
+    /**
+     * Fisher-Yates shuffles an array using the given random source.
+     *
+     * @param array $items The items to shuffle
+     * @param \Closure $randomsource A source of non-negative integers, e.g. from make_random_source()
+     * @return array The shuffled items, reindexed from 0
+     */
+    protected static function fisher_yates_shuffle(array $items, \Closure $randomsource): array {
+        $items = array_values($items);
+        for ($i = count($items) - 1; $i > 0; $i--) {
+            $j = $randomsource() % ($i + 1);
+            [$items[$i], $items[$j]] = [$items[$j], $items[$i]];
+        }
+
+        return $items;
+    }
 }

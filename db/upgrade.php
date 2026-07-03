@@ -25,21 +25,39 @@
 /**
  * Runs upgrade steps between versions.
  *
- * No upgrade steps exist yet: this is the initial scaffold release. Add
- * xmldb_table/xmldb_field steps here, each guarded by "if ($oldversion < ...)"
- * and closed with a matching upgrade_mod_savepoint() call, as the schema
- * evolves. Example:
- *
- *   if ($oldversion < 2026080100) {
- *       global $DB;
- *       $dbman = $DB->get_manager();
- *       // ... xmldb_table / xmldb_field changes ...
- *       upgrade_mod_savepoint(true, 2026080100, 'confscheduler');
- *   }
- *
  * @param int $oldversion Plugin version being upgraded from
  * @return bool
  */
 function xmldb_confscheduler_upgrade($oldversion) {
+    global $DB;
+
+    $dbman = $DB->get_manager();
+
+    if ($oldversion < 2026070402) {
+        // Phase 3.4 (Autoscheduler): confscheduler_sessiontag, the plugin-local
+        // "session" grouping table. See db/install.xml's table comment and
+        // README.md for why this is plugin-local rather than a change to the
+        // sibling mod_confsubmissions/mod_confprogram schemas.
+        $table = new xmldb_table('confscheduler_sessiontag');
+
+        $table->add_field('id', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, XMLDB_SEQUENCE, null);
+        $table->add_field('confscheduler', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+        $table->add_field('submissionid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+        $table->add_field('label', XMLDB_TYPE_CHAR, '255', null, XMLDB_NOTNULL, null, null);
+        $table->add_field('timecreated', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+        $table->add_field('timemodified', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+
+        $table->add_key('primary', XMLDB_KEY_PRIMARY, ['id']);
+        $table->add_key('confscheduler', XMLDB_KEY_FOREIGN, ['confscheduler'], 'confscheduler', ['id']);
+
+        $table->add_index('confschedulersubmission', XMLDB_INDEX_UNIQUE, ['confscheduler', 'submissionid']);
+
+        if (!$dbman->table_exists($table)) {
+            $dbman->create_table($table);
+        }
+
+        upgrade_mod_savepoint(true, 2026070402, 'confscheduler');
+    }
+
     return true;
 }

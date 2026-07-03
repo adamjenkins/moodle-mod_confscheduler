@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" ?>
-<XMLDB PATH="mod/confscheduler/db" VERSION="2026070400" COMMENT="XMLDB file for Moodle mod/confscheduler"
+<XMLDB PATH="mod/confscheduler/db" VERSION="2026070402" COMMENT="XMLDB file for Moodle mod/confscheduler"
     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
     xsi:noNamespaceSchemaLocation="../../../lib/xmldb/xmldb.xsd">
   <TABLES>
@@ -65,6 +65,23 @@
       </KEYS>
       <INDEXES>
         <INDEX NAME="slotid" UNIQUE="false" FIELDS="slotid"/>
+      </INDEXES>
+    </TABLE>
+    <TABLE NAME="confscheduler_sessiontag" COMMENT="Organiser-assigned 'session' grouping label for a submission, scoped to a single confscheduler instance. This is a plugin-local grouping concept: no 'session' concept exists in the shipped mod_confsubmissions/mod_confprogram schema (only 'track' does), and this table exists specifically so the Phase 3.4 autoscheduler's same-session priority does not require modifying those already-shipped, security-reviewed sibling plugins. Two submissions sharing the same non-empty label within the same confscheduler instance are 'the same session' for autoscheduler purposes.">
+      <FIELDS>
+        <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="confscheduler" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" DEFAULT="0" COMMENT="Foreign key to confscheduler table"/>
+        <FIELD NAME="submissionid" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" DEFAULT="0" COMMENT="References mod_confsubmissions's confsubmissions_submission.id. Not a real foreign key: it is a cross-plugin reference into another activity's table, same pattern as confscheduler_slot.submissionid"/>
+        <FIELD NAME="label" TYPE="char" LENGTH="255" NOTNULL="true" SEQUENCE="false" COMMENT="The organiser-assigned session label. Rows are only ever stored for a non-empty label; clearing a submission's tag deletes its row rather than storing an empty string"/>
+        <FIELD NAME="timecreated" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" DEFAULT="0"/>
+        <FIELD NAME="timemodified" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" DEFAULT="0"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+        <KEY NAME="confscheduler" TYPE="foreign" FIELDS="confscheduler" REFTABLE="confscheduler" REFFIELDS="id"/>
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="confschedulersubmission" UNIQUE="true" FIELDS="confscheduler, submissionid" COMMENT="At most one session-tag label per submission per confscheduler instance"/>
       </INDEXES>
     </TABLE>
   </TABLES>

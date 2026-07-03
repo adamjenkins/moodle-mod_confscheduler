@@ -42,3 +42,22 @@
   confprogram-instance-scoped — tracked as a known open item in the
   coordination repo's `RELATIONS.md`/`SUMMARY.md`, not fixed here since
   it lives in the already-shipped sibling plugin.
+- Phase 3.4: the autoscheduler. New `confscheduler_sessiontag` table
+  implements a plugin-local "session" grouping label (no such concept
+  exists in the shipped `mod_confsubmissions`/`mod_confprogram` schema)
+  via `api::set_session_tag()`/`get_session_tags()`, exposed through an
+  inline input in the unscheduled panel and a new
+  `mod_confscheduler_set_session_tag` AJAX endpoint, chain-of-custody
+  checked the same way `add_slot()` is. `api::run_autoscheduler()` places
+  accepted-but-unscheduled submissions into an organiser-chosen time
+  window in three priority tiers (same-session-tag consecutive-same-room,
+  then same-track same-room preference with soft different-room-overlap
+  avoidance, then unconstrained), with per-tier processing order
+  (and per-placement room search order) shuffled via a self-contained
+  seedable RNG so re-runs vary without mutating PHP's global RNG state.
+  Every candidate placement is attempted through `add_slot()` itself
+  (wrapped in try/catch) rather than re-implementing its GapSnap/overlap
+  math, so the autoscheduler can never place something `add_slot()` would
+  have refused. New `mod_confscheduler_run_autoscheduler` AJAX endpoint
+  and "Run autoscheduler" modal (time window, default duration, optional
+  "clear existing schedule in window first").

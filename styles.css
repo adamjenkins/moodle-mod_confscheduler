@@ -66,6 +66,11 @@
     color: #555;
 }
 
+.mod_confscheduler-unscheduled-sessiontag {
+    margin-top: 0.35rem;
+    font-size: 0.75rem;
+}
+
 .mod_confscheduler-grid-scroll {
     flex: 1 1 auto;
     overflow-x: auto;
