@@ -113,5 +113,14 @@ function xmldb_confscheduler_upgrade($oldversion) {
         upgrade_mod_savepoint(true, 2026070406, 'confscheduler');
     }
 
+    if ($oldversion < 2026070407) {
+        // No schema change here: this savepoint exists purely to make sure the upgrade
+        // pipeline runs, which is what registers the new mod_confscheduler_set_gap_minutes
+        // external function declared in db/services.php (Revision round 1 follow-up,
+        // 2026-07-04 -- the SnapGap minimum gap setting moved from mod_form.php to a quick
+        // control at the top of the schedule grid in edit mode).
+        upgrade_mod_savepoint(true, 2026070407, 'confscheduler');
+    }
+
     return true;
 }

@@ -111,4 +111,11 @@ $functions = [
         'ajax'         => true,
         'capabilities' => 'mod/confscheduler:manageschedule',
     ],
+    'mod_confscheduler_set_gap_minutes' => [
+        'classname'    => 'mod_confscheduler\external\set_gap_minutes',
+        'description'  => 'Sets a confscheduler instance\'s SnapGap minimum gap, in minutes.',
+        'type'         => 'write',
+        'ajax'         => true,
+        'capabilities' => 'mod/confscheduler:manageschedule',
+    ],
 ];

@@ -226,8 +226,8 @@
 }
 
 .mod_confscheduler-drag-preview-invalid {
-    /* Shown when no GapSnap-valid position exists nearby, so the drop will fall back
-       to submitting the raw (server-rejected) position -- see gapsnap_utils.js. */
+    /* Shown when no SnapGap-valid position exists nearby, so the drop will fall back
+       to submitting the raw (server-rejected) position -- see snapgap_utils.js. */
     border-color: #d63939;
     background: rgba(214, 57, 57, 0.12);
 }

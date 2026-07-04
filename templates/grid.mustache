@@ -52,6 +52,16 @@
             <button type="button" class="btn btn-primary btn-sm mod_confscheduler-run-autoscheduler">
                 {{#str}} autoschedulerrun, mod_confscheduler {{/str}}
             </button>
+            <label class="mx-2 mb-0" for="mod_confscheduler-gapminutes">{{#str}} gapminutes, mod_confscheduler {{/str}}</label>
+            <input
+                type="number"
+                id="mod_confscheduler-gapminutes"
+                class="mod_confscheduler-gapminutes form-control form-control-sm"
+                style="width: 5em;"
+                min="0"
+                step="1"
+                title="{{#str}} gapminutes_help, mod_confscheduler {{/str}}"
+            >
             {{/canmanage}}
             <label class="mx-2 mb-0" for="mod_confscheduler-day-select">{{#str}} day, mod_confscheduler {{/str}}</label>
             <select id="mod_confscheduler-day-select" class="mod_confscheduler-day-select form-control form-control-sm" hidden></select>

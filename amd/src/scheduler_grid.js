@@ -24,7 +24,7 @@ import {getString, getStrings} from 'core/str';
 import * as Repository from 'mod_confscheduler/repository';
 import * as DayUtils from 'mod_confscheduler/day_utils';
 import * as ColourUtils from 'mod_confscheduler/colour_utils';
-import * as GapSnapUtils from 'mod_confscheduler/gapsnap_utils';
+import * as SnapGapUtils from 'mod_confscheduler/snapgap_utils';
 
 /**
  * Edit-mode drag-and-drop schedule grid (Phase 3.3).
@@ -40,16 +40,16 @@ import * as GapSnapUtils from 'mod_confscheduler/gapsnap_utils';
  * Drag-and-drop uses core/dragdrop for free-form placement (scheduling an
  * unscheduled submission, moving or resizing a scheduled block) and
  * core/sortable_list for 1D column-header reordering, per this project's
- * README architecture decision. GapSnap is enforced authoritatively
+ * README architecture decision. SnapGap is enforced authoritatively
  * server-side (see \mod_confscheduler\api::validate_placement()), which is
  * entirely UNCHANGED by the auto-nudge redesign below: it remains the sole
  * authoritative check regardless of what the client computes or submits.
  *
- * GapSnap auto-nudge (Revision round 1 batch B, 2026-07-03): a drop that would
- * violate GapSnap or truly overlap another block is no longer submitted as-is
+ * SnapGap auto-nudge (Revision round 1 batch B, 2026-07-03): a drop that would
+ * violate SnapGap or truly overlap another block is no longer submitted as-is
  * to be hard-rejected with an error notification. beginScheduleDrag() and
  * beginMoveDrag() instead compute the nearest valid position via the shared,
- * pure amd/src/gapsnap_utils.js (a client-side re-implementation of
+ * pure amd/src/snapgap_utils.js (a client-side re-implementation of
  * validate_placement()'s overlap/gap math -- see that module's docblock for
  * why, and for the cross-reference comment kept in sync with the PHP side)
  * and submit THAT position instead. If no valid position exists nearby (a
@@ -197,7 +197,7 @@ const yToTime = (state, y) => state.timelineStart + Math.round((y / PX_PER_MINUT
  * should be highlighted, and clearly visible while dragging so that when dropped, the
  * block can be exactly where the user wanted it"). A single overlay element, created on
  * demand and reused for the lifetime of one drag, repositioned/resized on every pointer
- * move to show EXACTLY the room(s) and (possibly GapSnap-nudged) time range a drop right
+ * move to show EXACTLY the room(s) and (possibly SnapGap-nudged) time range a drop right
  * now would commit to -- both beginMoveDrag() and beginScheduleDrag() compute this
  * preview using the identical roomids/start/end values they then actually submit on
  * drop, so the preview can never show a different outcome than what actually happens.
@@ -299,6 +299,7 @@ const fetchAndRenderAll = (state) => Repository.getGridData(state.cmid).then((da
     state.allSlots = data.slots;
     state.unscheduled = data.unscheduled;
     state.gapminutes = data.gapminutes;
+    syncGapMinutesInput(state);
     applyDayFilter(state);
     renderHeaders(state);
     renderDaySelector(state);
@@ -320,12 +321,28 @@ const fetchAndRenderBody = (state) => Repository.getGridData(state.cmid).then((d
     state.allSlots = data.slots;
     state.unscheduled = data.unscheduled;
     state.gapminutes = data.gapminutes;
+    syncGapMinutesInput(state);
     applyDayFilter(state);
     renderDaySelector(state);
     renderBody(state);
     renderUnscheduledPanel(state);
     return null;
 }).catch(Notification.exception);
+
+/**
+ * Reflects state.gapminutes into the quick SnapGap control's displayed value, without
+ * disturbing it if the organiser is actively typing in it (i.e. it currently has focus)
+ * -- called after every grid data refetch, since a fetch triggered by an unrelated
+ * action (e.g. scheduling a submission) must not clobber an in-progress edit.
+ *
+ * @param {Object} state The module state object
+ */
+const syncGapMinutesInput = (state) => {
+    const input = state.root.querySelector('.mod_confscheduler-gapminutes');
+    if (input && document.activeElement !== input) {
+        input.value = state.gapminutes;
+    }
+};
 
 /**
  * Groups state.allSlots by day, picks/keeps a selected day, and sets state.slots to that
@@ -528,9 +545,9 @@ const renderBlock = (state, columnsWrap, slot) => {
     block.dataset.roomids = JSON.stringify(slot.roomids);
     block.dataset.starttime = slot.starttime;
     block.dataset.endtime = slot.endtime;
-    // Needed by the GapSnap auto-nudge computation (beginMoveDrag()) to know whether this
+    // Needed by the SnapGap auto-nudge computation (beginMoveDrag()) to know whether this
     // block is a column-spanning block (submissionid null), which is exempt from the gap
-    // check against another span block -- see gapsnap_utils.js's requiredGapSeconds().
+    // check against another span block -- see snapgap_utils.js's requiredGapSeconds().
     // dataset values are always strings; '' (not the literal string "null") represents
     // null here, mirroring how scheduler_display.js already stores this same field.
     block.dataset.submissionid = slot.submissionid !== null ? slot.submissionid : '';
@@ -675,9 +692,9 @@ const renderUnscheduledPanel = (state) => {
  * SNAP_MINUTES, and sent to the server; the real block element is left untouched until then,
  * so a server rejection needs no explicit "revert" beyond removing the proxy.
  *
- * GapSnap auto-nudge (Revision round 1 batch B, 2026-07-03): if the raw dropped position
- * would violate GapSnap or truly overlap another block in the target room(s), the nudged
- * (nearest valid) position from amd/src/gapsnap_utils.js is submitted instead of the raw
+ * SnapGap auto-nudge (Revision round 1 batch B, 2026-07-03): if the raw dropped position
+ * would violate SnapGap or truly overlap another block in the target room(s), the nudged
+ * (nearest valid) position from amd/src/snapgap_utils.js is submitted instead of the raw
  * one -- see that module's docblock. If no valid position exists nearby, the raw (invalid)
  * position is submitted as before, so the existing server-rejection+revert path still
  * applies to the genuine "room is packed" edge case.
@@ -734,7 +751,7 @@ const beginMoveDrag = (state, event, blockEl) => {
         const targetRoomids = state.rooms.slice(index, index + span).map((room) => room.id);
 
         const gapseconds = (state.gapminutes || 0) * 60;
-        const nudged = GapSnapUtils.findNudgedPosition(
+        const nudged = SnapGapUtils.findNudgedPosition(
             desiredStart,
             duration,
             targetRoomids,
@@ -783,10 +800,10 @@ const beginMoveDrag = (state, event, blockEl) => {
 /**
  * Begins a vertical-only drag of a block's resize handle, to change only its end time.
  *
- * Deliberately NOT covered by the GapSnap auto-nudge redesign (Revision round 1 batch B,
+ * Deliberately NOT covered by the SnapGap auto-nudge redesign (Revision round 1 batch B,
  * 2026-07-03; see beginMoveDrag()/beginScheduleDrag()): the explicit task scope for that
  * change was "a fresh drag-from-unscheduled-panel placement and an existing-block
- * reschedule drag", not resizing. A resize that would violate GapSnap/overlap still hits
+ * reschedule drag", not resizing. A resize that would violate SnapGap/overlap still hits
  * the pre-existing server-rejection+revert path unchanged.
  *
  * @param {Object} state The module state object
@@ -849,7 +866,7 @@ const beginResizeDrag = (state, event, blockEl) => {
  * can then be adjusted with the resize handle once scheduled, which does not change
  * the submission type's own configured duration.
  *
- * GapSnap auto-nudge (Revision round 1 batch B, 2026-07-03): see beginMoveDrag()'s
+ * SnapGap auto-nudge (Revision round 1 batch B, 2026-07-03): see beginMoveDrag()'s
  * docblock -- the same nudge-or-fall-back-to-raw-position logic applies here.
  *
  * @param {Object} state The module state object
@@ -903,7 +920,7 @@ const beginScheduleDrag = (state, event, cardEl) => {
         const roomids = [state.rooms[index].id];
 
         const gapseconds = (state.gapminutes || 0) * 60;
-        const nudged = GapSnapUtils.findNudgedPosition(
+        const nudged = SnapGapUtils.findNudgedPosition(
             desiredStart,
             duration,
             roomids,
@@ -1191,6 +1208,35 @@ const onFavouriteClick = (state, favBtn) => {
 };
 
 /**
+ * Persists a change to the quick SnapGap minimum-gap control at the top of the grid
+ * (Revision round 1 follow-up, 2026-07-04 -- this replaces a field that previously
+ * lived in the activity's own settings form). A negative or non-numeric value is reset
+ * to the last known-good value rather than submitted, since the input has no
+ * moodleform-style client validation of its own to fall back on.
+ *
+ * @param {Object} state The module state object
+ * @param {HTMLElement} input The .mod_confscheduler-gapminutes number input
+ */
+const onGapMinutesChange = (state, input) => {
+    const value = parseInt(input.value, 10);
+    if (isNaN(value) || value < 0) {
+        input.value = state.gapminutes;
+        return;
+    }
+
+    const previous = state.gapminutes;
+    state.gapminutes = value;
+    input.disabled = true;
+    Promise.resolve(Repository.setGapMinutes(state.cmid, value)).catch((error) => {
+        state.gapminutes = previous;
+        input.value = previous;
+        Notification.exception(error);
+    }).finally(() => {
+        input.disabled = false;
+    });
+};
+
+/**
  * Unschedules a block.
  *
  * @param {Object} state The module state object
@@ -1318,6 +1364,12 @@ const bindEvents = (state) => {
             state.selectedDay = daySelect.value;
             applyDayFilter(state);
             renderBody(state);
+            return;
+        }
+
+        const gapInput = event.target.closest('.mod_confscheduler-gapminutes');
+        if (gapInput) {
+            onGapMinutesChange(state, gapInput);
         }
     });
 

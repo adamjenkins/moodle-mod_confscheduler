@@ -33,7 +33,7 @@ namespace mod_confscheduler;
  * That said, some validation performed here is NOT a capability check but a
  * data-integrity/ownership check (e.g. add_slot()'s chain-of-custody check that
  * a submissionid actually belongs to the confprogram/confsubmissions instance
- * chain this confscheduler is configured against, and the GapSnap/overlap
+ * chain this confscheduler is configured against, and the SnapGap/overlap
  * checks). Those checks answer "does this data make sense", not "is this user
  * allowed to try this" -- both matter, and both must be enforced somewhere; the
  * ownership/integrity half belongs here because it is intrinsic to the data
@@ -297,6 +297,26 @@ class api {
     }
 
     /**
+     * Sets a confscheduler instance's SnapGap minimum gap. Moved here from a
+     * mod_form.php field (Revision round 1 follow-up, 2026-07-04 -- see
+     * classes/external/set_gap_minutes.php's docblock for the full reasoning).
+     *
+     * @param int $confschedulerid The confscheduler instance id
+     * @param int $gapminutes The new SnapGap minimum gap, in minutes
+     * @return void
+     * @throws \invalid_parameter_exception if $gapminutes is negative
+     */
+    public static function set_gap_minutes(int $confschedulerid, int $gapminutes): void {
+        global $DB;
+
+        if ($gapminutes < 0) {
+            throw new \invalid_parameter_exception(get_string('error:invalidnumber', 'mod_confscheduler'));
+        }
+
+        $DB->set_field('confscheduler', 'gapminutes', $gapminutes, ['id' => $confschedulerid]);
+    }
+
+    /**
      * Validates that a submissionid may legitimately be scheduled by a given
      * confscheduler instance: it must (a) exist, (b) belong to the
      * mod_confsubmissions instance that the confprogram instance linked via
@@ -376,7 +396,7 @@ class api {
      * Validates a proposed (or updated) slot placement: that every given room
      * belongs to the instance, that it does not truly overlap any other slot
      * already scheduled in any of the same rooms, and (when
-     * confscheduler.gapminutes > 0) that it respects the configured GapSnap
+     * confscheduler.gapminutes > 0) that it respects the configured SnapGap
      * minimum gap from every other slot in the same room(s).
      *
      * Boundary handling: a slot ending exactly at T and another starting
@@ -386,7 +406,7 @@ class api {
      * not).
      *
      * Two column-spanning blocks (both have submissionid === null) are exempt
-     * from the GapSnap check (but never from the true-overlap check): flush
+     * from the SnapGap check (but never from the true-overlap check): flush
      * adjacency between e.g. a Lunch block and a following Plenary block is
      * normal and should not require an artificial gap.
      *
@@ -410,11 +430,11 @@ class api {
      * @param int $starttime Unix timestamp
      * @param int $endtime Unix timestamp
      * @param int|null $submissionid The submission this slot is for, or null for a span-block
-     * @param int $gapminutes The instance's configured GapSnap minimum gap, in minutes
+     * @param int $gapminutes The instance's configured SnapGap minimum gap, in minutes
      * @param int|null $excludeslotid A slot id to exclude from the conflict check (when rescheduling it)
      * @return void
      * @throws \invalid_parameter_exception if $roomids is empty or references a room outside this instance
-     * @throws \moodle_exception if the time range is invalid, overlaps another slot, or violates GapSnap
+     * @throws \moodle_exception if the time range is invalid, overlaps another slot, or violates SnapGap
      */
     protected static function validate_placement(
         int $confschedulerid,
@@ -497,7 +517,7 @@ class api {
      * genuinely belong to (and be accepted by) the confprogram/confsubmissions
      * instance chain this confscheduler instance is configured against.
      *
-     * Also validates GapSnap/overlap placement (see validate_placement()) for
+     * Also validates SnapGap/overlap placement (see validate_placement()) for
      * every given room.
      *
      * @param int $confschedulerid The confscheduler instance id
@@ -510,7 +530,7 @@ class api {
      *        $submissionid is non-null (colour theming applies only to span blocks, Revision round 1)
      * @return int The confscheduler_slot id
      * @throws \moodle_exception if the submission's chain of custody is invalid, or the placement
-     *         overlaps/violates GapSnap
+     *         overlaps/violates SnapGap
      * @throws \invalid_parameter_exception if a room does not belong to this instance, $colour is set and not a
      *         valid hex colour, or $colour is given together with a non-null $submissionid
      */
@@ -570,7 +590,7 @@ class api {
     /**
      * Reschedules an existing slot to a new time range and/or room set.
      *
-     * Re-runs the same GapSnap/overlap validation as add_slot(), excluding
+     * Re-runs the same SnapGap/overlap validation as add_slot(), excluding
      * the slot's own current confscheduler_slotroom rows from the conflict
      * check (so a slot never conflicts with itself). The slot's submissionid
      * and label are left untouched; chain-of-custody was already validated
@@ -582,7 +602,7 @@ class api {
      * @param int $starttime Unix timestamp
      * @param int $endtime Unix timestamp
      * @return void
-     * @throws \moodle_exception if the new placement overlaps/violates GapSnap
+     * @throws \moodle_exception if the new placement overlaps/violates SnapGap
      * @throws \invalid_parameter_exception if a room does not belong to this instance
      */
     public static function update_slot(int $slotid, array $roomids, int $starttime, int $endtime): void {
@@ -628,7 +648,7 @@ class api {
      * where capability checks vs. data-integrity checks live), not merely a capability
      * check delegated to the caller.
      *
-     * Re-runs the same GapSnap/overlap validation as update_slot(), excluding the slot's
+     * Re-runs the same SnapGap/overlap validation as update_slot(), excluding the slot's
      * own current confscheduler_slotroom rows from the conflict check.
      *
      * @param int $slotid The confscheduler_slot id (must be a span block)
@@ -638,7 +658,7 @@ class api {
      * @param int $starttime Unix timestamp
      * @param int $endtime Unix timestamp
      * @return void
-     * @throws \moodle_exception if the slot is not a span block, or the new placement overlaps/violates GapSnap
+     * @throws \moodle_exception if the slot is not a span block, or the new placement overlaps/violates SnapGap
      * @throws \invalid_parameter_exception if a room does not belong to this instance, or $colour is set and
      *         not a valid hex colour
      */
@@ -706,7 +726,7 @@ class api {
 
     /**
      * Runs the autoscheduler: places as many accepted-but-unscheduled
-     * submissions as it can into the given time window, honouring GapSnap and
+     * submissions as it can into the given time window, honouring SnapGap and
      * overlap via add_slot() for every placement it makes.
      *
      * Candidate pool: exactly the same "accepted, unscheduled" set the grid's
@@ -749,7 +769,7 @@ class api {
      * priority 1/2, unchanged in their own logic.
      *
      * Placement search: rather than re-implementing validate_placement()'s
-     * GapSnap/overlap math a second time (which would risk drifting out of
+     * SnapGap/overlap math a second time (which would risk drifting out of
      * sync with it), every candidate placement this method considers is
      * attempted via add_slot() itself, wrapped in a try/catch (see
      * attempt_place()) -- a rejected candidate throws, is caught, and the
@@ -1020,7 +1040,7 @@ class api {
      * @param int $windowstart Unix timestamp
      * @param int $windowend Unix timestamp
      * @param int $durationseconds Duration the candidate must fit
-     * @param int $gapseconds The instance's configured GapSnap gap, in seconds
+     * @param int $gapseconds The instance's configured SnapGap gap, in seconds
      * @return int[] Sorted, de-duplicated candidate start times (unix timestamps)
      */
     protected static function candidate_start_times_for_room(
@@ -1045,7 +1065,7 @@ class api {
 
     /**
      * Attempts a single candidate placement via add_slot(), swallowing a
-     * validation rejection (GapSnap/overlap/invalid room) rather than letting
+     * validation rejection (SnapGap/overlap/invalid room) rather than letting
      * it propagate, so the caller's search can move on to the next candidate.
      * A successful call here IS the real, final placement -- see
      * run_autoscheduler()'s docblock for why nothing is "simulated" first.
@@ -1155,7 +1175,7 @@ class api {
      * @param int $durationseconds Duration this submission needs
      * @param int $windowstart Unix timestamp
      * @param int $windowend Unix timestamp
-     * @param int $gapseconds The instance's configured GapSnap gap, in seconds
+     * @param int $gapseconds The instance's configured SnapGap gap, in seconds
      * @param int|null $preferredroomid A room id to try first, or null for no preference
      * @param \Closure $randomsource Source of randomness for this call's room-order shuffle (see make_random_source())
      * @param int|null $avoidtrackid A trackid whose different-room overlaps should be avoided if possible, or null

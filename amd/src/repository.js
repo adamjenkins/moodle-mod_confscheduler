@@ -191,3 +191,18 @@ export const runAutoscheduler = (cmid, windowstart, windowend, clearfirst) => Aj
     methodname: 'mod_confscheduler_run_autoscheduler',
     args: {cmid, windowstart, windowend, clearfirst},
 }])[0];
+
+/**
+ * Sets a confscheduler instance's SnapGap minimum gap, in minutes. Backs the quick
+ * control at the top of the schedule grid in edit mode (Revision round 1 follow-up,
+ * 2026-07-04), which replaced a field that previously lived in the activity's own
+ * settings form.
+ *
+ * @param {Number} cmid The confscheduler course-module id
+ * @param {Number} gapminutes The new SnapGap minimum gap, in minutes
+ * @return {Promise}
+ */
+export const setGapMinutes = (cmid, gapminutes) => Ajax.call([{
+    methodname: 'mod_confscheduler_set_gap_minutes',
+    args: {cmid, gapminutes},
+}])[0];

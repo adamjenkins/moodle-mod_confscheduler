@@ -389,7 +389,7 @@ final class api_test extends advanced_testcase {
 
     /**
      * add_slot() rejects a true time overlap in the same room, regardless of
-     * GapSnap (gapminutes = 0 here).
+     * SnapGap (gapminutes = 0 here).
      */
     public function test_add_slot_rejects_time_overlap_same_room(): void {
         $this->resetAfterTest();
@@ -451,11 +451,11 @@ final class api_test extends advanced_testcase {
     }
 
     /**
-     * GapSnap boundary: with gapminutes = 10, a gap of EXACTLY 10 minutes between
+     * SnapGap boundary: with gapminutes = 10, a gap of EXACTLY 10 minutes between
      * two presentations in the same room is allowed (inclusive boundary), but a
      * gap of 9 minutes is rejected.
      */
-    public function test_add_slot_gapsnap_boundary_exact_gap_allowed_one_minute_short_rejected(): void {
+    public function test_add_slot_snapgap_boundary_exact_gap_allowed_one_minute_short_rejected(): void {
         global $DB;
         $this->resetAfterTest();
 
@@ -697,7 +697,7 @@ final class api_test extends advanced_testcase {
 
     /**
      * update_slot() reschedules a slot and excludes the slot's own current
-     * confscheduler_slotroom rows from the overlap/GapSnap check against itself.
+     * confscheduler_slotroom rows from the overlap/SnapGap check against itself.
      */
     public function test_update_slot_reschedules_and_excludes_self(): void {
         $this->resetAfterTest();
@@ -963,5 +963,27 @@ final class api_test extends advanced_testcase {
         $this->assertIsArray($schedule);
         $this->assertSame($starttime, $schedule['starttime']);
         $this->assertSame('Main Hall', $schedule['room']);
+    }
+
+    /**
+     * set_gap_minutes() updates confscheduler.gapminutes and rejects a negative value.
+     * Revision round 1 follow-up (2026-07-04): this is the write path behind the quick
+     * SnapGap control at the top of the schedule grid, which replaced a mod_form.php
+     * field.
+     */
+    public function test_set_gap_minutes(): void {
+        $this->resetAfterTest();
+        global $DB;
+
+        [$confscheduler] = $this->create_full_fixture();
+
+        api::set_gap_minutes((int) $confscheduler->id, 15);
+        $this->assertEquals(15, $DB->get_field('confscheduler', 'gapminutes', ['id' => $confscheduler->id]));
+
+        api::set_gap_minutes((int) $confscheduler->id, 0);
+        $this->assertEquals(0, $DB->get_field('confscheduler', 'gapminutes', ['id' => $confscheduler->id]));
+
+        $this->expectException(\invalid_parameter_exception::class);
+        api::set_gap_minutes((int) $confscheduler->id, -1);
     }
 }

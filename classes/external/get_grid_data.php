@@ -117,7 +117,7 @@ class get_grid_data extends external_api {
                     ),
                 ])
             ),
-            'gapminutes' => new external_value(PARAM_INT, 'The instance\'s configured GapSnap minimum gap, in minutes'),
+            'gapminutes' => new external_value(PARAM_INT, 'The instance\'s configured SnapGap minimum gap, in minutes'),
         ]);
     }
 }

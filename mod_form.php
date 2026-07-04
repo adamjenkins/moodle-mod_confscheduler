@@ -29,10 +29,14 @@ require_once($CFG->dirroot . '/course/moodleform_mod.php');
 /**
  * Settings form for the Conference Scheduler activity.
  *
- * This is a minimal scaffold: name/intro, the link to the mod_confprogram
- * instance this scheduler pulls accepted submissions from, and the GapSnap
- * minimum-gap setting. The full drag-and-drop grid, room management and
- * autoscheduler settings are a follow-up task.
+ * Covers name/intro, the link to the mod_confprogram instance this scheduler
+ * pulls accepted submissions from, and the conference start/end dates. The
+ * SnapGap minimum-gap setting previously lived here too; it moved to a quick
+ * control at the top of the schedule grid in edit mode (Revision round 1
+ * follow-up, 2026-07-04, per explicit feedback) -- like room/track/
+ * submission-type management elsewhere in this project, it is
+ * organiser-facing configuration that only makes sense once the instance
+ * already exists, so it does not belong in the settings form.
  */
 class mod_confscheduler_mod_form extends moodleform_mod {
     /** @var int[] Valid confprogramcmid option keys (course_module ids in this course), set by definition(). */
@@ -117,21 +121,6 @@ class mod_confscheduler_mod_form extends moodleform_mod {
             );
         }
 
-        // Scheduling settings.
-        $mform->addElement('header', 'schedulingsettings', get_string('schedulingsettings', 'mod_confscheduler'));
-        $mform->setExpanded('schedulingsettings');
-
-        $mform->addElement(
-            'text',
-            'gapminutes',
-            get_string('gapminutes', 'mod_confscheduler'),
-            ['size' => 5]
-        );
-        $mform->setType('gapminutes', PARAM_INT);
-        $mform->addHelpButton('gapminutes', 'gapminutes', 'mod_confscheduler');
-        $mform->setDefault('gapminutes', 0);
-        $mform->addRule('gapminutes', get_string('error:invalidnumber', 'mod_confscheduler'), 'numeric', null, 'client');
-
         // Standard module elements (visibility, groups, etc.).
         $this->standard_coursemodule_elements();
 
@@ -155,10 +144,6 @@ class mod_confscheduler_mod_form extends moodleform_mod {
             // offered (e.g. a confprogram activity in an unrelated course), since every
             // downstream page trusts confscheduler.confprogramcmid implicitly.
             $errors['confprogramcmid'] = get_string('error:invalidconfprogramcmid', 'mod_confscheduler');
-        }
-
-        if (isset($data['gapminutes']) && (int) $data['gapminutes'] < 0) {
-            $errors['gapminutes'] = get_string('error:invalidnumber', 'mod_confscheduler');
         }
 
         if (

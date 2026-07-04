@@ -57,7 +57,7 @@
 
 - Revision round 1 batch B (user feedback, 2026-07-03): the "session" tagging feature
   removed entirely, edit-mode gating (reusing Moodle's own site-wide Edit mode switch,
-  separate from merely holding the capability), and a GapSnap UX redesign (auto-nudge
+  separate from merely holding the capability), and a SnapGap UX redesign (auto-nudge
   instead of hard-reject on drag-drop). Schema bumped once (`2026070406`, dropping
   `confscheduler_sessiontag`); see `db/upgrade.php`.
   - **"Session" tagging removed**: per explicit feedback ("In the unscheduled blocks
@@ -101,11 +101,11 @@
     capability, AJAX endpoint, schema, or stored preference was needed -- this
     plugin still stores no personal data of its own, so `classes/privacy/provider.php`
     remains a `null_provider`, unchanged.
-  - **GapSnap UX redesign (auto-nudge instead of hard-reject)**: per explicit feedback
-    ("GapSnap should automatically have sessions 'bounce' off existing blocks without
+  - **SnapGap UX redesign (auto-nudge instead of hard-reject)**: per explicit feedback
+    ("SnapGap should automatically have sessions 'bounce' off existing blocks without
     throwing error:gapviolation or error:timeoverlap type errors ... automatically
     nudges (or snaps) the blocks the appropriate distance away"), a drag-and-drop drop
-    that would violate GapSnap or truly overlap another block in the same room is no
+    that would violate SnapGap or truly overlap another block in the same room is no
     longer submitted as-is to be hard-rejected. A new, pure `amd/src/gapsnap_utils.js`
     module re-implements `api::validate_placement()`'s exact overlap/gap math
     client-side (`starttime < otherend && endtime > otherstart` for overlap; `gap =
@@ -140,7 +140,7 @@
     label via a shared `showDragPreview()`/`clearDragPreview()` pair. Both
     functions' `onMove` and `onDrop` handlers call the identical `computeTarget()`
     closure, so the preview shown while dragging can never disagree with where a
-    drop right now would actually land -- including any GapSnap auto-nudge.
+    drop right now would actually land -- including any SnapGap auto-nudge.
     Verified live: a drop always lands exactly where the preview last showed, and
     a deliberately conflicting drag correctly showed the nudge computing a
     backward position matching the eventual drop precisely.
@@ -166,6 +166,37 @@
     correctly carried a real submission's configured type duration end to end into
     a newly-scheduled block's actual length; the autoscheduler modal no longer
     shows a duration field.
+
+- Revision round 1, follow-up (user feedback, 2026-07-04): **renamed "GapSnap" to
+  "SnapGap"** (the feature's actual intended name) throughout the plugin -- lang
+  strings, code comments/docblocks, the `amd/src/gapsnap_utils.js` module (renamed
+  to `amd/src/snapgap_utils.js`, along with its `GapSnapUtils` import alias in
+  `scheduler_grid.js`, now `SnapGapUtils`), test names, and this project's own
+  documentation. The underlying `gapminutes` column/setting name is unchanged
+  (it never actually said "gapsnap"), so this is a display-text and identifier
+  correction, not a schema rename.
+  - **The SnapGap minimum gap setting moved out of the activity's settings form**,
+    per explicit feedback ("the SnapGap ... setting should appear at the top of
+    the schedule when edit mode is on, rather than in the module settings").
+    `mod_form.php`'s "Scheduling settings" section (which held only this one
+    field) is gone entirely. A new quick control in the grid toolbar
+    (`templates/grid.mustache`, visible only to a `manageschedule` holder) reads
+    and writes it live via a new `mod_confscheduler_set_gap_minutes` AJAX
+    endpoint (`classes/external/set_gap_minutes.php` / `api::set_gap_minutes()`),
+    following the same `scheduler_context_trait` IDOR-scoping and capability
+    gating every other write endpoint here uses. This mirrors why room/track/
+    submission-type management already live on their own screens rather than in
+    the settings form: it is organiser-facing configuration that only makes
+    sense once the instance already exists. Schema unchanged; version bumped
+    (`2026070407`) purely to register the new external function, matching the
+    established convention for a services-only change (see
+    `mod_confsubmissions`'s own `db/upgrade.php` for the precedent).
+  - 85/85 PHPUnit passing (was 80), phpcs/moodlecheck clean, AMD rebuilt from
+    scratch and confirmed byte-stable. Verified live: the "Scheduling settings"
+    section and its field are gone from the activity's settings page; the quick
+    control appears in the grid toolbar in edit mode, initialises from the
+    instance's real stored value, and a change persists immediately to the
+    database via AJAX.
 
 - Phase 3.5: read-only Display mode, "my timetable" toggle, day/page pagination
   (shared between Display and edit modes), and print support. All client-side
@@ -253,7 +284,7 @@
 - Phase 3.3: the drag-and-drop schedule grid (edit mode). Room CRUD with
   hex-colour theming and drag-reorder (`core/sortable_list`), block
   scheduling/rescheduling/unscheduling via `core/dragdrop`, column-spanning
-  blocks (Lunch/Plenary), a server-authoritative GapSnap + true-overlap
+  blocks (Lunch/Plenary), a server-authoritative SnapGap + true-overlap
   check with correct inclusive-boundary math, an instant favourite-star
   toggle that calls `mod_confprogram\api::add_favourite()`/
   `remove_favourite()` directly, fullscreen toggle, and track pill badges.
@@ -286,7 +317,7 @@
   (and per-placement room search order) shuffled via a self-contained
   seedable RNG so re-runs vary without mutating PHP's global RNG state.
   Every candidate placement is attempted through `add_slot()` itself
-  (wrapped in try/catch) rather than re-implementing its GapSnap/overlap
+  (wrapped in try/catch) rather than re-implementing its SnapGap/overlap
   math, so the autoscheduler can never place something `add_slot()` would
   have refused. New `mod_confscheduler_run_autoscheduler` AJAX endpoint
   and "Run autoscheduler" modal (time window, default duration, optional

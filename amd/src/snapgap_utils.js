@@ -14,13 +14,13 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
- * Pure, framework-agnostic GapSnap conflict-detection and auto-nudge helpers
+ * Pure, framework-agnostic SnapGap conflict-detection and auto-nudge helpers
  * (Revision round 1 batch B, 2026-07-03), used by amd/src/scheduler_grid.js's
  * drag-drop handlers (beginScheduleDrag()/beginMoveDrag()) to snap a
  * dropped/dragged block to the nearest valid position instead of submitting
  * an invalid position and showing a hard-rejection error.
  *
- * Per explicit user feedback ("GapSnap should automatically have sessions
+ * Per explicit user feedback ("SnapGap should automatically have sessions
  * 'bounce' off existing blocks without throwing error:gapviolation or
  * error:timeoverlap type errors ... automatically nudges (or snaps) the
  * blocks the appropriate distance away"), this module re-implements the
@@ -59,7 +59,7 @@
  * via an automated JS unit test; see changelog.md for the live verification
  * performed for this feature.
  *
- * @module     mod_confscheduler/gapsnap_utils
+ * @module     mod_confscheduler/snapgap_utils
  * @copyright  2026 Adam Jenkins <adam@wisecat.net>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
@@ -92,14 +92,14 @@ const MAX_NUDGE_STEPS = 500;
 export const NUDGE_SEARCH_MAX_SECONDS = 4 * 60 * 60;
 
 /**
- * The GapSnap-required gap, in seconds, between a candidate block and a
+ * The SnapGap-required gap, in seconds, between a candidate block and a
  * specific other slot -- 0 when both are column-spanning blocks (mirrors
  * validate_placement()'s span-block exemption), otherwise the instance's
  * configured gap.
  *
  * @param {Number|null} submissionid The candidate block's submissionid, or null/undefined for a span block
  * @param {Object} other Another slot: {starttime, endtime, submissionid}
- * @param {Number} gapseconds The instance's configured GapSnap gap, in seconds
+ * @param {Number} gapseconds The instance's configured SnapGap gap, in seconds
  * @return {Number}
  */
 export const requiredGapSeconds = (submissionid, other, gapseconds) => {
@@ -113,7 +113,7 @@ export const requiredGapSeconds = (submissionid, other, gapseconds) => {
 
 /**
  * Whether a candidate [starttime, endtime) placement truly overlaps, or (when
- * not exempt) violates the configured GapSnap gap against, a single other
+ * not exempt) violates the configured SnapGap gap against, a single other
  * slot. Mirrors \mod_confscheduler\api::validate_placement()'s per-slot check
  * exactly -- see this module's docblock.
  *
@@ -121,7 +121,7 @@ export const requiredGapSeconds = (submissionid, other, gapseconds) => {
  * @param {Number} endtime Candidate end, unix timestamp (seconds)
  * @param {Number|null} submissionid The candidate block's submissionid, or null/undefined for a span block
  * @param {Object} other Another slot: {starttime, endtime, submissionid}
- * @param {Number} gapseconds The instance's configured GapSnap gap, in seconds
+ * @param {Number} gapseconds The instance's configured SnapGap gap, in seconds
  * @return {Boolean}
  */
 export const overlapsOrViolatesGap = (starttime, endtime, submissionid, other, gapseconds) => {
@@ -168,7 +168,7 @@ const relevantSlots = (others, roomids, excludeslotid) => others.filter((other) 
  * @param {Number} endtime Candidate end, unix timestamp (seconds)
  * @param {Number|null} submissionid The candidate block's submissionid, or null/undefined for a span block
  * @param {Object[]} relevant Slots already filtered via relevantSlots()
- * @param {Number} gapseconds The instance's configured GapSnap gap, in seconds
+ * @param {Number} gapseconds The instance's configured SnapGap gap, in seconds
  * @return {Object|null}
  */
 const findFirstConflict = (starttime, endtime, submissionid, relevant, gapseconds) => relevant.find(
@@ -186,7 +186,7 @@ const findFirstConflict = (starttime, endtime, submissionid, relevant, gapsecond
  * @param {Number} durationseconds The candidate block's duration
  * @param {Number|null} submissionid The candidate block's submissionid, or null/undefined for a span block
  * @param {Object[]} relevant Slots already filtered via relevantSlots()
- * @param {Number} gapseconds The instance's configured GapSnap gap, in seconds
+ * @param {Number} gapseconds The instance's configured SnapGap gap, in seconds
  * @return {Number|null} The nudged start time, or null if no clear position was found within MAX_NUDGE_STEPS
  */
 const searchForward = (desiredstart, durationseconds, submissionid, relevant, gapseconds) => {
@@ -221,7 +221,7 @@ const searchForward = (desiredstart, durationseconds, submissionid, relevant, ga
  * @param {Number} durationseconds The candidate block's duration
  * @param {Number|null} submissionid The candidate block's submissionid, or null/undefined for a span block
  * @param {Object[]} relevant Slots already filtered via relevantSlots()
- * @param {Number} gapseconds The instance's configured GapSnap gap, in seconds
+ * @param {Number} gapseconds The instance's configured SnapGap gap, in seconds
  * @return {Number|null} The nudged start time, or null if no clear position was found within MAX_NUDGE_STEPS
  */
 const searchBackward = (desiredstart, durationseconds, submissionid, relevant, gapseconds) => {
@@ -271,7 +271,7 @@ const searchBackward = (desiredstart, durationseconds, submissionid, relevant, g
  * @param {Number[]} roomids The candidate's room id(s)
  * @param {Number|null} submissionid The candidate block's submissionid, or null/undefined for a span block
  * @param {Object[]} others Every other currently-scheduled slot: {id, roomids, starttime, endtime, submissionid}
- * @param {Number} gapseconds The instance's configured GapSnap gap, in seconds
+ * @param {Number} gapseconds The instance's configured SnapGap gap, in seconds
  * @param {Number|null} excludeslotid A slot id to exclude (when moving an existing block), or null for a fresh placement
  * @return {Number|null} The nudged start time, or null if no valid nearby position exists
  */

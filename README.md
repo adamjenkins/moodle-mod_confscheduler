@@ -11,7 +11,7 @@ Part of the [Conference Tools](https://github.com/adamjenkins/moodle-conference-
 
 ## What it does
 
-- **Edit mode** (shown only while Moodle's own site-wide "Edit mode" switch is on, for a `mod/confscheduler:manageschedule` holder -- see "Architecture notes" below, not just holding the capability): a time × room grid. Drag accepted presentations from an unscheduled panel into slots, and reschedule by dragging within the grid; a live highlight shows exactly where a drop will land (including any GapSnap nudge) while dragging. GapSnap automatically nudges a dropped/dragged block to the nearest valid position instead of hard-rejecting an invalid drop (see "Architecture notes" below). A newly-scheduled block's initial length comes from its own `mod_confsubmissions` submission type's configured duration, and can still be freely resized afterwards via a visible grip handle on its bottom edge. Rooms are editable, colour-themeable, and re-orderable, with column header text colour automatically switching between black/white for legibility against the chosen colour. An autoscheduler can populate a timespan automatically, prioritising same-track grouping. Column-spanning blocks (with their own optional colour theme, same auto-contrast text) support plenaries/lunch, and are fully editable in place after creation, not just add/delete. Track pill badges link through to the linked `mod_confprogram` instance's accepted-submissions list, filtered to that track. A day selector pages a multi-day schedule one calendar day at a time.
+- **Edit mode** (shown only while Moodle's own site-wide "Edit mode" switch is on, for a `mod/confscheduler:manageschedule` holder -- see "Architecture notes" below, not just holding the capability): a time × room grid. Drag accepted presentations from an unscheduled panel into slots, and reschedule by dragging within the grid; a live highlight shows exactly where a drop will land (including any SnapGap nudge) while dragging. SnapGap automatically nudges a dropped/dragged block to the nearest valid position instead of hard-rejecting an invalid drop, and its minimum-gap setting is itself a quick control in the grid toolbar rather than a settings-form field (see "Architecture notes" below). A newly-scheduled block's initial length comes from its own `mod_confsubmissions` submission type's configured duration, and can still be freely resized afterwards via a visible grip handle on its bottom edge. Rooms are editable, colour-themeable, and re-orderable, with column header text colour automatically switching between black/white for legibility against the chosen colour. An autoscheduler can populate a timespan automatically, prioritising same-track grouping. Column-spanning blocks (with their own optional colour theme, same auto-contrast text) support plenaries/lunch, and are fully editable in place after creation, not just add/delete. Track pill badges link through to the linked `mod_confprogram` instance's accepted-submissions list, filtered to that track. A day selector pages a multi-day schedule one calendar day at a time.
 - **Display mode** (Moodle's site-wide Edit mode off, or `mod/confscheduler:viewschedule` without `:manageschedule`): a read-only rendering of the same grid data. Blocks link to the presentation's `mod_confprogram` page (both a real `<a href>` fallback and, with JS, an in-place modal identical to `mod_confprogram`'s own). A "my timetable" toggle highlights favourited presentations and greys out the rest, persisted in `sessionStorage` per instance. The same day selector as edit mode pages a multi-day schedule. Printable in colour or black & white, at A4/A3/A2 in either orientation, via CSS only (no PDF generation).
 - Implements the `\mod_confscheduler\api::get_schedule_for_submission()` contract that `mod_confprogram`'s Display phase reads for time/room info, and calls `mod_confprogram`'s `api::add_favourite()`/`remove_favourite()` directly to keep favourites in sync both ways.
 - Organisers can declare conference start/end dates in the activity's General settings section (purely informational for now -- not yet derived from or validated against scheduled slots). Dark mode is currently disabled site-wide for this plugin (the CSS is kept, just inert) pending a possible future reintroduction.
@@ -56,7 +56,7 @@ Part of the [Conference Tools](https://github.com/adamjenkins/moodle-conference-
   same-room preference, then unconstrained) instead of three. See
   changelog.md for the full removal list.
 - **Autoscheduler placement search**: `run_autoscheduler()` deliberately does
-  not re-implement `validate_placement()`'s GapSnap/overlap math a second
+  not re-implement `validate_placement()`'s SnapGap/overlap math a second
   time. Every candidate placement it considers is attempted via `add_slot()`
   itself (wrapped in a try/catch): a rejected candidate is simply skipped in
   favour of the next one, and a successful attempt IS the real, final
@@ -185,11 +185,11 @@ Part of the [Conference Tools](https://github.com/adamjenkins/moodle-conference-
   does not change any existing write-path security boundary: it only changes
   which read-only-vs-interactive UI a `manageschedule` holder sees by
   default.
-- **GapSnap now auto-nudges instead of hard-rejecting on drag-drop (Revision
+- **SnapGap now auto-nudges instead of hard-rejecting on drag-drop (Revision
   round 1 batch B, 2026-07-03)**: per explicit user feedback, a drop that
-  would violate GapSnap or truly overlap another block in the same room is no
+  would violate SnapGap or truly overlap another block in the same room is no
   longer submitted as-is to be rejected with an error notification. A new,
-  pure `amd/src/gapsnap_utils.js` module re-implements
+  pure `amd/src/snapgap_utils.js` module re-implements
   `api::validate_placement()`'s overlap/gap math client-side (there is no way
   to call the PHP version synchronously mid-drag -- this is the one place in
   the project where the same validation logic genuinely needs to exist in
@@ -206,11 +206,21 @@ Part of the [Conference Tools](https://github.com/adamjenkins/moodle-conference-
   error-notification+revert path, deliberately kept as a safety net for the
   genuine "room is completely packed, no valid nudge exists" case) -- never
   an actually-invalid placement being saved. Not applied to block resizing
-  (out of this batch's explicit scope; a resize that violates GapSnap still
+  (out of this batch's explicit scope; a resize that violates SnapGap still
   hard-rejects as before). No JS unit-test harness exists anywhere in this
-  project as of this writing, so `gapsnap_utils.js`, like `day_utils.js`/
+  project as of this writing, so `snapgap_utils.js`, like `day_utils.js`/
   `colour_utils.js` before it, is verified live rather than via an automated
   JS unit test.
+- **The SnapGap minimum-gap setting lives in the grid toolbar, not the
+  settings form (Revision round 1 follow-up, 2026-07-04)**: per explicit
+  feedback, `mod_form.php`'s "Scheduling settings" section (which held only
+  this one field) is gone; a quick control in `templates/grid.mustache`
+  (visible only to a `manageschedule` holder) reads and writes
+  `confscheduler.gapminutes` live via a new
+  `mod_confscheduler_set_gap_minutes` AJAX endpoint. This mirrors why room/
+  track/submission-type management already live on their own screens: it is
+  organiser-facing configuration that only makes sense once the instance
+  already exists.
 
 ## Requirements
 

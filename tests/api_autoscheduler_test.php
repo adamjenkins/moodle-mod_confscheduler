@@ -106,12 +106,12 @@ final class api_autoscheduler_test extends advanced_testcase {
 
     /**
      * Asserts that a set of scheduled slots contains no true time overlap and
-     * no GapSnap violation within any single room -- i.e. that whatever the
+     * no SnapGap violation within any single room -- i.e. that whatever the
      * autoscheduler's own placement preferences were, add_slot()'s
      * authoritative validation was never bypassed.
      *
      * @param int $confschedulerid The confscheduler instance id
-     * @param int $gapminutes The instance's configured GapSnap gap
+     * @param int $gapminutes The instance's configured SnapGap gap
      */
     protected function assert_no_overlap_or_gap_violation(int $confschedulerid, int $gapminutes): void {
         global $DB;
@@ -142,7 +142,7 @@ final class api_autoscheduler_test extends advanced_testcase {
                     $this->assertGreaterThanOrEqual(
                         $gapseconds,
                         $gap,
-                        'Two slots in the same room must respect the configured GapSnap minimum gap.'
+                        'Two slots in the same room must respect the configured SnapGap minimum gap.'
                     );
                 }
             }
@@ -229,11 +229,11 @@ final class api_autoscheduler_test extends advanced_testcase {
     /**
      * An autoscheduler run over a tightly-packed fixture (multiple track
      * groups and ungrouped submissions competing for limited room capacity,
-     * with GapSnap > 0) never produces a true overlap or a GapSnap violation
+     * with SnapGap > 0) never produces a true overlap or a SnapGap violation
      * in the resulting schedule, regardless of the algorithm's own grouping
      * preferences.
      */
-    public function test_run_autoscheduler_never_violates_gapsnap_or_overlap(): void {
+    public function test_run_autoscheduler_never_violates_snapgap_or_overlap(): void {
         $this->resetAfterTest();
 
         [$confscheduler, $confprogram, $confsubmissions] = $this->create_full_fixture();
@@ -266,7 +266,7 @@ final class api_autoscheduler_test extends advanced_testcase {
         // Capacity is tight (2 rooms x 2 hours x 30-minute slots with a 5-minute
         // gap = well under 9 submissions), so a partial skip is expected; the
         // point of this test is that whatever DID get scheduled never overlaps
-        // or violates GapSnap, not that everything fits.
+        // or violates SnapGap, not that everything fits.
         $this->assertGreaterThan(0, $summary['scheduled']);
         $this->assert_no_overlap_or_gap_violation((int) $confscheduler->id, 5);
     }
