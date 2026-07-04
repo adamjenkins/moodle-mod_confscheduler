@@ -190,16 +190,3 @@ export const runAutoscheduler = (cmid, windowstart, windowend, defaultdurationmi
     methodname: 'mod_confscheduler_run_autoscheduler',
     args: {cmid, windowstart, windowend, defaultdurationminutes, clearfirst},
 }])[0];
-
-/**
- * Sets or clears a submission's "session" grouping label (used by the autoscheduler).
- *
- * @param {Number} cmid The confscheduler course-module id
- * @param {Number} submissionid The confsubmissions_submission id to tag
- * @param {String} label The session label; an empty string clears the tag
- * @return {Promise}
- */
-export const setSessionTag = (cmid, submissionid, label) => Ajax.call([{
-    methodname: 'mod_confscheduler_set_session_tag',
-    args: {cmid, submissionid, label},
-}])[0];

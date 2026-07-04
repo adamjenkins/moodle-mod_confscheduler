@@ -378,6 +378,21 @@ class api {
      * adjacency between e.g. a Lunch block and a following Plenary block is
      * normal and should not require an artificial gap.
      *
+     * ****************************************************************************
+     * IMPORTANT -- kept in sync BY HAND with amd/src/gapsnap_utils.js (Revision
+     * round 1 batch B, 2026-07-03). That module re-implements this exact
+     * overlap/gap logic client-side so a drag-and-drop drop can be auto-nudged
+     * to the nearest valid position instead of being submitted invalid and
+     * hard-rejected -- there is no way to call this PHP method synchronously
+     * mid-drag on the client, so this is the one place in the project where the
+     * same validation logic genuinely needs to exist in two languages. THIS
+     * method remains the sole authoritative check regardless of what the client
+     * computes: gapsnap_utils.js's nudge is a UX convenience only, and every
+     * position it computes is still submitted here and re-validated for real.
+     * If this method's overlap/gap math ever changes, gapsnap_utils.js's
+     * overlapsOrViolatesGap()/requiredGapSeconds() must change identically.
+     * ****************************************************************************
+     *
      * @param int $confschedulerid The confscheduler instance id
      * @param int[] $roomids The room id(s) this slot occupies
      * @param int $starttime Unix timestamp
@@ -678,99 +693,6 @@ class api {
     }
 
     /**
-     * Sets, updates, or clears a submission's "session" grouping label within a
-     * confscheduler instance.
-     *
-     * Design decision (Phase 3.4): "session" (as in "keep same-session
-     * presentations consecutive") is not a concept that exists anywhere in the
-     * shipped mod_confsubmissions/mod_confprogram schema -- only "track" does.
-     * Rather than adding a session concept to those already-shipped,
-     * committed, security-reviewed sibling plugins, it is implemented here as
-     * a lightweight label scoped entirely to this confscheduler instance: two
-     * submissions sharing the same non-empty label within the same instance
-     * are "the same session" for the autoscheduler (see run_autoscheduler()).
-     * A row is stored only for a non-empty label; clearing deletes the row
-     * rather than storing an empty string, so get_session_tags() never needs
-     * to filter out empty-string entries.
-     *
-     * Requires the same chain-of-custody validation as add_slot(): submission
-     * ids are global (not scoped per course), so without this check a
-     * manageschedule holder in one course could tag a submission belonging to
-     * a different confprogram/confsubmissions instance chain.
-     *
-     * @param int $confschedulerid The confscheduler instance id
-     * @param int $submissionid The mod_confsubmissions confsubmissions_submission id
-     * @param string|null $label The session label; null or an empty/whitespace-only string clears the tag
-     * @return void
-     * @throws \moodle_exception if the submission's chain of custody is invalid
-     * @throws \invalid_parameter_exception if the label is longer than 255 characters
-     */
-    public static function set_session_tag(int $confschedulerid, int $submissionid, ?string $label): void {
-        global $DB;
-
-        $confscheduler = $DB->get_record('confscheduler', ['id' => $confschedulerid], '*', MUST_EXIST);
-        self::validate_submission_chain_of_custody($confscheduler, $submissionid);
-
-        $label = $label !== null ? trim($label) : null;
-        if ($label !== null && \core_text::strlen($label) > 255) {
-            throw new \invalid_parameter_exception(get_string('error:sessiontagtoolong', 'mod_confscheduler'));
-        }
-
-        $existing = $DB->get_record('confscheduler_sessiontag', [
-            'confscheduler' => $confschedulerid,
-            'submissionid'  => $submissionid,
-        ]);
-
-        if ($label === null || $label === '') {
-            if ($existing) {
-                $DB->delete_records('confscheduler_sessiontag', ['id' => $existing->id]);
-            }
-            return;
-        }
-
-        $now = time();
-        if ($existing) {
-            $DB->update_record('confscheduler_sessiontag', (object) [
-                'id'           => $existing->id,
-                'label'        => $label,
-                'timemodified' => $now,
-            ]);
-        } else {
-            $DB->insert_record('confscheduler_sessiontag', (object) [
-                'confscheduler' => $confschedulerid,
-                'submissionid'  => $submissionid,
-                'label'         => $label,
-                'timecreated'   => $now,
-                'timemodified'  => $now,
-            ]);
-        }
-    }
-
-    /**
-     * Returns every session-tag label set within a confscheduler instance.
-     *
-     * @param int $confschedulerid The confscheduler instance id
-     * @return array<int, string> [submissionid => label]
-     */
-    public static function get_session_tags(int $confschedulerid): array {
-        global $DB;
-
-        $rows = $DB->get_records(
-            'confscheduler_sessiontag',
-            ['confscheduler' => $confschedulerid],
-            '',
-            'submissionid, label'
-        );
-
-        $tags = [];
-        foreach ($rows as $row) {
-            $tags[(int) $row->submissionid] = $row->label;
-        }
-
-        return $tags;
-    }
-
-    /**
      * Runs the autoscheduler: places as many accepted-but-unscheduled
      * submissions as it can into the given time window, honouring GapSnap and
      * overlap via add_slot() for every placement it makes.
@@ -781,37 +703,33 @@ class api {
      * per-submission duration field in the shipped schema).
      *
      * Placement priority (highest first):
-     *   1. Submissions sharing a non-empty session-tag label (see
-     *      set_session_tag()) are placed consecutively, in the same room, in
-     *      submission-id order within the group. "Consecutively" means back
-     *      to back with exactly the GapSnap minimum gap between them (0 if
-     *      gapminutes is 0) -- the minimum allowed gap, not a larger one. If
-     *      no single room can fit the whole group consecutively anywhere in
-     *      the window, each member of the group falls back to being placed
-     *      individually (priority-1 "same room, consecutive" is a quality
-     *      goal for the group; "get every accepted submission scheduled
-     *      somewhere" is the harder requirement -- see the partial-failure
-     *      note below).
-     *   2. Among the remaining (non-session-tagged) candidates, submissions
-     *      sharing a trackid are placed with a same-room preference (the room
-     *      the first successfully-placed member of the track group lands in
-     *      is preferred, but not required, for the rest) and a best-effort
-     *      preference for time slots that do not overlap another same-track
-     *      submission already scheduled in a *different* room.
-     *   3. Everything else (no session tag, no track) is placed with no
-     *      grouping preference.
-     * Processing order *within* each of the three tiers above is themselves
-     * shuffled (which session-tag group goes first, which track goes first,
-     * the order ungrouped submissions are attempted in) via the optional
-     * $seed parameter, so repeated runs over the same input vary while still
-     * respecting the priority rules -- see make_random_source()'s docblock
-     * for why a self-contained seedable generator is used instead of
-     * mt_srand()/shuffle() (which would mutate global PHP RNG state). The
-     * order rooms are searched in is *also* freshly shuffled for every
-     * individual placement attempt (see try_place_single()'s docblock) --
-     * without that, the room-preference mechanism used for track groups
-     * would be a no-op, since a fixed room order always fills the same
-     * "first" room to capacity before ever trying the next one anyway.
+     *   1. Submissions sharing a trackid are placed with a same-room
+     *      preference (the room the first successfully-placed member of the
+     *      track group lands in is preferred, but not required, for the
+     *      rest) and a best-effort preference for time slots that do not
+     *      overlap another same-track submission already scheduled in a
+     *      *different* room.
+     *   2. Everything else (no track) is placed with no grouping preference.
+     * Processing order *within* each of the two tiers above is itself
+     * shuffled (which track goes first, the order ungrouped submissions are
+     * attempted in) via the optional $seed parameter, so repeated runs over
+     * the same input vary while still respecting the priority rules -- see
+     * make_random_source()'s docblock for why a self-contained seedable
+     * generator is used instead of mt_srand()/shuffle() (which would mutate
+     * global PHP RNG state). The order rooms are searched in is *also*
+     * freshly shuffled for every individual placement attempt (see
+     * try_place_single()'s docblock) -- without that, the room-preference
+     * mechanism used for track groups would be a no-op, since a fixed room
+     * order always fills the same "first" room to capacity before ever
+     * trying the next one anyway.
+     *
+     * Removed (Revision round 1 batch B, 2026-07-03): this method previously
+     * had a higher-priority tier ("same-session-tag consecutive-same-room")
+     * above track grouping, backed by a plugin-local confscheduler_sessiontag
+     * table and api::set_session_tag()/get_session_tags(). The "session"
+     * tagging feature was removed entirely per explicit user feedback; the
+     * former priority 2/3 (track grouping / ungrouped) tiers above are now
+     * priority 1/2, unchanged in their own logic.
      *
      * Placement search: rather than re-implementing validate_placement()'s
      * GapSnap/overlap math a second time (which would risk drifting out of
@@ -928,19 +846,13 @@ class api {
             return $summary;
         }
 
-        // Group candidates: session-tag groups (priority 1) take every tagged
-        // candidate regardless of track; track groups (priority 2) are formed
-        // only from what's left; anything with neither is ungrouped.
-        $sessiontags = self::get_session_tags($confschedulerid);
-        $sessiongroups = [];
+        // Group candidates: track groups (priority 1) take every submission with a
+        // trackid; anything without one is ungrouped (priority 2). "Session" tagging
+        // (formerly an even-higher priority tier above track grouping) was removed
+        // entirely (Revision round 1 batch B, 2026-07-03) -- see this method's docblock.
         $trackgroups = [];
         $ungrouped = [];
-        foreach ($candidates as $sid => $submission) {
-            $label = $sessiontags[$sid] ?? null;
-            if ($label !== null && $label !== '') {
-                $sessiongroups[$label][] = $submission;
-                continue;
-            }
+        foreach ($candidates as $submission) {
             $trackid = !empty($submission->trackid) ? (int) $submission->trackid : null;
             if ($trackid !== null) {
                 $trackgroups[$trackid][] = $submission;
@@ -955,65 +867,17 @@ class api {
         $byidasc = static function (\stdClass $first, \stdClass $second): int {
             return $first->id <=> $second->id;
         };
-        foreach ($sessiongroups as &$members) {
-            usort($members, $byidasc);
-        }
-        unset($members);
         foreach ($trackgroups as &$members) {
             usort($members, $byidasc);
         }
         unset($members);
 
-        $sessionlabels = self::fisher_yates_shuffle(array_keys($sessiongroups), $randomsource);
         $trackids = self::fisher_yates_shuffle(array_keys($trackgroups), $randomsource);
         $ungrouped = self::fisher_yates_shuffle($ungrouped, $randomsource);
 
         $trackidcache = [];
 
-        // Priority 1: session-tag groups.
-        foreach ($sessionlabels as $label) {
-            $members = $sessiongroups[$label];
-
-            $groupplaced = self::try_place_group_consecutive(
-                $confschedulerid,
-                $members,
-                $roomids,
-                $durationseconds,
-                $windowstart,
-                $windowend,
-                $gapseconds,
-                $randomsource
-            );
-
-            if ($groupplaced) {
-                $summary['scheduled'] += count($members);
-                continue;
-            }
-
-            foreach ($members as $submission) {
-                $placed = self::try_place_single(
-                    $confschedulerid,
-                    (int) $submission->id,
-                    $roomids,
-                    $durationseconds,
-                    $windowstart,
-                    $windowend,
-                    $gapseconds,
-                    null,
-                    $randomsource,
-                    null,
-                    $trackidcache
-                );
-                if ($placed !== null) {
-                    $summary['scheduled']++;
-                } else {
-                    $summary['skipped']++;
-                    $summary['skippedreasons'][] = self::autoscheduler_skip_reason($submission, 'nofit');
-                }
-            }
-        }
-
-        // Priority 2: track groups (same-room preference, soft same-track/
+        // Priority 1: track groups (same-room preference, soft same-track/
         // different-room overlap avoidance).
         foreach ($trackids as $trackid) {
             $preferredroomid = null;
@@ -1043,7 +907,7 @@ class api {
             }
         }
 
-        // Everything else: no grouping preference.
+        // Priority 2: everything else, no grouping preference.
         foreach ($ungrouped as $submission) {
             $placed = self::try_place_single(
                 $confschedulerid,
@@ -1341,81 +1205,6 @@ class api {
         }
 
         return null;
-    }
-
-    /**
-     * Attempts to place a whole session-tag group consecutively (back to
-     * back, with exactly the GapSnap minimum gap between members) in a single
-     * room. Tries every room, and within a room every candidate start time
-     * for the group's first member; if any member of the chain fails to
-     * place (or would run past $windowend), every slot placed so far in that
-     * attempt is rolled back via delete_slot() and the next candidate start
-     * time (or room) is tried. Returns as soon as one full chain succeeds
-     * (nothing is rolled back in that case: the chain IS the real placement).
-     *
-     * @param int $confschedulerid The confscheduler instance id
-     * @param \stdClass[] $members The group's submissions, in the order they should be placed
-     * @param int[] $roomids All room ids in this instance
-     * @param int $durationseconds Duration each member needs
-     * @param int $windowstart Unix timestamp
-     * @param int $windowend Unix timestamp
-     * @param int $gapseconds The instance's configured GapSnap gap, in seconds
-     * @param \Closure $randomsource Source of randomness for this call's room-order shuffle (see make_random_source())
-     * @return bool Whether the whole group was placed consecutively in one room
-     */
-    protected static function try_place_group_consecutive(
-        int $confschedulerid,
-        array $members,
-        array $roomids,
-        int $durationseconds,
-        int $windowstart,
-        int $windowend,
-        int $gapseconds,
-        \Closure $randomsource
-    ): bool {
-        foreach (self::fisher_yates_shuffle($roomids, $randomsource) as $roomid) {
-            $roomslots = self::get_slots_in_room($confschedulerid, $roomid);
-            $starts = self::candidate_start_times_for_room(
-                $roomslots,
-                $windowstart,
-                $windowend,
-                $durationseconds,
-                $gapseconds
-            );
-
-            foreach ($starts as $start) {
-                $placedslotids = [];
-                $currentstart = $start;
-                $ok = true;
-
-                foreach ($members as $submission) {
-                    $endtime = $currentstart + $durationseconds;
-                    if ($endtime > $windowend) {
-                        $ok = false;
-                        break;
-                    }
-
-                    $slotid = self::attempt_place($confschedulerid, $roomid, $currentstart, $endtime, (int) $submission->id);
-                    if ($slotid === null) {
-                        $ok = false;
-                        break;
-                    }
-
-                    $placedslotids[] = $slotid;
-                    $currentstart = $endtime + $gapseconds;
-                }
-
-                if ($ok) {
-                    return true;
-                }
-
-                foreach ($placedslotids as $slotid) {
-                    self::delete_slot($slotid);
-                }
-            }
-        }
-
-        return false;
     }
 
     /**

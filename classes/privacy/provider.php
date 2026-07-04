@@ -28,10 +28,6 @@ namespace mod_confscheduler\privacy;
  *   table, which is that plugin's privacy responsibility, not personal data owned
  *   here) or a label for a span-block (e.g. "Lunch Break").
  * - confscheduler_slotroom: a junction of slotid/roomid only.
- * - confscheduler_sessiontag: an organiser-assigned "session" grouping label
- *   for a submissionid (the same kind of cross-plugin reference as
- *   confscheduler_slot's submissionid, not personal data owned here), used
- *   only by the autoscheduler.
  *
  * None of these rows carry a userid, or any other column identifying an individual.
  * The "my timetable" favourite state (mod/confscheduler:favourite) is written

@@ -66,11 +66,6 @@
     color: #555;
 }
 
-.mod_confscheduler-unscheduled-sessiontag {
-    margin-top: 0.35rem;
-    font-size: 0.75rem;
-}
-
 .mod_confscheduler-grid-scroll {
     flex: 1 1 auto;
     overflow-x: auto;
@@ -210,6 +205,48 @@
     opacity: 0.85;
 }
 
+/*
+ * Live drag-preview highlight (Revision round 1 feedback: "the new start/end times
+ * should be highlighted, and clearly visible while dragging so that when dropped, the
+ * block can be exactly where the user wanted it"). Positioned/sized to match exactly
+ * the room(s)/time range a drop right now would commit to -- see
+ * amd/src/scheduler_grid.js's showDragPreview().
+ */
+.mod_confscheduler-drag-preview {
+    position: absolute;
+    z-index: 9999;
+    pointer-events: none;
+    border: 2px dashed #2c7be5;
+    background: rgba(44, 123, 229, 0.15);
+    border-radius: 3px;
+    box-sizing: border-box;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+}
+
+.mod_confscheduler-drag-preview-invalid {
+    /* Shown when no GapSnap-valid position exists nearby, so the drop will fall back
+       to submitting the raw (server-rejected) position -- see gapsnap_utils.js. */
+    border-color: #d63939;
+    background: rgba(214, 57, 57, 0.12);
+}
+
+.mod_confscheduler-drag-preview-label {
+    margin-top: 2px;
+    padding: 1px 6px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: #fff;
+    background: #2c7be5;
+    border-radius: 2px;
+    white-space: nowrap;
+}
+
+.mod_confscheduler-drag-preview-invalid .mod_confscheduler-drag-preview-label {
+    background: #d63939;
+}
+
 .mod_confscheduler-block-remove {
     position: absolute;
     top: 1px;
@@ -306,13 +343,39 @@ a.mod_confscheduler-track-pill:focus {
     white-space: nowrap;
 }
 
+/*
+ * A visible grip bar, not just an invisible hit area with a cursor change (Revision
+ * round 1 feedback: "add a visible handle to the bottom edge of scheduled blocks to
+ * indicate more clearly that it's possible to edit the presentation length by
+ * dragging that bottom edge"). Only rendered in edit mode -- Display mode's read-only
+ * blocks have no resize handle element at all.
+ */
 .mod_confscheduler-block-resize {
     position: absolute;
     left: 0;
     right: 0;
     bottom: 0;
-    height: 6px;
+    height: 10px;
     cursor: ns-resize;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    padding-bottom: 2px;
+}
+
+.mod_confscheduler-block-resize::after {
+    content: '';
+    width: 28px;
+    height: 3px;
+    border-radius: 2px;
+    /* Default dark-on-light grip for a plain (uncoloured) presentation block; a
+       coloured span block overrides both custom properties inline -- see scheduler_grid.js. */
+    background: var(--mod_confscheduler-resize-grip-colour, rgba(0, 0, 0, 0.28));
+}
+
+.mod_confscheduler-block-resize:hover::after,
+.mod_confscheduler-block-resize:focus-visible::after {
+    background: var(--mod_confscheduler-resize-grip-colour-hover, rgba(0, 0, 0, 0.55));
 }
 
 .mod_confscheduler-fullscreen {

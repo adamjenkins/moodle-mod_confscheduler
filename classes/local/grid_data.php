@@ -123,8 +123,6 @@ class grid_data {
             $slotsout[] = $entry;
         }
 
-        $sessiontags = \mod_confscheduler\api::get_session_tags($confschedulerid);
-
         $accepted = display_list::get_accepted_submissions((int) $confprogram->id, (int) $confsubmissionscm->instance);
         $unscheduledout = [];
         foreach ($accepted as $submission) {
@@ -140,7 +138,6 @@ class grid_data {
                     ? format_string($tracksbyid[(int) $submission->trackid], true, ['escape' => false])
                     : null,
                 'trackid'      => $hastrack ? (int) $submission->trackid : null,
-                'sessiontag'   => format_string($sessiontags[(int) $submission->id] ?? '', true, ['escape' => false]),
             ];
         }
 

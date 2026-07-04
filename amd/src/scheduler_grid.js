@@ -24,6 +24,7 @@ import {getString, getStrings} from 'core/str';
 import * as Repository from 'mod_confscheduler/repository';
 import * as DayUtils from 'mod_confscheduler/day_utils';
 import * as ColourUtils from 'mod_confscheduler/colour_utils';
+import * as GapSnapUtils from 'mod_confscheduler/gapsnap_utils';
 
 /**
  * Edit-mode drag-and-drop schedule grid (Phase 3.3).
@@ -40,12 +41,27 @@ import * as ColourUtils from 'mod_confscheduler/colour_utils';
  * unscheduled submission, moving or resizing a scheduled block) and
  * core/sortable_list for 1D column-header reordering, per this project's
  * README architecture decision. GapSnap is enforced authoritatively
- * server-side (see \mod_confscheduler\api::validate_placement()); the
- * client-side snap-to-5-minutes on drop is a UX convenience only. Because the
+ * server-side (see \mod_confscheduler\api::validate_placement()), which is
+ * entirely UNCHANGED by the auto-nudge redesign below: it remains the sole
+ * authoritative check regardless of what the client computes or submits.
+ *
+ * GapSnap auto-nudge (Revision round 1 batch B, 2026-07-03): a drop that would
+ * violate GapSnap or truly overlap another block is no longer submitted as-is
+ * to be hard-rejected with an error notification. beginScheduleDrag() and
+ * beginMoveDrag() instead compute the nearest valid position via the shared,
+ * pure amd/src/gapsnap_utils.js (a client-side re-implementation of
+ * validate_placement()'s overlap/gap math -- see that module's docblock for
+ * why, and for the cross-reference comment kept in sync with the PHP side)
+ * and submit THAT position instead. If no valid position exists nearby (a
+ * genuinely packed room), the original raw position is submitted and the
+ * pre-existing error-notification+revert behaviour still applies -- that
+ * fallback path is a deliberately-kept safety net, not removed. Because the
  * real block element is never moved/mutated in the DOM until the server
- * confirms success, a rejected drag "reverts" for free: the block simply
- * stays where it always was, and Notification.exception() surfaces the
- * server's error.
+ * confirms success, a rejected drag still "reverts" for free in that case:
+ * the block simply stays where it always was, and Notification.exception()
+ * surfaces the server's error. The unrelated client-side snap-to-5-minutes on
+ * the RAW drop position (before any nudge is computed) remains a separate UX
+ * convenience only, as before.
  *
  * Day/page pagination (Phase 3.5): the grid renders one calendar day's slots
  * at a time via a day <select> in the toolbar, using the shared, pure
@@ -175,6 +191,66 @@ const timeToY = (state, timestamp) => (timestamp - state.timelineStart) / 60 * P
  * @return {Number} Unix timestamp (seconds)
  */
 const yToTime = (state, y) => state.timelineStart + Math.round((y / PX_PER_MINUTE)) * 60;
+
+/**
+ * Live drag-preview highlight (Revision round 1 feedback: "the new start/end times
+ * should be highlighted, and clearly visible while dragging so that when dropped, the
+ * block can be exactly where the user wanted it"). A single overlay element, created on
+ * demand and reused for the lifetime of one drag, repositioned/resized on every pointer
+ * move to show EXACTLY the room(s) and (possibly GapSnap-nudged) time range a drop right
+ * now would commit to -- both beginMoveDrag() and beginScheduleDrag() compute this
+ * preview using the identical roomids/start/end values they then actually submit on
+ * drop, so the preview can never show a different outcome than what actually happens.
+ *
+ * @param {Object} state The module state object
+ * @param {Object} target {roomids, start, end, valid} as computed by the caller
+ */
+const showDragPreview = (state, target) => {
+    if (!state.dragPreviewEl) {
+        const el = document.createElement('div');
+        el.className = 'mod_confscheduler-drag-preview';
+        el.setAttribute('aria-hidden', 'true');
+        const label = document.createElement('div');
+        label.className = 'mod_confscheduler-drag-preview-label';
+        el.appendChild(label);
+        state.columnsWrap.appendChild(el);
+        state.dragPreviewEl = el;
+    }
+
+    const el = state.dragPreviewEl;
+    const indices = target.roomids
+        .map((id) => state.rooms.findIndex((room) => room.id === id))
+        .filter((index) => index >= 0);
+    if (!indices.length) {
+        el.style.display = 'none';
+        return;
+    }
+
+    const minIndex = Math.min(...indices);
+    const span = Math.max(...indices) - minIndex + 1;
+
+    el.style.display = 'block';
+    el.classList.toggle('mod_confscheduler-drag-preview-invalid', !target.valid);
+    el.style.left = (minIndex * COLUMN_WIDTH) + 'px';
+    el.style.width = (span * COLUMN_WIDTH - 6) + 'px';
+    el.style.top = timeToY(state, target.start) + 'px';
+    el.style.height = Math.max(20, timeToY(state, target.end) - timeToY(state, target.start)) + 'px';
+    el.querySelector('.mod_confscheduler-drag-preview-label').textContent =
+        `${formatTime(target.start)}–${formatTime(target.end)}`;
+};
+
+/**
+ * Removes the live drag-preview highlight, if one is currently shown. Called once a
+ * drag ends (whether committed or cancelled) so it never lingers on the grid.
+ *
+ * @param {Object} state The module state object
+ */
+const clearDragPreview = (state) => {
+    if (state.dragPreviewEl) {
+        state.dragPreviewEl.remove();
+        state.dragPreviewEl = null;
+    }
+};
 
 /**
  * Computes the visible timeline range (state.timelineStart/timelineEnd) from the currently loaded slots,
@@ -452,10 +528,22 @@ const renderBlock = (state, columnsWrap, slot) => {
     block.dataset.roomids = JSON.stringify(slot.roomids);
     block.dataset.starttime = slot.starttime;
     block.dataset.endtime = slot.endtime;
+    // Needed by the GapSnap auto-nudge computation (beginMoveDrag()) to know whether this
+    // block is a column-spanning block (submissionid null), which is exempt from the gap
+    // check against another span block -- see gapsnap_utils.js's requiredGapSeconds().
+    // dataset values are always strings; '' (not the literal string "null") represents
+    // null here, mirroring how scheduler_display.js already stores this same field.
+    block.dataset.submissionid = slot.submissionid !== null ? slot.submissionid : '';
     block.style.left = (minIndex * COLUMN_WIDTH) + 'px';
     block.style.width = (span * COLUMN_WIDTH - 6) + 'px';
     block.style.top = timeToY(state, slot.starttime) + 'px';
     block.style.height = Math.max(20, timeToY(state, slot.endtime) - timeToY(state, slot.starttime)) + 'px';
+
+    // Used below to tint the resize-handle grip bar to match the block's own
+    // auto-contrast text colour, so the grip stays visible against a coloured span
+    // block's background too (plain presentation blocks have no background colour,
+    // so this stays null for them and the grip keeps its default dark-on-light look).
+    let textColour = null;
 
     const removeBtn = document.createElement('button');
     removeBtn.type = 'button';
@@ -467,7 +555,7 @@ const renderBlock = (state, columnsWrap, slot) => {
     if (isSpanBlock) {
         if (slot.colour) {
             block.style.backgroundColor = slot.colour;
-            const textColour = ColourUtils.contrastTextColour(slot.colour);
+            textColour = ColourUtils.contrastTextColour(slot.colour);
             if (textColour) {
                 block.style.color = textColour;
             }
@@ -525,6 +613,20 @@ const renderBlock = (state, columnsWrap, slot) => {
     const resizeHandle = document.createElement('div');
     resizeHandle.className = 'mod_confscheduler-block-resize';
     resizeHandle.setAttribute('aria-hidden', 'true');
+    if (textColour) {
+        // Tint the grip bar to match the block's own auto-contrast text colour, so it
+        // stays visible against a coloured span block's background (see styles.css's
+        // default dark-on-light grip, sized for a plain, uncoloured presentation block).
+        const isWhite = textColour === '#ffffff';
+        resizeHandle.style.setProperty(
+            '--mod_confscheduler-resize-grip-colour',
+            isWhite ? 'rgba(255, 255, 255, 0.55)' : 'rgba(0, 0, 0, 0.28)'
+        );
+        resizeHandle.style.setProperty(
+            '--mod_confscheduler-resize-grip-colour-hover',
+            isWhite ? 'rgba(255, 255, 255, 0.85)' : 'rgba(0, 0, 0, 0.55)'
+        );
+    }
     block.appendChild(resizeHandle);
 
     columnsWrap.appendChild(block);
@@ -562,39 +664,7 @@ const renderUnscheduledPanel = (state) => {
             card.appendChild(buildTrackPill(state.programUrl, item.trackid, item.track, state.strings.filterbytrack));
         }
 
-        const sessiontag = document.createElement('input');
-        sessiontag.type = 'text';
-        sessiontag.className = 'form-control form-control-sm mod_confscheduler-unscheduled-sessiontag';
-        sessiontag.maxLength = 255;
-        sessiontag.value = item.sessiontag || '';
-        sessiontag.placeholder = state.strings.sessiontagplaceholder;
-        sessiontag.setAttribute('aria-label', state.strings.sessiontag);
-        sessiontag.dataset.submissionid = item.submissionid;
-        card.appendChild(sessiontag);
-
         list.appendChild(card);
-    });
-};
-
-/**
- * Saves a submission's session-tag label after the organiser edits the
- * inline input in the unscheduled panel. No grid re-render is needed: the
- * session tag never changes which submissions are scheduled/unscheduled, it
- * only affects a later autoscheduler run.
- *
- * @param {Object} state The module state object
- * @param {HTMLElement} inputEl The session-tag input that changed
- */
-const onSessionTagChange = (state, inputEl) => {
-    const submissionid = Number(inputEl.dataset.submissionid);
-    const label = inputEl.value.trim();
-
-    inputEl.disabled = true;
-    Promise.resolve(Repository.setSessionTag(state.cmid, submissionid, label)).then((result) => {
-        inputEl.value = result.label;
-        return result;
-    }).catch(Notification.exception).finally(() => {
-        inputEl.disabled = false;
     });
 };
 
@@ -603,6 +673,13 @@ const onSessionTagChange = (state, inputEl) => {
  * On drop, the new position is computed from where the drag proxy was released, snapped to
  * SNAP_MINUTES, and sent to the server; the real block element is left untouched until then,
  * so a server rejection needs no explicit "revert" beyond removing the proxy.
+ *
+ * GapSnap auto-nudge (Revision round 1 batch B, 2026-07-03): if the raw dropped position
+ * would violate GapSnap or truly overlap another block in the target room(s), the nudged
+ * (nearest valid) position from amd/src/gapsnap_utils.js is submitted instead of the raw
+ * one -- see that module's docblock. If no valid position exists nearby, the raw (invalid)
+ * position is submitted as before, so the existing server-rejection+revert path still
+ * applies to the genuine "room is packed" edge case.
  *
  * @param {Object} state The module state object
  * @param {Event} event The originating mousedown/touchstart event
@@ -637,30 +714,66 @@ const beginMoveDrag = (state, event, blockEl) => {
     const duration = endtime - starttime;
     const roomids = JSON.parse(blockEl.dataset.roomids);
     const span = roomids.length;
+    const submissionid = blockEl.dataset.submissionid === '' ? null : Number(blockEl.dataset.submissionid);
 
-    Dragdrop.start(event, proxy, () => {}, (pageX, pageY, proxyEl) => {
-        const offset = proxyEl.offset();
-        proxyEl.remove();
-        blockEl.classList.remove('mod_confscheduler-block-dragging');
-
+    // Shared by the live preview (onMove) and the actual commit (onDrop), so the preview
+    // shown while dragging can never disagree with what a drop right now would do -- see
+    // showDragPreview()'s docblock.
+    const computeTarget = (offsetLeft, offsetTop) => {
         if (!state.rooms.length) {
-            return;
+            return null;
         }
 
         const columnsRect = state.columnsWrap.getBoundingClientRect();
-        const relX = offset.left - (columnsRect.left + window.scrollX);
-        const relY = offset.top - (columnsRect.top + window.scrollY);
+        const relX = offsetLeft - (columnsRect.left + window.scrollX);
+        const relY = offsetTop - (columnsRect.top + window.scrollY);
 
         const index = clamp(Math.round(relX / COLUMN_WIDTH), 0, Math.max(state.rooms.length - span, 0));
-        const newStart = snapTime(yToTime(state, relY), SNAP_MINUTES);
-        const newEnd = newStart + duration;
-        const newRoomids = state.rooms.slice(index, index + span).map((room) => room.id);
+        const desiredStart = snapTime(yToTime(state, relY), SNAP_MINUTES);
+        const targetRoomids = state.rooms.slice(index, index + span).map((room) => room.id);
 
-        if (newStart === starttime && JSON.stringify(newRoomids) === JSON.stringify(roomids)) {
+        const gapseconds = (state.gapminutes || 0) * 60;
+        const nudged = GapSnapUtils.findNudgedPosition(
+            desiredStart,
+            duration,
+            targetRoomids,
+            submissionid,
+            state.allSlots,
+            gapseconds,
+            slotid
+        );
+        // Fall back to the raw (possibly invalid) desired position when no valid nearby
+        // position exists (a genuinely packed room): the server's authoritative
+        // validate_placement() will reject it and the pre-existing error+revert path
+        // (Notification.exception(), block never actually moved in the DOM) still applies.
+        const start = nudged !== null ? nudged : desiredStart;
+        return {roomids: targetRoomids, start, end: start + duration, valid: nudged !== null};
+    };
+
+    Dragdrop.start(event, proxy, (pageX, pageY, proxyEl) => {
+        const offset = proxyEl.offset();
+        const target = computeTarget(offset.left, offset.top);
+        if (target) {
+            showDragPreview(state, target);
+        } else {
+            clearDragPreview(state);
+        }
+    }, (pageX, pageY, proxyEl) => {
+        const offset = proxyEl.offset();
+        proxyEl.remove();
+        blockEl.classList.remove('mod_confscheduler-block-dragging');
+        clearDragPreview(state);
+
+        const target = computeTarget(offset.left, offset.top);
+        if (!target) {
             return;
         }
 
-        Repository.rescheduleSlot(state.cmid, slotid, newRoomids, newStart, newEnd)
+        if (target.start === starttime && JSON.stringify(target.roomids) === JSON.stringify(roomids)) {
+            return;
+        }
+
+        Repository.rescheduleSlot(state.cmid, slotid, target.roomids, target.start, target.end)
             .then(() => fetchAndRenderBody(state))
             .catch(Notification.exception);
     });
@@ -668,6 +781,12 @@ const beginMoveDrag = (state, event, blockEl) => {
 
 /**
  * Begins a vertical-only drag of a block's resize handle, to change only its end time.
+ *
+ * Deliberately NOT covered by the GapSnap auto-nudge redesign (Revision round 1 batch B,
+ * 2026-07-03; see beginMoveDrag()/beginScheduleDrag()): the explicit task scope for that
+ * change was "a fresh drag-from-unscheduled-panel placement and an existing-block
+ * reschedule drag", not resizing. A resize that would violate GapSnap/overlap still hits
+ * the pre-existing server-rejection+revert path unchanged.
  *
  * @param {Object} state The module state object
  * @param {Event} event The originating mousedown/touchstart event
@@ -725,6 +844,9 @@ const beginResizeDrag = (state, event, blockEl) => {
  * The new block is given a fixed DEFAULT_DURATION_MINUTES duration; the block's height
  * (and hence its end time) can then be adjusted with the resize handle once scheduled.
  *
+ * GapSnap auto-nudge (Revision round 1 batch B, 2026-07-03): see beginMoveDrag()'s
+ * docblock -- the same nudge-or-fall-back-to-raw-position logic applies here.
+ *
  * @param {Object} state The module state object
  * @param {Event} event The originating mousedown/touchstart event
  * @param {HTMLElement} cardEl The unscheduled-panel card being dragged
@@ -752,28 +874,65 @@ const beginScheduleDrag = (state, event, cardEl) => {
     const submissionid = Number(cardEl.dataset.submissionid);
     const duration = DEFAULT_DURATION_MINUTES * 60;
 
-    Dragdrop.start(event, proxy, () => {}, (pageX, pageY, proxyEl) => {
-        const offset = proxyEl.offset();
-        proxyEl.remove();
-
+    // Shared by the live preview (onMove) and the actual commit (onDrop) -- see
+    // beginMoveDrag()'s identical pattern and showDragPreview()'s docblock. Returns
+    // null when the candidate position is outside the grid entirely (dropping there
+    // is a no-op, matching the pre-existing "leave the card in the unscheduled panel"
+    // behaviour -- the preview simply stays hidden in that case too).
+    const computeTarget = (offsetLeft, offsetTop) => {
         if (!state.rooms.length) {
-            return;
+            return null;
         }
 
         const columnsRect = state.columnsWrap.getBoundingClientRect();
-        const relX = offset.left - (columnsRect.left + window.scrollX);
-        const relY = offset.top - (columnsRect.top + window.scrollY);
+        const relX = offsetLeft - (columnsRect.left + window.scrollX);
+        const relY = offsetTop - (columnsRect.top + window.scrollY);
 
         if (relX < 0 || relX >= state.rooms.length * COLUMN_WIDTH || relY < 0) {
-            // Dropped outside the grid: leave the card in the unscheduled panel, no-op.
-            return;
+            return null;
         }
 
         const index = clamp(Math.floor(relX / COLUMN_WIDTH), 0, state.rooms.length - 1);
-        const start = snapTime(yToTime(state, relY), SNAP_MINUTES);
+        const desiredStart = snapTime(yToTime(state, relY), SNAP_MINUTES);
         const roomids = [state.rooms[index].id];
 
-        Repository.scheduleSubmission(state.cmid, submissionid, roomids, start, start + duration)
+        const gapseconds = (state.gapminutes || 0) * 60;
+        const nudged = GapSnapUtils.findNudgedPosition(
+            desiredStart,
+            duration,
+            roomids,
+            submissionid,
+            state.allSlots,
+            gapseconds,
+            null
+        );
+        // Fall back to the raw (possibly invalid) desired position when no valid nearby
+        // position exists: the server's authoritative validate_placement() will reject
+        // it and the pre-existing error-notification path still applies (the card simply
+        // stays in the unscheduled panel, as it already does today on any rejection).
+        const start = nudged !== null ? nudged : desiredStart;
+        return {roomids, start, end: start + duration, valid: nudged !== null};
+    };
+
+    Dragdrop.start(event, proxy, (pageX, pageY, proxyEl) => {
+        const offset = proxyEl.offset();
+        const target = computeTarget(offset.left, offset.top);
+        if (target) {
+            showDragPreview(state, target);
+        } else {
+            clearDragPreview(state);
+        }
+    }, (pageX, pageY, proxyEl) => {
+        const offset = proxyEl.offset();
+        proxyEl.remove();
+        clearDragPreview(state);
+
+        const target = computeTarget(offset.left, offset.top);
+        if (!target) {
+            return;
+        }
+
+        Repository.scheduleSubmission(state.cmid, submissionid, target.roomids, target.start, target.end)
             .then(() => fetchAndRenderAll(state))
             .catch(Notification.exception);
     });
@@ -1147,12 +1306,6 @@ const bindEvents = (state) => {
     state.root.addEventListener('touchstart', startDrag, {passive: false});
 
     state.root.addEventListener('change', (event) => {
-        const sessiontagInput = event.target.closest('.mod_confscheduler-unscheduled-sessiontag');
-        if (sessiontagInput) {
-            onSessionTagChange(state, sessiontagInput);
-            return;
-        }
-
         const daySelect = event.target.closest('.mod_confscheduler-day-select');
         if (daySelect) {
             state.selectedDay = daySelect.value;
@@ -1189,7 +1342,7 @@ export const init = async(cmid, confschedulerid, programurl = null) => {
     const [
         unschedule, favourite, editroom, deleteroom, confirmdeleteroom,
         cancel, movecolumn, addroom, addspanblock, editspanblock, autoschedulerrun,
-        sessiontag, sessiontagplaceholder, filterbytrack,
+        filterbytrack,
     ] = await getStrings([
         {key: 'unschedule', component: 'mod_confscheduler'},
         {key: 'favourite', component: 'mod_confscheduler'},
@@ -1202,8 +1355,6 @@ export const init = async(cmid, confschedulerid, programurl = null) => {
         {key: 'addspanblock', component: 'mod_confscheduler'},
         {key: 'editspanblock', component: 'mod_confscheduler'},
         {key: 'autoschedulerrun', component: 'mod_confscheduler'},
-        {key: 'sessiontag', component: 'mod_confscheduler'},
-        {key: 'sessiontagplaceholder', component: 'mod_confscheduler'},
         {key: 'filterbytrack', component: 'mod_confscheduler'},
     ]);
 
@@ -1223,10 +1374,11 @@ export const init = async(cmid, confschedulerid, programurl = null) => {
         timelineEnd: 0,
         columnsWrap: null,
         sortableList: null,
+        dragPreviewEl: null,
         strings: {
             unschedule, favourite, editroom, deleteroom, confirmdeleteroom,
             cancel, movecolumn, addroom, addspanblock, editspanblock, autoschedulerrun,
-            sessiontag, sessiontagplaceholder, filterbytrack,
+            filterbytrack,
         },
     };
 

@@ -55,6 +55,79 @@
     IDOR-scoping pattern (instance-scoped slot id, identical not-found/wrong-instance
     message) every other write endpoint here already uses.
 
+- Revision round 1 batch B (user feedback, 2026-07-03): the "session" tagging feature
+  removed entirely, edit-mode gating (reusing Moodle's own site-wide Edit mode switch,
+  separate from merely holding the capability), and a GapSnap UX redesign (auto-nudge
+  instead of hard-reject on drag-drop). Schema bumped once (`2026070406`, dropping
+  `confscheduler_sessiontag`); see `db/upgrade.php`.
+  - **"Session" tagging removed**: per explicit feedback ("In the unscheduled blocks
+    there is a 'session' setting, this should be removed"), this reverses part of
+    Phase 3.4's autoscheduler design. This is a genuine removal, not a stop-using: the
+    `confscheduler_sessiontag` table is dropped by a real `db/upgrade.php` step
+    (`$dbman->table_exists()` + `$dbman->drop_table()`), not merely abandoned in the
+    schema. Removed: `api::set_session_tag()`/`get_session_tags()` (and the
+    now-unused `try_place_group_consecutive()` helper, confirmed unused elsewhere
+    before deleting); the `mod_confscheduler_set_session_tag` AJAX endpoint
+    (`classes/external/set_session_tag.php`), its `db/services.php` registration, and
+    its test file; the inline session-tag `<input>` and its change handler in the
+    unscheduled panel (`scheduler_grid.js`'s `renderUnscheduledPanel()`/
+    `onSessionTagChange()`) and its CSS; the `sessiontag` field from
+    `grid_data.php`'s payload and `get_grid_data.php`'s return schema; every
+    session-tag lang string and the now-inapplicable "session-grouping labels"
+    mention in `privacy:metadata`; and the session-tag-specific PHPUnit tests
+    (deleted outright, not left failing or commented out).
+    `api::run_autoscheduler()`'s placement priority was previously three tiers
+    (same-session-tag consecutive-same-room, then same-track same-room preference,
+    then unconstrained); it is now two (same-track same-room preference, then
+    unconstrained), with its docblock updated accordingly. A thorough `grep -rin
+    session` sweep across the whole plugin (not just the obvious files) was used to
+    find every reference before starting the removal.
+  - **Edit-mode gating**: whether the interactive drag-and-drop grid can be used is now
+    gated on Moodle's own site-wide "Edit mode" switch (`$PAGE->user_is_editing()`),
+    not purely on holding `mod/confscheduler:manageschedule`. An initial version of
+    this built a plugin-bespoke "Schedule edit mode" toggle with its own persisted
+    user preference and AJAX endpoint; per explicit follow-up feedback, that was
+    scrapped in favour of reusing the course's existing Edit mode switch -- it is
+    already visible in the page header, already restricted to roles with editing
+    capabilities, and users already understand what it does, so a second, plugin-
+    specific toggle would only have added confusion. `view.php` now derives
+    `$editmode` as `$canmanage && $PAGE->user_is_editing()`, exactly mirroring how
+    `mod_confprogram`'s own `view.php` already gates its organiser controls. A
+    `manageschedule` holder sees the same read-only Display mode as everyone else
+    while course editing is off, and a small notification points them at the real
+    switch; turning course editing on reveals the interactive grid. No new
+    capability, AJAX endpoint, schema, or stored preference was needed -- this
+    plugin still stores no personal data of its own, so `classes/privacy/provider.php`
+    remains a `null_provider`, unchanged.
+  - **GapSnap UX redesign (auto-nudge instead of hard-reject)**: per explicit feedback
+    ("GapSnap should automatically have sessions 'bounce' off existing blocks without
+    throwing error:gapviolation or error:timeoverlap type errors ... automatically
+    nudges (or snaps) the blocks the appropriate distance away"), a drag-and-drop drop
+    that would violate GapSnap or truly overlap another block in the same room is no
+    longer submitted as-is to be hard-rejected. A new, pure `amd/src/gapsnap_utils.js`
+    module re-implements `api::validate_placement()`'s exact overlap/gap math
+    client-side (`starttime < otherend && endtime > otherstart` for overlap; `gap =
+    starttime >= otherend ? starttime - otherend : otherstart - endtime` compared
+    against the configured gap otherwise; both span-block-exempt the same way) --
+    this is the one place in the project where the same validation logic genuinely
+    needs to exist in two languages (there is no way to call PHP synchronously
+    mid-drag on the client), and the two implementations cross-reference each other
+    in their docblocks to stay in sync by hand. `beginScheduleDrag()`/
+    `beginMoveDrag()` in `scheduler_grid.js` now compute the nearest valid position
+    (searching both forward and backward in time from the raw drop position, picking
+    whichever is closer, ties broken toward forward/later per the feedback's own "eg.
+    5 min later" example) and submit THAT position; the server's
+    `validate_placement()` is completely unchanged and remains the sole
+    authoritative check, so a client-side nudge bug can at worst cause a server
+    rejection, never an actually-invalid save. If no valid position exists nearby
+    (room genuinely packed), the raw position is submitted and the pre-existing
+    error-notification+revert path is deliberately kept as the fallback for that
+    edge case. Not applied to block resizing (out of this batch's explicit scope).
+    Verified live with a deliberately crowded room (see the live-verification notes
+    for this round); no JS unit-test harness exists anywhere in this project, so this
+    module -- like `day_utils.js`/`colour_utils.js` before it -- relies on that live
+    verification rather than an automated JS unit test.
+
 - Phase 3.5: read-only Display mode, "my timetable" toggle, day/page pagination
   (shared between Display and edit modes), and print support. All client-side
   over the existing `get_grid_data` payload -- no new AJAX endpoints, no

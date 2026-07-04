@@ -11,8 +11,8 @@ Part of the [Conference Tools](https://github.com/adamjenkins/moodle-conference-
 
 ## What it does
 
-- **Edit mode**: a time × room grid. Drag accepted presentations from an unscheduled panel into slots, and reschedule by dragging within the grid. Rooms are editable, colour-themeable, and re-orderable, with column header text colour automatically switching between black/white for legibility against the chosen colour. "GapSnap" enforces a configurable gap between presentations while dragging. An autoscheduler can populate a timespan automatically, prioritising same-session and same-track grouping. Column-spanning blocks (with their own optional colour theme, same auto-contrast text) support plenaries/lunch, and are fully editable in place after creation, not just add/delete. Track pill badges link through to the linked `mod_confprogram` instance's accepted-submissions list, filtered to that track. A day selector pages a multi-day schedule one calendar day at a time.
-- **Display mode** (`mod/confscheduler:viewschedule` without `:manageschedule`): a read-only rendering of the same grid data. Blocks link to the presentation's `mod_confprogram` page (both a real `<a href>` fallback and, with JS, an in-place modal identical to `mod_confprogram`'s own). A "my timetable" toggle highlights favourited presentations and greys out the rest, persisted in `sessionStorage` per instance. The same day selector as edit mode pages a multi-day schedule. Printable in colour or black & white, at A4/A3/A2 in either orientation, via CSS only (no PDF generation).
+- **Edit mode** (shown only while Moodle's own site-wide "Edit mode" switch is on, for a `mod/confscheduler:manageschedule` holder -- see "Architecture notes" below, not just holding the capability): a time × room grid. Drag accepted presentations from an unscheduled panel into slots, and reschedule by dragging within the grid. GapSnap automatically nudges a dropped/dragged block to the nearest valid position instead of hard-rejecting an invalid drop (see "Architecture notes" below). Rooms are editable, colour-themeable, and re-orderable, with column header text colour automatically switching between black/white for legibility against the chosen colour. An autoscheduler can populate a timespan automatically, prioritising same-track grouping. Column-spanning blocks (with their own optional colour theme, same auto-contrast text) support plenaries/lunch, and are fully editable in place after creation, not just add/delete. Track pill badges link through to the linked `mod_confprogram` instance's accepted-submissions list, filtered to that track. A day selector pages a multi-day schedule one calendar day at a time.
+- **Display mode** (Moodle's site-wide Edit mode off, or `mod/confscheduler:viewschedule` without `:manageschedule`): a read-only rendering of the same grid data. Blocks link to the presentation's `mod_confprogram` page (both a real `<a href>` fallback and, with JS, an in-place modal identical to `mod_confprogram`'s own). A "my timetable" toggle highlights favourited presentations and greys out the rest, persisted in `sessionStorage` per instance. The same day selector as edit mode pages a multi-day schedule. Printable in colour or black & white, at A4/A3/A2 in either orientation, via CSS only (no PDF generation).
 - Implements the `\mod_confscheduler\api::get_schedule_for_submission()` contract that `mod_confprogram`'s Display phase reads for time/room info, and calls `mod_confprogram`'s `api::add_favourite()`/`remove_favourite()` directly to keep favourites in sync both ways.
 - Organisers can declare conference start/end dates in the activity's General settings section (purely informational for now -- not yet derived from or validated against scheduled slots). Dark mode is currently disabled site-wide for this plugin (the CSS is kept, just inert) pending a possible future reintroduction.
 
@@ -39,20 +39,22 @@ Part of the [Conference Tools](https://github.com/adamjenkins/moodle-conference-
   unique (not per-course), so an unvalidated write could leak another
   course's schedule data into this course's Display phase. See `SUMMARY.md`
   in the coordination repo for the full finding.
-- **"Session" grouping is plugin-local (Phase 3.4)**: the autoscheduler's
-  "keep same-session presentations consecutive" priority needs a "session"
-  grouping concept, but no such concept exists anywhere in the shipped
-  `mod_confsubmissions`/`mod_confprogram` schema — only "track" does. Rather
-  than modifying those already-shipped, committed, security-reviewed sibling
-  plugins, `confscheduler_sessiontag` (a table local to this plugin, FK'd to
-  `confscheduler` and cross-plugin-referencing a `confsubmissions_submission`
-  id the same way `confscheduler_slot.submissionid` already does) implements
-  it as an organiser-assigned label scoped entirely to a single
-  `confscheduler` instance. Two submissions sharing the same non-empty label
-  within the same instance are "the same session" for the autoscheduler; see
-  `classes/api.php`'s `set_session_tag()`/`get_session_tags()`/
-  `run_autoscheduler()` docblocks for the full design and the exact
-  placement algorithm.
+- **"Session" grouping was removed entirely (Revision round 1 batch B,
+  2026-07-03)**: Phase 3.4 originally gave the autoscheduler a
+  "keep same-session presentations consecutive" priority tier, backed by a
+  plugin-local `confscheduler_sessiontag` table (an organiser-assigned label
+  scoped to a single `confscheduler` instance, since no "session" concept
+  exists anywhere in the shipped `mod_confsubmissions`/`mod_confprogram`
+  schema — only "track" does). Per explicit user feedback ("In the
+  unscheduled blocks there is a 'session' setting, this should be removed"),
+  this was removed outright rather than merely hidden: the table is dropped
+  by a real `db/upgrade.php` step (not just abandoned in the schema),
+  `api::set_session_tag()`/`get_session_tags()` and the
+  `mod_confscheduler_set_session_tag` AJAX endpoint are deleted, the inline
+  session-tag input is gone from the unscheduled panel, and
+  `run_autoscheduler()` now documents two priority tiers (same-track
+  same-room preference, then unconstrained) instead of three. See
+  changelog.md for the full removal list.
 - **Autoscheduler placement search**: `run_autoscheduler()` deliberately does
   not re-implement `validate_placement()`'s GapSnap/overlap math a second
   time. Every candidate placement it considers is attempted via `add_slot()`
@@ -162,6 +164,53 @@ Part of the [Conference Tools](https://github.com/adamjenkins/moodle-conference-
   check, not a capability check, so it lives in `classes/api.php` rather
   than the external function, per this class's own documented split between
   the two kinds of checks.
+- **Edit-mode gating reuses Moodle's own site-wide Edit mode switch, checked
+  in addition to the capability, not a replacement for it (Revision round 1
+  batch B, 2026-07-03)**: `view.php` previously dispatched purely on
+  `mod/confscheduler:manageschedule`. Per explicit user feedback, holding the
+  capability now only makes the interactive grid *available*; whether it
+  actually renders also depends on `$PAGE->user_is_editing()` -- the same
+  course-wide "Edit mode" switch already shown in the page header and already
+  restricted to editing-capable roles, not a plugin-bespoke toggle. An
+  earlier version of this feature built exactly that -- its own toggle
+  control, a persisted `mod_confscheduler_editmode_<id>` user preference, and
+  a dedicated AJAX endpoint to set it -- but that was deliberately scrapped
+  in favour of the site's existing switch once it became clear a second,
+  differently-named toggle doing a conceptually identical job would only
+  confuse organisers already familiar with the real one. `view.php` derives
+  `$editmode` as `$canmanage && $PAGE->user_is_editing()`, exactly mirroring
+  how `mod_confprogram`'s own `view.php` already gates its organiser
+  controls -- no new capability, AJAX endpoint, schema, or stored preference
+  was needed, and this plugin still stores no personal data of its own. This
+  does not change any existing write-path security boundary: it only changes
+  which read-only-vs-interactive UI a `manageschedule` holder sees by
+  default.
+- **GapSnap now auto-nudges instead of hard-rejecting on drag-drop (Revision
+  round 1 batch B, 2026-07-03)**: per explicit user feedback, a drop that
+  would violate GapSnap or truly overlap another block in the same room is no
+  longer submitted as-is to be rejected with an error notification. A new,
+  pure `amd/src/gapsnap_utils.js` module re-implements
+  `api::validate_placement()`'s overlap/gap math client-side (there is no way
+  to call the PHP version synchronously mid-drag -- this is the one place in
+  the project where the same validation logic genuinely needs to exist in
+  both languages, and the two files cross-reference each other in their
+  docblocks to stay in sync by hand) and computes the nearest valid position,
+  searching both forward and backward in time and preferring whichever is
+  closer to the raw drop position (ties broken in favour of forward/later,
+  matching the original feedback's own example -- "nudges ... eg. 5 min
+  later"). That computed position, not the raw drop position, is what
+  `beginScheduleDrag()`/`beginMoveDrag()` submit; the server's
+  `validate_placement()` is completely unchanged and remains the sole
+  authoritative check, so a bug in the client-side nudge math can at worst
+  cause a server rejection (falling back to the pre-existing
+  error-notification+revert path, deliberately kept as a safety net for the
+  genuine "room is completely packed, no valid nudge exists" case) -- never
+  an actually-invalid placement being saved. Not applied to block resizing
+  (out of this batch's explicit scope; a resize that violates GapSnap still
+  hard-rejects as before). No JS unit-test harness exists anywhere in this
+  project as of this writing, so `gapsnap_utils.js`, like `day_utils.js`/
+  `colour_utils.js` before it, is verified live rather than via an automated
+  JS unit test.
 
 ## Requirements
 

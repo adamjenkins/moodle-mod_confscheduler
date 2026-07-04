@@ -23,8 +23,15 @@ use PHPUnit\Framework\Attributes\CoversClass;
 use ReflectionClass;
 
 /**
- * Tests for the Phase 3.4 additions to \mod_confscheduler\api: the
- * session-tag get/set/clear methods, and the run_autoscheduler() algorithm.
+ * Tests for the Phase 3.4 additions to \mod_confscheduler\api:
+ * run_autoscheduler() and its placement algorithm.
+ *
+ * The "session"-tag tests that originally lived here (set_session_tag()/
+ * get_session_tags() round-trip/chain-of-custody/overlong-label, and the
+ * priority-1 same-session-consecutive-placement tests) were deleted, not
+ * merely skipped or commented out, when the "session" tagging feature was
+ * removed entirely (Revision round 1 batch B, 2026-07-03) -- see
+ * changelog.md and \mod_confscheduler\api::run_autoscheduler()'s docblock.
  *
  * @package    mod_confscheduler
  * @copyright  2026 Adam Jenkins <adam@wisecat.net>
@@ -143,71 +150,6 @@ final class api_autoscheduler_test extends advanced_testcase {
     }
 
     /**
-     * set_session_tag()/get_session_tags() round-trip a label, and clearing
-     * (via null or an empty string) removes the row entirely.
-     */
-    public function test_set_session_tag_round_trip_and_clear(): void {
-        $this->resetAfterTest();
-
-        [$confscheduler, $confprogram, $confsubmissions] = $this->create_full_fixture();
-        $submissionid = $this->create_accepted_submission($confsubmissions, $confprogram);
-
-        $this->assertSame([], api::get_session_tags((int) $confscheduler->id));
-
-        api::set_session_tag((int) $confscheduler->id, $submissionid, 'Morning Keynotes');
-        $this->assertSame(
-            [$submissionid => 'Morning Keynotes'],
-            api::get_session_tags((int) $confscheduler->id)
-        );
-
-        // Updating an existing tag overwrites rather than duplicating.
-        api::set_session_tag((int) $confscheduler->id, $submissionid, 'Afternoon Keynotes');
-        $this->assertSame(
-            [$submissionid => 'Afternoon Keynotes'],
-            api::get_session_tags((int) $confscheduler->id)
-        );
-
-        // Clearing via null removes the row.
-        api::set_session_tag((int) $confscheduler->id, $submissionid, null);
-        $this->assertSame([], api::get_session_tags((int) $confscheduler->id));
-
-        // Clearing via an empty/whitespace-only string also removes it.
-        api::set_session_tag((int) $confscheduler->id, $submissionid, 'Tag Again');
-        api::set_session_tag((int) $confscheduler->id, $submissionid, '   ');
-        $this->assertSame([], api::get_session_tags((int) $confscheduler->id));
-    }
-
-    /**
-     * set_session_tag() rejects a submissionid that does not belong to (or was
-     * not accepted by) this instance's linked confprogram/confsubmissions chain
-     * -- the same chain-of-custody check add_slot() performs, and for the same
-     * reason: submission ids are global, not scoped per course.
-     */
-    public function test_set_session_tag_rejects_cross_instance_submission(): void {
-        $this->resetAfterTest();
-
-        [$confscheduler] = $this->create_full_fixture();
-        [, $otherconfprogram, $otherconfsubmissions] = $this->create_full_fixture();
-        $foreignsubmissionid = $this->create_accepted_submission($otherconfsubmissions, $otherconfprogram);
-
-        $this->expectException(\moodle_exception::class);
-        api::set_session_tag((int) $confscheduler->id, $foreignsubmissionid, 'Should Fail');
-    }
-
-    /**
-     * set_session_tag() rejects a label longer than 255 characters.
-     */
-    public function test_set_session_tag_rejects_overlong_label(): void {
-        $this->resetAfterTest();
-
-        [$confscheduler, $confprogram, $confsubmissions] = $this->create_full_fixture();
-        $submissionid = $this->create_accepted_submission($confsubmissions, $confprogram);
-
-        $this->expectException(\invalid_parameter_exception::class);
-        api::set_session_tag((int) $confscheduler->id, $submissionid, str_repeat('x', 256));
-    }
-
-    /**
      * run_autoscheduler() rejects an invalid window (end <= start) rather than
      * silently swapping or clamping it.
      */
@@ -269,103 +211,8 @@ final class api_autoscheduler_test extends advanced_testcase {
     }
 
     /**
-     * Priority 1: two submissions sharing a non-empty session-tag label are
-     * placed consecutively (back to back, exactly GapSnap-gap apart) in the
-     * SAME room.
-     */
-    public function test_run_autoscheduler_places_session_group_consecutively_same_room(): void {
-        global $DB;
-        $this->resetAfterTest();
-
-        [$confscheduler, $confprogram, $confsubmissions] = $this->create_full_fixture();
-        $DB->set_field('confscheduler', 'gapminutes', 10, ['id' => $confscheduler->id]);
-
-        api::add_room((int) $confscheduler->id, 'Room A');
-        api::add_room((int) $confscheduler->id, 'Room B');
-
-        $first = $this->create_accepted_submission($confsubmissions, $confprogram, 'Keynote Part 1');
-        $second = $this->create_accepted_submission($confsubmissions, $confprogram, 'Keynote Part 2');
-        // An unrelated submission with no tag, to prove grouping actually did something.
-        $this->create_accepted_submission($confsubmissions, $confprogram, 'Unrelated Talk');
-
-        api::set_session_tag((int) $confscheduler->id, $first, 'Keynote Session');
-        api::set_session_tag((int) $confscheduler->id, $second, 'Keynote Session');
-
-        $summary = api::run_autoscheduler(
-            (int) $confscheduler->id,
-            strtotime('2026-09-01 09:00:00'),
-            strtotime('2026-09-01 17:00:00'),
-            30,
-            false,
-            42
-        );
-
-        $this->assertSame(3, $summary['scheduled']);
-        $this->assertSame(0, $summary['skipped']);
-
-        $firstslot = $DB->get_record('confscheduler_slot', ['confscheduler' => $confscheduler->id, 'submissionid' => $first]);
-        $secondslot = $DB->get_record('confscheduler_slot', ['confscheduler' => $confscheduler->id, 'submissionid' => $second]);
-
-        $firstroomids = array_column($DB->get_records('confscheduler_slotroom', ['slotid' => $firstslot->id]), 'roomid');
-        $secondroomids = array_column($DB->get_records('confscheduler_slotroom', ['slotid' => $secondslot->id]), 'roomid');
-        $this->assertSame($firstroomids, $secondroomids, 'Same-session submissions must land in the same room.');
-
-        // Consecutive means exactly the GapSnap minimum gap apart (submission-id
-        // ascending order within the group, so $first comes before $second).
-        $this->assertSame((int) $firstslot->endtime + (10 * MINSECS), (int) $secondslot->starttime);
-
-        $this->assert_no_overlap_or_gap_violation((int) $confscheduler->id, 10);
-    }
-
-    /**
-     * If no single room can fit a whole session-tag group consecutively, each
-     * member falls back to being placed individually rather than being left
-     * unscheduled.
-     */
-    public function test_run_autoscheduler_session_group_falls_back_to_individual_placement(): void {
-        global $DB;
-        $this->resetAfterTest();
-
-        [$confscheduler, $confprogram, $confsubmissions] = $this->create_full_fixture();
-
-        $roomid = api::add_room((int) $confscheduler->id, 'Only Room');
-
-        $first = $this->create_accepted_submission($confsubmissions, $confprogram, 'Session Talk 1');
-        $second = $this->create_accepted_submission($confsubmissions, $confprogram, 'Session Talk 2');
-        api::set_session_tag((int) $confscheduler->id, $first, 'Tight Session');
-        api::set_session_tag((int) $confscheduler->id, $second, 'Tight Session');
-
-        // Pre-occupy the middle of the window in the only room so the pair cannot
-        // be placed back-to-back anywhere, but each member individually still fits
-        // on either side of the blocker.
-        $blocker = $this->create_accepted_submission($confsubmissions, $confprogram, 'Blocker');
-        api::add_slot(
-            (int) $confscheduler->id,
-            [$roomid],
-            strtotime('2026-09-01 09:30:00'),
-            strtotime('2026-09-01 16:30:00'),
-            $blocker
-        );
-
-        $summary = api::run_autoscheduler(
-            (int) $confscheduler->id,
-            strtotime('2026-09-01 09:00:00'),
-            strtotime('2026-09-01 17:00:00'),
-            30,
-            false
-        );
-
-        $this->assertSame(2, $summary['scheduled']);
-        $this->assertSame(0, $summary['skipped']);
-        $this->assertTrue($DB->record_exists('confscheduler_slot', ['submissionid' => $first]));
-        $this->assertTrue($DB->record_exists('confscheduler_slot', ['submissionid' => $second]));
-
-        $this->assert_no_overlap_or_gap_violation((int) $confscheduler->id, 0);
-    }
-
-    /**
-     * Priority 2: two submissions sharing a trackid (and no session tag) are
-     * preferentially placed in the same room.
+     * Priority 1: two submissions sharing a trackid are preferentially placed
+     * in the same room.
      */
     public function test_run_autoscheduler_prefers_same_room_for_track_group(): void {
         global $DB;
@@ -401,11 +248,11 @@ final class api_autoscheduler_test extends advanced_testcase {
     }
 
     /**
-     * An autoscheduler run over a tightly-packed fixture (multiple session
-     * groups, a track group, and ungrouped submissions competing for limited
-     * room capacity, with GapSnap > 0) never produces a true overlap or a
-     * GapSnap violation in the resulting schedule, regardless of the
-     * algorithm's own grouping preferences.
+     * An autoscheduler run over a tightly-packed fixture (multiple track
+     * groups and ungrouped submissions competing for limited room capacity,
+     * with GapSnap > 0) never produces a true overlap or a GapSnap violation
+     * in the resulting schedule, regardless of the algorithm's own grouping
+     * preferences.
      */
     public function test_run_autoscheduler_never_violates_gapsnap_or_overlap(): void {
         $this->resetAfterTest();
@@ -417,20 +264,13 @@ final class api_autoscheduler_test extends advanced_testcase {
         api::add_room((int) $confscheduler->id, 'Room A');
         api::add_room((int) $confscheduler->id, 'Room B');
 
-        $trackid = \mod_confsubmissions\api::add_track((int) $confsubmissions->id, 'Track X');
+        $trackx = \mod_confsubmissions\api::add_track((int) $confsubmissions->id, 'Track X');
+        $tracky = \mod_confsubmissions\api::add_track((int) $confsubmissions->id, 'Track Y');
 
-        $s1 = $this->create_accepted_submission($confsubmissions, $confprogram, 'S1');
-        $s2 = $this->create_accepted_submission($confsubmissions, $confprogram, 'S2');
-        api::set_session_tag((int) $confscheduler->id, $s1, 'Group 1');
-        api::set_session_tag((int) $confscheduler->id, $s2, 'Group 1');
-
-        $s3 = $this->create_accepted_submission($confsubmissions, $confprogram, 'S3');
-        $s4 = $this->create_accepted_submission($confsubmissions, $confprogram, 'S4');
-        api::set_session_tag((int) $confscheduler->id, $s3, 'Group 2');
-        api::set_session_tag((int) $confscheduler->id, $s4, 'Group 2');
-
-        $this->create_accepted_submission($confsubmissions, $confprogram, 'T1', $trackid);
-        $this->create_accepted_submission($confsubmissions, $confprogram, 'T2', $trackid);
+        $this->create_accepted_submission($confsubmissions, $confprogram, 'X1', $trackx);
+        $this->create_accepted_submission($confsubmissions, $confprogram, 'X2', $trackx);
+        $this->create_accepted_submission($confsubmissions, $confprogram, 'Y1', $tracky);
+        $this->create_accepted_submission($confsubmissions, $confprogram, 'Y2', $tracky);
 
         $this->create_accepted_submission($confsubmissions, $confprogram, 'U1');
         $this->create_accepted_submission($confsubmissions, $confprogram, 'U2');

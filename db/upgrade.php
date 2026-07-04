@@ -94,5 +94,24 @@ function xmldb_confscheduler_upgrade($oldversion) {
         upgrade_mod_savepoint(true, 2026070405, 'confscheduler');
     }
 
+    if ($oldversion < 2026070406) {
+        // Revision round 1 batch B (2026-07-03): the "session" tagging feature is removed
+        // entirely, per explicit user feedback ("In the unscheduled blocks there is a
+        // 'session' setting, this should be removed"). This is a genuine schema removal,
+        // not merely a stop-using: confscheduler_sessiontag is dropped outright, along with
+        // api::set_session_tag()/get_session_tags(), the mod_confscheduler_set_session_tag
+        // AJAX endpoint, the inline session-tag input in the unscheduled panel, and the
+        // autoscheduler's former priority-1 "same-session-tag consecutive-same-room" tier
+        // (see api.php's run_autoscheduler() docblock, now documenting two priority tiers
+        // instead of three). See changelog.md for the full removal list.
+        $table = new xmldb_table('confscheduler_sessiontag');
+
+        if ($dbman->table_exists($table)) {
+            $dbman->drop_table($table);
+        }
+
+        upgrade_mod_savepoint(true, 2026070406, 'confscheduler');
+    }
+
     return true;
 }
