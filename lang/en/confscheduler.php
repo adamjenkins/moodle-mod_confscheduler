@@ -97,6 +97,5 @@ $string['spanblockendroom'] = 'End room';
 $string['spanblocklabel'] = 'Label';
 $string['spanblockstart'] = 'Start time';
 $string['spanblockstartroom'] = 'Start room';
-$string['turnoneditmodetoedit'] = 'Turn on Edit mode (top of the page) to drag-and-drop schedule presentations, manage rooms, and run the autoscheduler.';
 $string['unschedule'] = 'Unschedule';
 $string['unscheduledheading'] = 'Unscheduled';

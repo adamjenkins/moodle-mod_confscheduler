@@ -101,12 +101,6 @@ echo $OUTPUT->header();
 
 echo $OUTPUT->heading(format_string($confscheduler->name));
 
-if ($canmanage && !$editmode) {
-    // A gentle pointer to the real control, for a manageschedule holder who hasn't
-    // noticed the site's own Edit mode switch in the page header.
-    echo $OUTPUT->notification(get_string('turnoneditmodetoedit', 'mod_confscheduler'), 'info');
-}
-
 if ($confscheduler->intro) {
     echo $OUTPUT->box(
         format_module_intro('confscheduler', $confscheduler, $cm->id),
