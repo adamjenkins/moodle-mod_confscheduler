@@ -77,6 +77,11 @@ class grid_data {
             $tracksbyid[(int) $track->id] = $track->name;
         }
 
+        $typedurationsbyid = [];
+        foreach (submissions_api::get_submission_types($confsubmissionscm->id) as $submissiontype) {
+            $typedurationsbyid[(int) $submissiontype->id] = (int) $submissiontype->durationminutes;
+        }
+
         $slots = \mod_confscheduler\api::get_slots($confschedulerid);
         $slotroomsbyslot = [];
         if ($slots) {
@@ -130,14 +135,22 @@ class grid_data {
                 continue;
             }
             $hastrack = !empty($submission->trackid) && isset($tracksbyid[(int) $submission->trackid]);
+            $submissiontypeid = !empty($submission->submissiontypeid) ? (int) $submission->submissiontypeid : null;
             $unscheduledout[] = [
-                'submissionid' => (int) $submission->id,
-                'title'        => format_string($submission->title, true, ['escape' => false]),
-                'speakers'     => self::format_speakers((int) $submission->id),
-                'track'        => $hastrack
+                'submissionid'    => (int) $submission->id,
+                'title'           => format_string($submission->title, true, ['escape' => false]),
+                'speakers'        => self::format_speakers((int) $submission->id),
+                'track'           => $hastrack
                     ? format_string($tracksbyid[(int) $submission->trackid], true, ['escape' => false])
                     : null,
-                'trackid'      => $hastrack ? (int) $submission->trackid : null,
+                'trackid'         => $hastrack ? (int) $submission->trackid : null,
+                // Falls back to api::DEFAULT_DURATION_MINUTES when this submission has no
+                // type (or the type was deleted after being chosen) -- see that constant's
+                // docblock. The client uses this only as the INITIAL duration of a newly
+                // dragged-out block; it never retroactively affects an already-scheduled one.
+                'durationminutes' => $submissiontypeid !== null && isset($typedurationsbyid[$submissiontypeid])
+                    ? $typedurationsbyid[$submissiontypeid]
+                    : \mod_confscheduler\api::DEFAULT_DURATION_MINUTES,
             ];
         }
 

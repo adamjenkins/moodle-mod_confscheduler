@@ -52,10 +52,6 @@ class run_autoscheduler extends external_api {
             'cmid'        => new external_value(PARAM_INT, 'The confscheduler course-module id'),
             'windowstart' => new external_value(PARAM_INT, 'Unix timestamp; start of the window to schedule into'),
             'windowend'   => new external_value(PARAM_INT, 'Unix timestamp; end of the window to schedule into'),
-            'defaultdurationminutes' => new external_value(
-                PARAM_INT,
-                'Duration, in minutes, given to every placed submission'
-            ),
             'clearfirst' => new external_value(PARAM_BOOL, 'Whether to first clear existing slots that overlap the window'),
         ]);
     }
@@ -66,7 +62,6 @@ class run_autoscheduler extends external_api {
      * @param int $cmid The confscheduler course-module id
      * @param int $windowstart Unix timestamp
      * @param int $windowend Unix timestamp
-     * @param int $defaultdurationminutes Duration, in minutes, given to every placed submission
      * @param bool $clearfirst Whether to first clear existing slots that overlap the window
      * @return array{scheduled: int, skipped: int, skippedreasons: array}
      */
@@ -74,15 +69,13 @@ class run_autoscheduler extends external_api {
         int $cmid,
         int $windowstart,
         int $windowend,
-        int $defaultdurationminutes,
         bool $clearfirst
     ): array {
         $params = self::validate_parameters(self::execute_parameters(), [
-            'cmid'                  => $cmid,
-            'windowstart'           => $windowstart,
-            'windowend'             => $windowend,
-            'defaultdurationminutes' => $defaultdurationminutes,
-            'clearfirst'            => $clearfirst,
+            'cmid'        => $cmid,
+            'windowstart' => $windowstart,
+            'windowend'   => $windowend,
+            'clearfirst'  => $clearfirst,
         ]);
 
         [, , $confscheduler] = self::require_manage($params['cmid']);
@@ -91,7 +84,6 @@ class run_autoscheduler extends external_api {
             (int) $confscheduler->id,
             $params['windowstart'],
             $params['windowend'],
-            $params['defaultdurationminutes'],
             $params['clearfirst']
         );
     }

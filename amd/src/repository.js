@@ -177,16 +177,17 @@ export const toggleFavourite = (cmid, slotid, favourited) => Ajax.call([{
 }])[0];
 
 /**
- * Runs the autoscheduler over a time window.
+ * Runs the autoscheduler over a time window. Each placed submission is given its own
+ * mod_confsubmissions submission type's duration (Revision round 1, 2026-07-04) -- there
+ * is no longer a single uniform duration passed in here.
  *
  * @param {Number} cmid The confscheduler course-module id
  * @param {Number} windowstart Unix timestamp; start of the window to schedule into
  * @param {Number} windowend Unix timestamp; end of the window to schedule into
- * @param {Number} defaultdurationminutes Duration, in minutes, given to every placed submission
  * @param {Boolean} clearfirst Whether to first clear existing slots that overlap the window
  * @return {Promise}
  */
-export const runAutoscheduler = (cmid, windowstart, windowend, defaultdurationminutes, clearfirst) => Ajax.call([{
+export const runAutoscheduler = (cmid, windowstart, windowend, clearfirst) => Ajax.call([{
     methodname: 'mod_confscheduler_run_autoscheduler',
-    args: {cmid, windowstart, windowend, defaultdurationminutes, clearfirst},
+    args: {cmid, windowstart, windowend, clearfirst},
 }])[0];

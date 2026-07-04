@@ -649,6 +649,7 @@ const renderUnscheduledPanel = (state) => {
         card.className = 'mod_confscheduler-unscheduled-card';
         card.setAttribute('role', 'listitem');
         card.dataset.submissionid = item.submissionid;
+        card.dataset.durationminutes = item.durationminutes;
 
         const title = document.createElement('div');
         title.className = 'mod_confscheduler-unscheduled-title';
@@ -841,8 +842,12 @@ const beginResizeDrag = (state, event, blockEl) => {
 
 /**
  * Begins a free-form drag of an unscheduled-panel card into the grid, to schedule it.
- * The new block is given a fixed DEFAULT_DURATION_MINUTES duration; the block's height
- * (and hence its end time) can then be adjusted with the resize handle once scheduled.
+ * The new block is given the submission's own mod_confsubmissions submission type's
+ * duration (Revision round 1, 2026-07-04; falls back to DEFAULT_DURATION_MINUTES if
+ * unset -- see grid_data.php's identical fallback, which is what actually computes
+ * this card's dataset.durationminutes); the block's height (and hence its end time)
+ * can then be adjusted with the resize handle once scheduled, which does not change
+ * the submission type's own configured duration.
  *
  * GapSnap auto-nudge (Revision round 1 batch B, 2026-07-03): see beginMoveDrag()'s
  * docblock -- the same nudge-or-fall-back-to-raw-position logic applies here.
@@ -872,7 +877,8 @@ const beginScheduleDrag = (state, event, cardEl) => {
     $('body').append(proxy);
 
     const submissionid = Number(cardEl.dataset.submissionid);
-    const duration = DEFAULT_DURATION_MINUTES * 60;
+    const durationminutes = Number(cardEl.dataset.durationminutes) || DEFAULT_DURATION_MINUTES;
+    const duration = durationminutes * 60;
 
     // Shared by the live preview (onMove) and the actual commit (onDrop) -- see
     // beginMoveDrag()'s identical pattern and showDragPreview()'s docblock. Returns
@@ -1093,8 +1099,10 @@ const showAutoschedulerSummary = (state, result) => getString(
 }).catch(Notification.exception);
 
 /**
- * Opens the "run autoscheduler" modal: a time window, a default duration
- * applied to every submission it places, and a "clear first" checkbox.
+ * Opens the "run autoscheduler" modal: a time window and a "clear first"
+ * checkbox. Each placed submission gets its own mod_confsubmissions submission
+ * type's duration (Revision round 1, 2026-07-04) -- there is no longer a
+ * uniform-duration input here, see Repository.runAutoscheduler()'s docblock.
  *
  * @param {Object} state The module state object
  * @return {Promise}
@@ -1115,10 +1123,9 @@ const openAutoschedulerModal = async(state) => {
         const form = modal.getRoot()[0].querySelector('.mod_confscheduler-autoscheduler-form');
         const windowstartValue = form.querySelector('[name=windowstart]').value;
         const windowendValue = form.querySelector('[name=windowend]').value;
-        const duration = Number(form.querySelector('[name=defaultdurationminutes]').value);
         const clearfirst = form.querySelector('[name=clearfirst]').checked;
 
-        if (!windowstartValue || !windowendValue || !duration || duration <= 0) {
+        if (!windowstartValue || !windowendValue) {
             return;
         }
 
@@ -1128,7 +1135,7 @@ const openAutoschedulerModal = async(state) => {
             return;
         }
 
-        Repository.runAutoscheduler(state.cmid, windowstart, windowend, duration, clearfirst).then((result) => {
+        Repository.runAutoscheduler(state.cmid, windowstart, windowend, clearfirst).then((result) => {
             modal.destroy();
             showAutoschedulerSummary(state, result);
             return fetchAndRenderAll(state);

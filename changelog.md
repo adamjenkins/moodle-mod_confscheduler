@@ -94,8 +94,10 @@
     `$editmode` as `$canmanage && $PAGE->user_is_editing()`, exactly mirroring how
     `mod_confprogram`'s own `view.php` already gates its organiser controls. A
     `manageschedule` holder sees the same read-only Display mode as everyone else
-    while course editing is off, and a small notification points them at the real
-    switch; turning course editing on reveals the interactive grid. No new
+    while course editing is off; turning course editing on reveals the interactive
+    grid. (An initial version of this also added a small notification pointing at
+    the real switch; per further feedback that was removed too, as unnecessary --
+    the switch is already visible in the page header on its own.) No new
     capability, AJAX endpoint, schema, or stored preference was needed -- this
     plugin still stores no personal data of its own, so `classes/privacy/provider.php`
     remains a `null_provider`, unchanged.
@@ -127,6 +129,43 @@
     for this round); no JS unit-test harness exists anywhere in this project, so this
     module -- like `day_utils.js`/`colour_utils.js` before it -- relies on that live
     verification rather than an automated JS unit test.
+
+- Revision round 1, follow-up (user feedback, 2026-07-04): a live drag-position
+  highlight, a visible resize handle, and per-submission-type scheduling durations.
+  - **Live drag-preview highlight**: per explicit feedback ("the new start/end
+    times should be highlighted, and clearly visible while dragging so that when
+    dropped, the block can be exactly where the user wanted it"), `core/dragdrop`'s
+    `onMove` callback (previously a no-op in both `beginMoveDrag()` and
+    `beginScheduleDrag()`) now drives a live-updating dashed overlay + time-range
+    label via a shared `showDragPreview()`/`clearDragPreview()` pair. Both
+    functions' `onMove` and `onDrop` handlers call the identical `computeTarget()`
+    closure, so the preview shown while dragging can never disagree with where a
+    drop right now would actually land -- including any GapSnap auto-nudge.
+    Verified live: a drop always lands exactly where the preview last showed, and
+    a deliberately conflicting drag correctly showed the nudge computing a
+    backward position matching the eventual drop precisely.
+  - **Visible resize handle**: per explicit feedback, the bottom-edge resize hit
+    area -- previously a fully invisible 6px strip with only a cursor change --
+    now renders a visible grip bar, tinted via a CSS custom property to match a
+    span block's own auto-contrast text colour so it stays legible against any
+    chosen background. Display mode's read-only blocks have no resize handle
+    element at all, so this only affects the interactive edit-mode grid.
+  - **Per-submission-type scheduling durations**: a new submission is given the
+    duration of its own `mod_confsubmissions` submission type (falling back to a
+    fixed `api::DEFAULT_DURATION_MINUTES` for a submission with none) instead of
+    a single fixed 30-minute default, both when dragged out of the unscheduled
+    panel and when placed by the autoscheduler -- the block can still be resized
+    afterwards via the handle above without affecting the type's own setting. The
+    "Run autoscheduler" modal's "Default duration" input was removed entirely
+    (and `run_autoscheduler()`'s `$defaultdurationminutes` parameter along with
+    it) rather than left in place doing nothing, since a single uniform override
+    became meaningless once every submission carries its own type-based duration.
+  - 80/80 PHPUnit passing (one obsolete "rejects invalid duration" test removed
+    along with the parameter it tested), phpcs/moodlecheck clean, AMD rebuilt from
+    scratch and confirmed byte-stable. Verified live: the unscheduled panel
+    correctly carried a real submission's configured type duration end to end into
+    a newly-scheduled block's actual length; the autoscheduler modal no longer
+    shows a duration field.
 
 - Phase 3.5: read-only Display mode, "my timetable" toggle, day/page pagination
   (shared between Display and edit modes), and print support. All client-side

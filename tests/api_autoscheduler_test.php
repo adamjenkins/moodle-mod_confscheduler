@@ -163,25 +163,6 @@ final class api_autoscheduler_test extends advanced_testcase {
             (int) $confscheduler->id,
             strtotime('2026-09-01 12:00:00'),
             strtotime('2026-09-01 09:00:00'),
-            30,
-            false
-        );
-    }
-
-    /**
-     * run_autoscheduler() rejects a non-positive default duration.
-     */
-    public function test_run_autoscheduler_rejects_invalid_duration(): void {
-        $this->resetAfterTest();
-
-        [$confscheduler] = $this->create_full_fixture();
-
-        $this->expectException(\invalid_parameter_exception::class);
-        api::run_autoscheduler(
-            (int) $confscheduler->id,
-            strtotime('2026-09-01 09:00:00'),
-            strtotime('2026-09-01 17:00:00'),
-            0,
             false
         );
     }
@@ -201,7 +182,6 @@ final class api_autoscheduler_test extends advanced_testcase {
             (int) $confscheduler->id,
             strtotime('2026-09-01 09:00:00'),
             strtotime('2026-09-01 17:00:00'),
-            30,
             false
         );
 
@@ -232,7 +212,6 @@ final class api_autoscheduler_test extends advanced_testcase {
             (int) $confscheduler->id,
             strtotime('2026-09-01 09:00:00'),
             strtotime('2026-09-01 17:00:00'),
-            30,
             false,
             7
         );
@@ -280,7 +259,6 @@ final class api_autoscheduler_test extends advanced_testcase {
             (int) $confscheduler->id,
             strtotime('2026-09-01 09:00:00'),
             strtotime('2026-09-01 11:00:00'),
-            30,
             false,
             123
         );
@@ -326,7 +304,6 @@ final class api_autoscheduler_test extends advanced_testcase {
             (int) $confscheduler->id,
             strtotime('2026-09-01 09:00:00'),
             strtotime('2026-09-01 17:00:00'),
-            30,
             true
         );
 
@@ -363,7 +340,6 @@ final class api_autoscheduler_test extends advanced_testcase {
             (int) $confscheduler->id,
             strtotime('2026-09-01 09:00:00'),
             strtotime('2026-09-01 17:00:00'),
-            30,
             false
         );
 
@@ -394,7 +370,6 @@ final class api_autoscheduler_test extends advanced_testcase {
             (int) $confscheduler->id,
             strtotime('2026-09-01 09:00:00'),
             strtotime('2026-09-01 09:30:00'),
-            30,
             false
         );
 
@@ -484,17 +459,17 @@ final class api_autoscheduler_test extends advanced_testcase {
             return $snapshot;
         };
 
-        api::run_autoscheduler((int) $confscheduler->id, $windowstart, $windowend, 30, false, 42);
+        api::run_autoscheduler((int) $confscheduler->id, $windowstart, $windowend, false, 42);
         $seed42run1 = $placementsnapshot();
 
-        api::run_autoscheduler((int) $confscheduler->id, $windowstart, $windowend, 30, true, 42);
+        api::run_autoscheduler((int) $confscheduler->id, $windowstart, $windowend, true, 42);
         $seed42run2 = $placementsnapshot();
 
         $this->assertSame($seed42run1, $seed42run2, 'The same seed must reproduce the same placement.');
 
         $founddifference = false;
         foreach ([1, 2, 3, 4, 5] as $altseed) {
-            api::run_autoscheduler((int) $confscheduler->id, $windowstart, $windowend, 30, true, $altseed);
+            api::run_autoscheduler((int) $confscheduler->id, $windowstart, $windowend, true, $altseed);
             if ($placementsnapshot() !== $seed42run1) {
                 $founddifference = true;
                 break;

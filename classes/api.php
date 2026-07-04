@@ -45,6 +45,18 @@ namespace mod_confscheduler;
  */
 class api {
     /**
+     * Fallback presentation duration, in minutes, for a submission with no
+     * mod_confsubmissions submission type assigned (an instance with none
+     * configured yet, or a submission that predates the feature) -- used both when
+     * dragging a card out of the unscheduled panel and by run_autoscheduler(), so a
+     * submission's own chosen type is always preferred but a missing one never
+     * blocks scheduling. Not a setting: Revision round 1 (2026-07-04) replaced the
+     * former per-instance/per-run "default duration" input with this fixed,
+     * last-resort value once every submission carries its own type-based duration.
+     */
+    public const DEFAULT_DURATION_MINUTES = 30;
+
+    /**
      * Returns the rooms (columns) configured for a confscheduler instance, in
      * display (sortorder) order.
      *
@@ -698,9 +710,14 @@ class api {
      * overlap via add_slot() for every placement it makes.
      *
      * Candidate pool: exactly the same "accepted, unscheduled" set the grid's
-     * unscheduled panel shows (see \mod_confscheduler\local\grid_data::build()),
-     * each given the same $defaultdurationminutes duration (there is no
-     * per-submission duration field in the shipped schema).
+     * unscheduled panel shows (see \mod_confscheduler\local\grid_data::build()).
+     * Each candidate is given its own mod_confsubmissions submission type's
+     * duration (falling back to DEFAULT_DURATION_MINUTES if it has none) -- this
+     * method previously took one $defaultdurationminutes parameter applied
+     * uniformly to every placement, but that became meaningless once every
+     * submission carries its own type-based duration (Revision round 1,
+     * 2026-07-04), so the parameter and its "Run autoscheduler" form field were
+     * both removed rather than left as a confusing, ignored input.
      *
      * Placement priority (highest first):
      *   1. Submissions sharing a trackid are placed with a same-room
@@ -765,18 +782,16 @@ class api {
      * @param int $confschedulerid The confscheduler instance id
      * @param int $windowstart Unix timestamp; start of the window to schedule into
      * @param int $windowend Unix timestamp; end of the window to schedule into
-     * @param int $defaultdurationminutes Duration, in minutes, given to every placed submission
      * @param bool $clearfirst Whether to first clear existing slots that overlap the window
      * @param int|null $seed Optional seed for deterministic randomisation (tests only); null (the
      *        default) means production callers get a different, non-reproducible ordering each run
      * @return array{scheduled: int, skipped: int, skippedreasons: array} Run summary
-     * @throws \invalid_parameter_exception if $windowend <= $windowstart, or $defaultdurationminutes <= 0
+     * @throws \invalid_parameter_exception if $windowend <= $windowstart
      */
     public static function run_autoscheduler(
         int $confschedulerid,
         int $windowstart,
         int $windowend,
-        int $defaultdurationminutes,
         bool $clearfirst,
         ?int $seed = null
     ): array {
@@ -785,13 +800,9 @@ class api {
         if ($windowend <= $windowstart) {
             throw new \invalid_parameter_exception(get_string('error:invalidtimerange', 'mod_confscheduler'));
         }
-        if ($defaultdurationminutes <= 0) {
-            throw new \invalid_parameter_exception(get_string('error:invalidnumber', 'mod_confscheduler'));
-        }
 
         $confscheduler = $DB->get_record('confscheduler', ['id' => $confschedulerid], '*', MUST_EXIST);
         $gapseconds = (int) $confscheduler->gapminutes * MINSECS;
-        $durationseconds = $defaultdurationminutes * MINSECS;
 
         if ($clearfirst) {
             self::clear_slots_in_window($confschedulerid, $windowstart, $windowend);
@@ -821,6 +832,22 @@ class api {
             (int) $confprogram->id,
             (int) $confsubmissionscm->instance
         );
+
+        // Per-submission duration, from its own mod_confsubmissions submission type
+        // (falling back to DEFAULT_DURATION_MINUTES for a submission with none) --
+        // see this method's docblock for why there is no longer a single uniform
+        // duration parameter.
+        $typedurationsbyid = [];
+        foreach (\mod_confsubmissions\api::get_submission_types($confsubmissionscm->id) as $submissiontype) {
+            $typedurationsbyid[(int) $submissiontype->id] = (int) $submissiontype->durationminutes;
+        }
+        $durationsecondsfor = static function (\stdClass $submission) use ($typedurationsbyid): int {
+            $typeid = !empty($submission->submissiontypeid) ? (int) $submission->submissiontypeid : null;
+            $minutes = ($typeid !== null && isset($typedurationsbyid[$typeid]))
+                ? $typedurationsbyid[$typeid]
+                : self::DEFAULT_DURATION_MINUTES;
+            return $minutes * MINSECS;
+        };
 
         $alreadyscheduled = [];
         foreach (self::get_slots($confschedulerid) as $slot) {
@@ -886,7 +913,7 @@ class api {
                     $confschedulerid,
                     (int) $submission->id,
                     $roomids,
-                    $durationseconds,
+                    $durationsecondsfor($submission),
                     $windowstart,
                     $windowend,
                     $gapseconds,
@@ -913,7 +940,7 @@ class api {
                 $confschedulerid,
                 (int) $submission->id,
                 $roomids,
-                $durationseconds,
+                $durationsecondsfor($submission),
                 $windowstart,
                 $windowend,
                 $gapseconds,

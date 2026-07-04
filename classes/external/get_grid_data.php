@@ -111,6 +111,10 @@ class get_grid_data extends external_api {
                     'speakers'     => new external_value(PARAM_TEXT, 'Comma-joined speaker names'),
                     'track'        => new external_value(PARAM_TEXT, 'Track name, or null', VALUE_DEFAULT, null),
                     'trackid'      => new external_value(PARAM_INT, 'Track id, or null', VALUE_DEFAULT, null),
+                    'durationminutes' => new external_value(
+                        PARAM_INT,
+                        'This submission\'s type\'s duration in minutes, or the fallback default if unset'
+                    ),
                 ])
             ),
             'gapminutes' => new external_value(PARAM_INT, 'The instance\'s configured GapSnap minimum gap, in minutes'),

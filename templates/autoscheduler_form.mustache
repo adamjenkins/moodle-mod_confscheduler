@@ -17,9 +17,13 @@
 {{!
     @template mod_confscheduler/autoscheduler_form
 
-    Modal body for running the autoscheduler: a time window, a default
-    duration applied to every submission it places, and a "clear first"
-    checkbox (unchecked by default, per the Phase 3.4 spec).
+    Modal body for running the autoscheduler: a time window and a "clear
+    first" checkbox (unchecked by default, per the Phase 3.4 spec). A
+    "default duration" input previously lived here too, applied uniformly to
+    every submission the autoscheduler placed; it was removed (Revision
+    round 1, 2026-07-04) once every submission started carrying its own
+    mod_confsubmissions submission type's duration, which made a single
+    uniform override meaningless.
 
     Context variables required for this template: none.
 
@@ -36,10 +40,6 @@
             <label for="mod_confscheduler-autoscheduler-windowend">{{#str}} autoschedulerwindowend, mod_confscheduler {{/str}}</label>
             <input type="datetime-local" class="form-control" id="mod_confscheduler-autoscheduler-windowend" name="windowend" required>
         </div>
-    </div>
-    <div class="form-group">
-        <label for="mod_confscheduler-autoscheduler-duration">{{#str}} autoschedulerdefaultduration, mod_confscheduler {{/str}}</label>
-        <input type="number" class="form-control" id="mod_confscheduler-autoscheduler-duration" name="defaultdurationminutes" min="1" step="1" value="30" required>
     </div>
     <div class="form-check">
         <input type="checkbox" class="form-check-input" id="mod_confscheduler-autoscheduler-clearfirst" name="clearfirst">

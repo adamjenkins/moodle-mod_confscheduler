@@ -93,7 +93,6 @@ final class run_autoscheduler_test extends advanced_testcase {
             $cmid,
             strtotime('2026-09-01 09:00:00'),
             strtotime('2026-09-01 17:00:00'),
-            30,
             false
         );
 
@@ -117,7 +116,6 @@ final class run_autoscheduler_test extends advanced_testcase {
             $cmid,
             strtotime('2026-09-01 17:00:00'),
             strtotime('2026-09-01 09:00:00'),
-            30,
             false
         );
     }
@@ -137,7 +135,6 @@ final class run_autoscheduler_test extends advanced_testcase {
             $cmid,
             strtotime('2026-09-01 09:00:00'),
             strtotime('2026-09-01 17:00:00'),
-            30,
             false
         );
     }
@@ -164,7 +161,6 @@ final class run_autoscheduler_test extends advanced_testcase {
             $cmid,
             strtotime('2026-09-01 09:00:00'),
             strtotime('2026-09-01 17:00:00'),
-            30,
             false
         );
 
