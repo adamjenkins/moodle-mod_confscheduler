@@ -93,6 +93,7 @@ final class get_grid_data_test extends advanced_testcase {
         $this->assertCount(1, $result['rooms']);
         $this->assertSame('Main Hall', $result['rooms'][0]['name']);
         $this->assertSame('#3366cc', $result['rooms'][0]['colour']);
+        $this->assertSame(144, $result['pxperhour']);
         $this->assertCount(1, $result['unscheduled']);
         $this->assertSame($submissionid, $result['unscheduled'][0]['submissionid']);
         $this->assertCount(0, $result['slots']);

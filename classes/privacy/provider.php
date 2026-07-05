@@ -20,7 +20,7 @@ namespace mod_confscheduler\privacy;
  * Privacy provider for mod_confscheduler.
  *
  * This plugin's own tables store no personal data:
- * - confscheduler: activity instance settings only (confprogramcmid, gapminutes).
+ * - confscheduler: activity instance settings only (confprogramcmid, gapminutes, pxperhour).
  * - confscheduler_room: a room/column name, sortorder and colour, none of which are
  *   personal data.
  * - confscheduler_slot: a scheduled block's time range and either a submissionid

@@ -11,7 +11,7 @@ Part of the [Conference Tools](https://github.com/adamjenkins/moodle-conference-
 
 ## What it does
 
-- **Edit mode** (shown only while Moodle's own site-wide "Edit mode" switch is on, for a `mod/confscheduler:manageschedule` holder -- see "Architecture notes" below, not just holding the capability): a time × room grid. Drag accepted presentations from an unscheduled panel into slots, and reschedule by dragging within the grid; a live highlight shows exactly where a drop will land (including any SnapGap nudge) while dragging. SnapGap automatically nudges a dropped/dragged block to the nearest valid position instead of hard-rejecting an invalid drop, and its minimum-gap setting is itself a quick control in the grid toolbar rather than a settings-form field (see "Architecture notes" below). A newly-scheduled block's initial length comes from its own `mod_confsubmissions` submission type's configured duration, and can still be freely resized afterwards via a visible grip handle on its bottom edge. Rooms are editable, colour-themeable, and re-orderable, with column header text colour automatically switching between black/white for legibility against the chosen colour. An autoscheduler can populate a timespan automatically, prioritising same-track grouping. Column-spanning blocks (with their own optional colour theme, same auto-contrast text) support plenaries/lunch, and are fully editable in place after creation, not just add/delete. Track pill badges link through to the linked `mod_confprogram` instance's accepted-submissions list, filtered to that track. A day selector pages a multi-day schedule one calendar day at a time.
+- **Edit mode** (shown only while Moodle's own site-wide "Edit mode" switch is on, for a `mod/confscheduler:manageschedule` holder -- see "Architecture notes" below, not just holding the capability): a time × room grid. Drag accepted presentations from an unscheduled panel into slots, and reschedule by dragging within the grid; a live highlight shows exactly where a drop will land (including any SnapGap nudge) while dragging. SnapGap automatically nudges a dropped/dragged block to the nearest valid position instead of hard-rejecting an invalid drop, and its minimum-gap setting is itself a quick control in the grid toolbar rather than a settings-form field (see "Architecture notes" below). A newly-scheduled block's initial length comes from its own `mod_confsubmissions` submission type's configured duration, and can still be freely resized afterwards via a visible grip handle on its bottom edge. Row height (pixels per hour) is also a quick control in the grid toolbar, letting an organiser make the whole timeline taller or more compact. Each block's title starts on the same line as its favourite-star icon, wrapping around it (clamped to two lines with an ellipsis if it's still too long), rather than losing a whole line of vertical space to the star alone. Rooms are editable, colour-themeable, and re-orderable, with column header text colour automatically switching between black/white for legibility against the chosen colour. An autoscheduler can populate a timespan automatically, prioritising same-track grouping. Column-spanning blocks (with their own optional colour theme, same auto-contrast text) support plenaries/lunch, and are fully editable in place after creation, not just add/delete. Track pill badges link through to the linked `mod_confprogram` instance's accepted-submissions list, filtered to that track. A day selector pages a multi-day schedule one calendar day at a time.
 - **Display mode** (Moodle's site-wide Edit mode off, or `mod/confscheduler:viewschedule` without `:manageschedule`): a read-only rendering of the same grid data. Blocks link to the presentation's `mod_confprogram` page (both a real `<a href>` fallback and, with JS, an in-place modal identical to `mod_confprogram`'s own). A "my timetable" toggle highlights favourited presentations and greys out the rest, persisted in `sessionStorage` per instance. The same day selector as edit mode pages a multi-day schedule. Printable in colour or black & white, at A4/A3/A2 in either orientation, via CSS only (no PDF generation).
 - Implements the `\mod_confscheduler\api::get_schedule_for_submission()` contract that `mod_confprogram`'s Display phase reads for time/room info, and calls `mod_confprogram`'s `api::add_favourite()`/`remove_favourite()` directly to keep favourites in sync both ways.
 - Organisers can declare conference start/end dates in the activity's General settings section (purely informational for now -- not yet derived from or validated against scheduled slots). Dark mode is currently disabled site-wide for this plugin (the CSS is kept, just inert) pending a possible future reintroduction.
@@ -221,6 +221,24 @@ Part of the [Conference Tools](https://github.com/adamjenkins/moodle-conference-
   track/submission-type management already live on their own screens: it is
   organiser-facing configuration that only makes sense once the instance
   already exists.
+- **Row height is a quick control in the grid toolbar too (user feedback,
+  2026-07-05)**: `confscheduler.pxperhour` (vertical pixels per hour of
+  scheduled time, default 144 -- the previous hard-coded value, so existing
+  instances render unchanged until an organiser adjusts it; valid range
+  60-480, enforced server-side in `api::set_pxperhour()`) follows the exact
+  same pattern as `gapminutes` above: a number input next to it in
+  `templates/grid.mustache`, a `mod_confscheduler_set_pxperhour` AJAX
+  endpoint, no `mod_form.php` field. Both `amd/src/scheduler_grid.js` (edit
+  mode) and `amd/src/scheduler_display.js` (read-only Display mode) read it
+  from the same `mod_confscheduler_get_grid_data` payload the grid already
+  fetches and use it to compute every block's pixel position/height and the
+  hourly gridline spacing (`styles.css`'s repeating-gradient background,
+  scaled per instance via an inline `background-size`), so both modes always
+  render at the same organiser-configured density. Landed together with a
+  CSS fix for scheduled blocks wasting their entire first line on just the
+  favourite star: the remove/favourite/edit-span-block buttons now `float`
+  instead of sitting `position: absolute` over a reserved blank line, so the
+  title/label text wraps around them starting on that same first line.
 
 ## Requirements
 

@@ -118,6 +118,7 @@ class get_grid_data extends external_api {
                 ])
             ),
             'gapminutes' => new external_value(PARAM_INT, 'The instance\'s configured SnapGap minimum gap, in minutes'),
+            'pxperhour'  => new external_value(PARAM_INT, 'The instance\'s configured row height, in pixels per hour'),
         ]);
     }
 }

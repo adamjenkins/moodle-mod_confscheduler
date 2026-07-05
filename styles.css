@@ -18,9 +18,13 @@
  * Styles for the mod_confscheduler edit-mode drag-and-drop grid
  * (amd/src/scheduler_grid.js).
  *
- * Sizing constants below (200px column width, 70px time-axis width, 144px
- * hour gridline spacing = 2.4px/minute * 60) must stay in sync with the
- * COLUMN_WIDTH/PX_PER_MINUTE constants in amd/src/scheduler_grid.js.
+ * Column width (200px column width, 70px time-axis width) must stay in sync with the
+ * COLUMN_WIDTH constant in amd/src/scheduler_grid.js. Hour gridline spacing is no
+ * longer a fixed constant here (user feedback, 2026-07-05): the room column's
+ * repeating-gradient background is authored at a 144px-per-hour reference tile, but
+ * amd/src/scheduler_grid.js/amd/src/scheduler_display.js override background-size
+ * per-instance to the organiser-configured state.pxperhour (60-480, see
+ * classes/api.php's DEFAULT_PX_PER_HOUR/MIN_PX_PER_HOUR/MAX_PX_PER_HOUR).
  */
 
 .mod_confscheduler-toolbar {
@@ -247,10 +251,17 @@
     background: #d63939;
 }
 
+/*
+ * Remove/favourite/edit-span controls float rather than sit absolutely positioned over
+ * the block's first line (user feedback, 2026-07-05: the star was wasting the whole
+ * first line, with the title pushed below it via margin-top). Floating them lets the
+ * title/label text share that first line and wrap around them naturally, the same way
+ * text wraps around a floated image -- see .mod_confscheduler-block-title/-label below,
+ * which no longer reserve top margin for this.
+ */
 .mod_confscheduler-block-remove {
-    position: absolute;
-    top: 1px;
-    left: 2px;
+    float: left;
+    margin: 0 0.3rem 0.15rem 0;
     background: none;
     border: none;
     cursor: pointer;
@@ -261,9 +272,8 @@
 }
 
 .mod_confscheduler-block-fav {
-    position: absolute;
-    top: 1px;
-    right: 2px;
+    float: right;
+    margin: 0 0 0.15rem 0.3rem;
     background: none;
     border: none;
     cursor: pointer;
@@ -274,13 +284,12 @@
 }
 
 /* Span blocks previously supported only add/delete; this button (Revision round 1)
-   opens the same modal used to add one, pre-filled, to edit it in place. Positioned
-   top-right, mirroring .mod_confscheduler-block-fav's slot on presentation blocks
+   opens the same modal used to add one, pre-filled, to edit it in place. Floated
+   right, mirroring .mod_confscheduler-block-fav's slot on presentation blocks
    (span blocks never have a favourite star, so there's no collision). */
 .mod_confscheduler-block-edit-span {
-    position: absolute;
-    top: 1px;
-    right: 2px;
+    float: right;
+    margin: 0 0 0.15rem 0.3rem;
     background: none;
     border: none;
     cursor: pointer;
@@ -291,18 +300,27 @@
 }
 
 .mod_confscheduler-block-span .mod_confscheduler-block-label {
-    margin-top: 1rem;
+    overflow-wrap: break-word;
 }
 
 .mod_confscheduler-block-title {
     font-weight: 600;
-    margin-top: 1rem;
-    white-space: nowrap;
+    overflow-wrap: break-word;
+    /* Caught during moodle-reviewer pass, 2026-07-05: allowing the title to wrap
+       (needed so it flows around the floated remove/favourite buttons above) combined
+       with a short block at the minimum configurable row height could hard-clip a
+       wrapped second line mid-word with no ellipsis. Capping at two lines with an
+       ellipsis keeps the wrap-around-the-star behaviour while degrading gracefully
+       when there still isn't room for the whole title. */
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
     overflow: hidden;
-    text-overflow: ellipsis;
 }
 
 .mod_confscheduler-block-speakers {
+    clear: both;
     font-size: 0.7rem;
     color: #555;
     white-space: nowrap;
@@ -429,13 +447,10 @@ a.mod_confscheduler-track-pill:focus {
     text-decoration: underline;
 }
 
+/* Position/size/colour come from the shared .mod_confscheduler-block-fav rule above
+   (this element always carries both classes -- see scheduler_display.js); only the
+   cursor differs, since this variant isn't clickable. */
 .mod_confscheduler-block-fav-readonly {
-    position: absolute;
-    top: 1px;
-    right: 2px;
-    font-size: 1rem;
-    line-height: 1;
-    color: #e6a700;
     cursor: default;
 }
 

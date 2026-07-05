@@ -44,7 +44,7 @@ class grid_data {
      *
      * @param \stdClass $confscheduler The confscheduler record
      * @param int $userid The current user id, used to resolve per-user favourited state
-     * @return array{rooms: array, slots: array, unscheduled: array, gapminutes: int}
+     * @return array{rooms: array, slots: array, unscheduled: array, gapminutes: int, pxperhour: int}
      */
     public static function build(\stdClass $confscheduler, int $userid): array {
         global $DB;
@@ -159,6 +159,7 @@ class grid_data {
             'slots'       => $slotsout,
             'unscheduled' => $unscheduledout,
             'gapminutes'  => (int) $confscheduler->gapminutes,
+            'pxperhour'   => (int) $confscheduler->pxperhour,
         ];
     }
 

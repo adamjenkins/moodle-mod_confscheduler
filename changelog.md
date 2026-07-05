@@ -2,6 +2,26 @@
 
 ## Unreleased
 
+- User feedback (2026-07-05), found during a live bug-hunt session: scheduled blocks
+  wasted their entire first line on just the favourite-star icon, with the title
+  pushed below it by a fixed top margin. Fixed by floating the remove (×) and
+  favourite (★) buttons instead of absolutely positioning them, so the title/label
+  text now wraps around them starting on the same first line -- clamped to two lines
+  with an ellipsis (`-webkit-line-clamp`) so a long title degrades gracefully rather
+  than being hard-clipped mid-word at a very short block height. Landed together with
+  a new organiser-adjustable row-height setting (`confscheduler.pxperhour`, default
+  144 px/hour, range 60-480, validated server-side): a quick control in the grid
+  toolbar right next to SnapGap's, following that exact same pattern (a new
+  `mod_confscheduler_set_pxperhour` AJAX endpoint, no `mod_form.php` field), read by
+  both edit mode and read-only Display mode from the same
+  `mod_confscheduler_get_grid_data` payload so both always render at the same
+  density. New tests: `tests/api_test.php::test_set_pxperhour`,
+  `tests/external/set_pxperhour_test.php`; existing `tests/confscheduler_test.php`/
+  `tests/external/get_grid_data_test.php` updated for the new field/payload key.
+  `moodle-reviewer` pass: approved, 0 critical/high/medium findings; 2 lows both
+  fixed (a stale docblock comment referencing the removed `PX_PER_MINUTE` constant,
+  and the title-clipping edge case above, found only by deliberately testing a long
+  title at the new minimum row height).
 - Revision round 1 (user feedback, 2026-07-03): dark mode disabled, room/span-block
   colour auto-contrast text, conference start/end date settings, track-pill spacing +
   click-through, span-block colour picker + edit-in-place. Schema bumped twice

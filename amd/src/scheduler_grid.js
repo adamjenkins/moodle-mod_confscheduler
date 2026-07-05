@@ -88,8 +88,19 @@ import * as SnapGapUtils from 'mod_confscheduler/snapgap_utils';
 /** @type {Number} Fixed column width in pixels; keep in sync with styles.css .mod_confscheduler-room-header/-room-column. */
 const COLUMN_WIDTH = 200;
 
-/** @type {Number} Vertical px/minute of scheduled time; keep in sync with styles.css's hour gridline spacing. */
-const PX_PER_MINUTE = 2.4;
+/**
+ * @type {Number} Default row height (vertical pixels per hour) before the real,
+ * organiser-configured value has loaded from the server, and the schema/JS fallback if a
+ * confscheduler instance somehow has none -- keep in sync with classes/api.php's
+ * DEFAULT_PX_PER_HOUR and install.xml's schema default.
+ */
+const DEFAULT_PX_PER_HOUR = 144;
+
+/** @type {Number} Client-side mirror of classes/api.php's MIN_PX_PER_HOUR, for input validation. */
+const MIN_PX_PER_HOUR = 60;
+
+/** @type {Number} Client-side mirror of classes/api.php's MAX_PX_PER_HOUR, for input validation. */
+const MAX_PX_PER_HOUR = 480;
 
 /** @type {Number} Client-side snap granularity, in minutes, applied to drop positions for UX only. */
 const SNAP_MINUTES = 5;
@@ -176,12 +187,14 @@ const buildTrackPill = (programUrl, trackid, trackname, filterbytrackstr) => {
 
 /**
  * Converts a unix timestamp to a Y pixel offset within the grid body, relative to state.timelineStart.
+ * Uses the instance's own configured row height (state.pxperhour), not a fixed constant --
+ * see the "hour height" quick control at the top of the grid in edit mode.
  *
  * @param {Object} state The module state object
  * @param {Number} timestamp Unix timestamp (seconds)
  * @return {Number} Pixel offset
  */
-const timeToY = (state, timestamp) => (timestamp - state.timelineStart) / 60 * PX_PER_MINUTE;
+const timeToY = (state, timestamp) => (timestamp - state.timelineStart) / 60 * (state.pxperhour / 60);
 
 /**
  * Converts a Y pixel offset within the grid body back to a unix timestamp.
@@ -190,7 +203,7 @@ const timeToY = (state, timestamp) => (timestamp - state.timelineStart) / 60 * P
  * @param {Number} y Pixel offset
  * @return {Number} Unix timestamp (seconds)
  */
-const yToTime = (state, y) => state.timelineStart + Math.round((y / PX_PER_MINUTE)) * 60;
+const yToTime = (state, y) => state.timelineStart + Math.round((y / (state.pxperhour / 60))) * 60;
 
 /**
  * Live drag-preview highlight (Revision round 1 feedback: "the new start/end times
@@ -299,7 +312,9 @@ const fetchAndRenderAll = (state) => Repository.getGridData(state.cmid).then((da
     state.allSlots = data.slots;
     state.unscheduled = data.unscheduled;
     state.gapminutes = data.gapminutes;
+    state.pxperhour = data.pxperhour;
     syncGapMinutesInput(state);
+    syncPxPerHourInput(state);
     applyDayFilter(state);
     renderHeaders(state);
     renderDaySelector(state);
@@ -321,7 +336,9 @@ const fetchAndRenderBody = (state) => Repository.getGridData(state.cmid).then((d
     state.allSlots = data.slots;
     state.unscheduled = data.unscheduled;
     state.gapminutes = data.gapminutes;
+    state.pxperhour = data.pxperhour;
     syncGapMinutesInput(state);
+    syncPxPerHourInput(state);
     applyDayFilter(state);
     renderDaySelector(state);
     renderBody(state);
@@ -341,6 +358,19 @@ const syncGapMinutesInput = (state) => {
     const input = state.root.querySelector('.mod_confscheduler-gapminutes');
     if (input && document.activeElement !== input) {
         input.value = state.gapminutes;
+    }
+};
+
+/**
+ * Reflects state.pxperhour into the quick row-height control's displayed value, without
+ * disturbing it if the organiser is actively typing in it -- mirrors syncGapMinutesInput().
+ *
+ * @param {Object} state The module state object
+ */
+const syncPxPerHourInput = (state) => {
+    const input = state.root.querySelector('.mod_confscheduler-pxperhour');
+    if (input && document.activeElement !== input) {
+        input.value = state.pxperhour;
     }
 };
 
@@ -510,6 +540,11 @@ const renderBody = (state) => {
             column.style.setProperty('--mod_confscheduler-room-colour', room.colour);
             column.classList.add('has-colour');
         }
+        // The hourly gridline background (styles.css) is authored as a repeating gradient
+        // sized for a 144px-per-hour tile; scaling it via background-size lets one
+        // instance's own configured row height (state.pxperhour) stretch/compress the same
+        // gradient rather than needing per-height CSS variants.
+        column.style.backgroundSize = `100% ${state.pxperhour}px`;
         columnsWrap.appendChild(column);
     });
 
@@ -1237,6 +1272,39 @@ const onGapMinutesChange = (state, input) => {
 };
 
 /**
+ * Persists a change to the quick row-height control at the top of the grid (user
+ * feedback, 2026-07-05). An out-of-range or non-numeric value is reset to the last
+ * known-good value rather than submitted -- mirrors onGapMinutesChange(). Unlike
+ * GapSnap, a row-height change must also immediately re-render the body (every
+ * block's top/height, and the hourly gridline spacing, are computed from it), so a
+ * successful save re-renders using the *server-confirmed* value rather than assuming
+ * the submitted value alone.
+ *
+ * @param {Object} state The module state object
+ * @param {HTMLElement} input The .mod_confscheduler-pxperhour number input
+ */
+const onPxPerHourChange = (state, input) => {
+    const value = parseInt(input.value, 10);
+    if (isNaN(value) || value < MIN_PX_PER_HOUR || value > MAX_PX_PER_HOUR) {
+        input.value = state.pxperhour;
+        return;
+    }
+
+    const previous = state.pxperhour;
+    state.pxperhour = value;
+    input.disabled = true;
+    renderBody(state);
+    Promise.resolve(Repository.setPxPerHour(state.cmid, value)).catch((error) => {
+        state.pxperhour = previous;
+        input.value = previous;
+        renderBody(state);
+        Notification.exception(error);
+    }).finally(() => {
+        input.disabled = false;
+    });
+};
+
+/**
  * Unschedules a block.
  *
  * @param {Object} state The module state object
@@ -1370,6 +1438,12 @@ const bindEvents = (state) => {
         const gapInput = event.target.closest('.mod_confscheduler-gapminutes');
         if (gapInput) {
             onGapMinutesChange(state, gapInput);
+            return;
+        }
+
+        const pxPerHourInput = event.target.closest('.mod_confscheduler-pxperhour');
+        if (pxPerHourInput) {
+            onPxPerHourChange(state, pxPerHourInput);
         }
     });
 
@@ -1429,6 +1503,7 @@ export const init = async(cmid, confschedulerid, programurl = null) => {
         selectedDay: null,
         unscheduled: [],
         gapminutes: 0,
+        pxperhour: DEFAULT_PX_PER_HOUR,
         timelineStart: 0,
         timelineEnd: 0,
         columnsWrap: null,

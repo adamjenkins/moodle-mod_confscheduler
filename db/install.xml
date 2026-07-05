@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" ?>
-<XMLDB PATH="mod/confscheduler/db" VERSION="2026070407" COMMENT="XMLDB file for Moodle mod/confscheduler"
+<XMLDB PATH="mod/confscheduler/db" VERSION="2026070408" COMMENT="XMLDB file for Moodle mod/confscheduler"
     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
     xsi:noNamespaceSchemaLocation="../../../lib/xmldb/xmldb.xsd">
   <TABLES>
@@ -14,6 +14,7 @@
         <FIELD NAME="conferencestart" TYPE="int" LENGTH="10" NOTNULL="false" SEQUENCE="false" COMMENT="Organiser-set conference start date/time, unix timestamp; null if not set. Not currently derived from or validated against any scheduled slot -- purely an organiser-declared setting (Revision round 1, 2026-07-03)"/>
         <FIELD NAME="conferenceend" TYPE="int" LENGTH="10" NOTNULL="false" SEQUENCE="false" COMMENT="Organiser-set conference end date/time, unix timestamp; null if not set. See conferencestart's comment"/>
         <FIELD NAME="gapminutes" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" DEFAULT="0" COMMENT="GapSnap: minimum gap, in minutes, enforced between presentations in the same room while dragging"/>
+        <FIELD NAME="pxperhour" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" DEFAULT="144" COMMENT="Row height: vertical pixels per hour of scheduled time in the grid/display timeline, organiser-adjustable in edit mode"/>
         <FIELD NAME="timecreated" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" DEFAULT="0"/>
         <FIELD NAME="timemodified" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" DEFAULT="0"/>
       </FIELDS>

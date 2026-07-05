@@ -986,4 +986,28 @@ final class api_test extends advanced_testcase {
         $this->expectException(\invalid_parameter_exception::class);
         api::set_gap_minutes((int) $confscheduler->id, -1);
     }
+
+    /**
+     * set_pxperhour() updates confscheduler.pxperhour and rejects an out-of-range value.
+     * User feedback (2026-07-05): this is the write path behind the quick row-height
+     * control at the top of the schedule grid.
+     */
+    public function test_set_pxperhour(): void {
+        $this->resetAfterTest();
+        global $DB;
+
+        [$confscheduler] = $this->create_full_fixture();
+
+        api::set_pxperhour((int) $confscheduler->id, 200);
+        $this->assertEquals(200, $DB->get_field('confscheduler', 'pxperhour', ['id' => $confscheduler->id]));
+
+        api::set_pxperhour((int) $confscheduler->id, api::MIN_PX_PER_HOUR);
+        $this->assertEquals(api::MIN_PX_PER_HOUR, $DB->get_field('confscheduler', 'pxperhour', ['id' => $confscheduler->id]));
+
+        api::set_pxperhour((int) $confscheduler->id, api::MAX_PX_PER_HOUR);
+        $this->assertEquals(api::MAX_PX_PER_HOUR, $DB->get_field('confscheduler', 'pxperhour', ['id' => $confscheduler->id]));
+
+        $this->expectException(\invalid_parameter_exception::class);
+        api::set_pxperhour((int) $confscheduler->id, api::MIN_PX_PER_HOUR - 1);
+    }
 }

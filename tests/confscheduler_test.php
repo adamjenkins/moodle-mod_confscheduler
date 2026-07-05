@@ -80,6 +80,7 @@ final class confscheduler_test extends advanced_testcase {
         $this->assertSame('Test schedule', $record->name);
         $this->assertEquals($confprogramcm->id, $record->confprogramcmid);
         $this->assertEquals(0, $record->gapminutes);
+        $this->assertEquals(144, $record->pxperhour);
     }
 
     /**

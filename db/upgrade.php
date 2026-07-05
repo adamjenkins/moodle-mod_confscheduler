@@ -122,5 +122,21 @@ function xmldb_confscheduler_upgrade($oldversion) {
         upgrade_mod_savepoint(true, 2026070407, 'confscheduler');
     }
 
+    if ($oldversion < 2026070408) {
+        // Row-height setting (user feedback, 2026-07-05): an organiser-adjustable "pixels
+        // per hour" density for the grid/display timeline, following the same pattern as
+        // gapminutes above -- a quick control at the top of the schedule grid in edit mode,
+        // not a mod_form.php field. Defaults to 144 (the previously hard-coded value, so
+        // existing instances render identically until an organiser changes it).
+        $table = new xmldb_table('confscheduler');
+
+        $field = new xmldb_field('pxperhour', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '144', 'gapminutes');
+        if (!$dbman->field_exists($table, $field)) {
+            $dbman->add_field($table, $field);
+        }
+
+        upgrade_mod_savepoint(true, 2026070408, 'confscheduler');
+    }
+
     return true;
 }

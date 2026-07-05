@@ -66,8 +66,12 @@ import * as ColourUtils from 'mod_confscheduler/colour_utils';
 /** @type {Number} Fixed column width in pixels; keep in sync with scheduler_grid.js/styles.css. */
 const COLUMN_WIDTH = 200;
 
-/** @type {Number} Vertical px/minute of scheduled time; keep in sync with scheduler_grid.js/styles.css. */
-const PX_PER_MINUTE = 2.4;
+/**
+ * @type {Number} Default row height (vertical pixels per hour) before the real,
+ * organiser-configured value has loaded from the server -- keep in sync with
+ * scheduler_grid.js/classes/api.php's DEFAULT_PX_PER_HOUR.
+ */
+const DEFAULT_PX_PER_HOUR = 144;
 
 /**
  * Formats a unix timestamp as a short local time (e.g. "14:05").
@@ -78,13 +82,18 @@ const PX_PER_MINUTE = 2.4;
 const formatTime = (timestamp) => new Date(timestamp * 1000).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
 
 /**
- * Converts a unix timestamp to a Y pixel offset within the grid body, relative to a day's start.
+ * Converts a unix timestamp to a Y pixel offset within the grid body, relative to a day's
+ * start. Uses the instance's own configured row height (state.pxperhour), synced from the
+ * same mod_confscheduler_get_grid_data payload the edit grid uses, so Display mode renders
+ * at the identical density an organiser configured -- see scheduler_grid.js's identical
+ * treatment.
  *
+ * @param {Object} state The module state object
  * @param {Number} daystart Unix timestamp (seconds) of the visible day's lower bound
  * @param {Number} timestamp Unix timestamp (seconds)
  * @return {Number} Pixel offset
  */
-const timeToY = (daystart, timestamp) => Math.max(0, (timestamp - daystart) / 60 * PX_PER_MINUTE);
+const timeToY = (state, daystart, timestamp) => Math.max(0, (timestamp - daystart) / 60 * (state.pxperhour / 60));
 
 /**
  * Computes the visible vertical time range for the currently selected day: the
@@ -243,8 +252,10 @@ const renderBlock = (state, columnsWrap, slot) => {
     block.dataset.favourited = slot.favourited ? '1' : '0';
     block.style.left = (minIndex * COLUMN_WIDTH) + 'px';
     block.style.width = (span * COLUMN_WIDTH - 6) + 'px';
-    block.style.top = timeToY(state.dayStart, slot.starttime) + 'px';
-    block.style.height = Math.max(20, timeToY(state.dayStart, slot.endtime) - timeToY(state.dayStart, slot.starttime)) + 'px';
+    const topY = timeToY(state, state.dayStart, slot.starttime);
+    const bottomY = timeToY(state, state.dayStart, slot.endtime);
+    block.style.top = topY + 'px';
+    block.style.height = Math.max(20, bottomY - topY) + 'px';
 
     if (isSpanBlock) {
         if (slot.colour) {
@@ -381,7 +392,7 @@ const renderBody = (state) => {
     const gridEl = state.root.querySelector('.mod_confscheduler-grid');
     gridEl.innerHTML = '';
 
-    const totalHeight = timeToY(range.start, range.end);
+    const totalHeight = timeToY(state, range.start, range.end);
 
     const timeAxis = document.createElement('div');
     timeAxis.className = 'mod_confscheduler-time-axis';
@@ -389,7 +400,7 @@ const renderBody = (state) => {
     for (let hour = Math.ceil(range.start / 3600) * 3600; hour <= range.end; hour += 3600) {
         const label = document.createElement('div');
         label.className = 'mod_confscheduler-time-label';
-        label.style.top = timeToY(range.start, hour) + 'px';
+        label.style.top = timeToY(state, range.start, hour) + 'px';
         label.textContent = formatTime(hour);
         timeAxis.appendChild(label);
     }
@@ -408,6 +419,7 @@ const renderBody = (state) => {
             column.style.setProperty('--mod_confscheduler-room-colour', room.colour);
             column.classList.add('has-colour');
         }
+        column.style.backgroundSize = `100% ${state.pxperhour}px`;
         columnsWrap.appendChild(column);
     });
 
@@ -454,6 +466,7 @@ const renderDaySelector = (state) => {
  */
 const fetchAndRenderAll = (state) => Repository.getGridData(state.cmid).then((data) => {
     state.rooms = data.rooms;
+    state.pxperhour = data.pxperhour;
     state.slotsByDay = DayUtils.groupSlotsByDay(data.slots);
     state.dayKeys = DayUtils.sortedDayKeys(state.slotsByDay);
     if (!state.selectedDay || !state.dayKeys.includes(state.selectedDay)) {
@@ -602,6 +615,7 @@ export const init = async(cmid, confschedulerid, confprogramcmid, programurl, ca
         canfavourite,
         root,
         rooms: [],
+        pxperhour: DEFAULT_PX_PER_HOUR,
         slotsByDay: {},
         dayKeys: [],
         selectedDay: null,

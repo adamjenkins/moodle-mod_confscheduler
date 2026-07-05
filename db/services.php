@@ -118,4 +118,11 @@ $functions = [
         'ajax'         => true,
         'capabilities' => 'mod/confscheduler:manageschedule',
     ],
+    'mod_confscheduler_set_pxperhour' => [
+        'classname'    => 'mod_confscheduler\external\set_pxperhour',
+        'description'  => 'Sets a confscheduler instance\'s row height, in pixels per hour.',
+        'type'         => 'write',
+        'ajax'         => true,
+        'capabilities' => 'mod/confscheduler:manageschedule',
+    ],
 ];

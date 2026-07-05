@@ -56,6 +56,15 @@ class api {
      */
     public const DEFAULT_DURATION_MINUTES = 30;
 
+    /** @var int Default row height (vertical pixels per hour), also install.xml's schema default. */
+    public const DEFAULT_PX_PER_HOUR = 144;
+
+    /** @var int Lowest row height a user may configure -- below this, blocks become illegibly thin. */
+    public const MIN_PX_PER_HOUR = 60;
+
+    /** @var int Highest row height a user may configure -- above this, a normal conference day scrolls absurdly long. */
+    public const MAX_PX_PER_HOUR = 480;
+
     /**
      * Returns the rooms (columns) configured for a confscheduler instance, in
      * display (sortorder) order.
@@ -314,6 +323,26 @@ class api {
         }
 
         $DB->set_field('confscheduler', 'gapminutes', $gapminutes, ['id' => $confschedulerid]);
+    }
+
+    /**
+     * Sets a confscheduler instance's row height (vertical pixels per hour of scheduled
+     * time), organiser-adjustable via a quick control at the top of the schedule grid in
+     * edit mode -- same pattern as set_gap_minutes() above.
+     *
+     * @param int $confschedulerid The confscheduler instance id
+     * @param int $pxperhour The new row height, in pixels per hour
+     * @return void
+     * @throws \invalid_parameter_exception if $pxperhour is outside [MIN_PX_PER_HOUR, MAX_PX_PER_HOUR]
+     */
+    public static function set_pxperhour(int $confschedulerid, int $pxperhour): void {
+        global $DB;
+
+        if ($pxperhour < self::MIN_PX_PER_HOUR || $pxperhour > self::MAX_PX_PER_HOUR) {
+            throw new \invalid_parameter_exception(get_string('error:invalidpxperhour', 'mod_confscheduler'));
+        }
+
+        $DB->set_field('confscheduler', 'pxperhour', $pxperhour, ['id' => $confschedulerid]);
     }
 
     /**

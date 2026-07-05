@@ -206,3 +206,16 @@ export const setGapMinutes = (cmid, gapminutes) => Ajax.call([{
     methodname: 'mod_confscheduler_set_gap_minutes',
     args: {cmid, gapminutes},
 }])[0];
+
+/**
+ * Sets a confscheduler instance's row height, in pixels per hour. Backs the quick
+ * control at the top of the schedule grid in edit mode (user feedback, 2026-07-05).
+ *
+ * @param {Number} cmid The confscheduler course-module id
+ * @param {Number} pxperhour The new row height, in pixels per hour
+ * @return {Promise}
+ */
+export const setPxPerHour = (cmid, pxperhour) => Ajax.call([{
+    methodname: 'mod_confscheduler_set_pxperhour',
+    args: {cmid, pxperhour},
+}])[0];
