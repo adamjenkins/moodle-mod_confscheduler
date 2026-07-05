@@ -2,6 +2,34 @@
 
 ## Unreleased
 
+- User feedback (2026-07-05): "Autoscheduler is not respecting preferred dates."
+  Root cause: `candidate_start_times_for_room()` only ever seeded the window start
+  itself plus (each existing slot's endtime + gap) as candidates for a room -- there
+  is no "business hours reset each day" concept anywhere in this scheduling data
+  model, only one continuous `[conferencestart, conferenceend]` span. For a
+  genuinely empty room (the normal case for the first submissions placed into a
+  fresh, multi-day conference), day 2/3/etc. were therefore structurally
+  unreachable: a room's later days only ever became reachable once its OWN existing
+  slots already chained sequentially all the way there, which does not happen when
+  running the autoscheduler once from scratch. This silently made a submitter's
+  preferred day unreachable whenever it wasn't the window's own first day -- the
+  single most common real-world use of this feature. The original feature's own
+  tests never caught this: `test_run_autoscheduler_honours_preferred_dates`
+  deliberately pre-occupied one room with a whole day-1 span block specifically to
+  force a genuine day-1-vs-day-2 candidate choice to exist at all, and that
+  workaround's own docblock already flagged (but did not itself fix) that an
+  ordinary empty room has only one candidate. Fixed by having
+  `candidate_start_times_for_room()` also seed one additional candidate per
+  calendar day in the window, at the same time-of-day as the window start (e.g.
+  window start 09:00 on day 1 seeds 09:00 on day 2, day 3, ...) -- still subject to
+  the same window-bounds filter and the same authoritative overlap/gap
+  re-validation (`attempt_place()`/`add_slot()`) as every other candidate, so a
+  seeded time that turns out to collide with something already scheduled is simply
+  skipped like any other rejected candidate. New test:
+  `test_run_autoscheduler_honours_preferred_dates_in_a_fresh_multiday_conference`
+  (two rooms, both empty, two submissions each preferring a different non-first
+  day, looped across 5 seeds) -- reproduced the bug before the fix (both
+  submissions landed on day 1 regardless of preference) and passes after it.
 - User feedback (2026-07-05): "the autoscheduler should randomly shuffle the order
   in which it schedules presentations. Of course it still needs to honour the
   tracks rule ... and the preferred days if that is set, but after that, the order

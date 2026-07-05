@@ -336,6 +336,72 @@ final class api_autoscheduler_test extends advanced_testcase {
     }
 
     /**
+     * The realistic case the test above's own docblock flags as NOT exercised by its
+     * artificially-pre-occupied Room A: a genuinely fresh conference (every room
+     * empty, nothing scheduled yet) where a submission prefers a day other than the
+     * FIRST day of the window. User feedback, 2026-07-05 ("Autoscheduler is not
+     * respecting preferred dates"): with every room empty,
+     * candidate_start_times_for_room() only ever offered the window start itself as a
+     * candidate for each room (there is no per-day "business hours reset" concept
+     * anywhere in this scheduling data model, only one continuous
+     * [conferencestart, conferenceend] span) -- so day 2/3 were structurally
+     * unreachable for ANY submission until something else already chained a room's
+     * slots all the way there, which never happens for the first submissions placed
+     * into a fresh conference. That silently made a preferred day other than day 1
+     * unreachable in the single most common real-world scenario: running the
+     * autoscheduler once, from scratch, against a multi-day conference. Fixed by
+     * seeding an additional per-calendar-day candidate (at the same time-of-day as
+     * $windowstart) in candidate_start_times_for_room().
+     */
+    public function test_run_autoscheduler_honours_preferred_dates_in_a_fresh_multiday_conference(): void {
+        global $DB;
+        $this->resetAfterTest();
+
+        [$confscheduler, $confprogram, $confsubmissions] = $this->create_full_fixture();
+        api::add_room((int) $confscheduler->id, 'Room A');
+        api::add_room((int) $confscheduler->id, 'Room B');
+
+        $windowstart = strtotime('2026-09-03 09:00:00');
+        $windowend = strtotime('2026-09-05 17:00:00');
+        $day2 = usergetmidnight(strtotime('2026-09-04 09:00:00'));
+        $day3 = usergetmidnight(strtotime('2026-09-05 09:00:00'));
+
+        $submissionb = $this->create_accepted_submission($confsubmissions, $confprogram, 'Prefers Day 2');
+        \mod_confsubmissions\api::sync_date_preferences($submissionb, [$day2]);
+
+        $submissionc = $this->create_accepted_submission($confsubmissions, $confprogram, 'Prefers Day 3');
+        \mod_confsubmissions\api::sync_date_preferences($submissionc, [$day3]);
+
+        foreach ([1, 2, 3, 4, 5] as $seed) {
+            $DB->delete_records('confscheduler_slotroom', []);
+            $DB->delete_records('confscheduler_slot', []);
+
+            $summary = api::run_autoscheduler((int) $confscheduler->id, $windowstart, $windowend, false, $seed);
+            $this->assertSame(2, $summary['scheduled'], "seed=$seed");
+
+            $slotb = $DB->get_record(
+                'confscheduler_slot',
+                ['confscheduler' => $confscheduler->id, 'submissionid' => $submissionb]
+            );
+            $slotc = $DB->get_record(
+                'confscheduler_slot',
+                ['confscheduler' => $confscheduler->id, 'submissionid' => $submissionc]
+            );
+
+            $this->assertSame(
+                $day2,
+                usergetmidnight((int) $slotb->starttime),
+                "seed=$seed: should land on its preferred day (2), not day 1."
+            );
+            $this->assertSame(
+                $day3,
+                usergetmidnight((int) $slotc->starttime),
+                "seed=$seed: should land on its preferred day (3), not day 1."
+            );
+        }
+    }
+
+    /**
      * A submission with no recorded date preference (the common case: the feature is
      * off, or it predates this feature entirely) is unaffected by the day-preference
      * partition -- it can land on any day in the window, exactly as before this

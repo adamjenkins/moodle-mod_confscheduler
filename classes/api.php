@@ -1106,10 +1106,32 @@ class api {
 
     /**
      * Computes the candidate start times to try in a single room: the window
-     * start, plus (every existing slot's endtime + gap) in that room,
-     * restricted to times that still leave room for the full duration before
-     * the window ends. See run_autoscheduler()'s docblock for why this is
-     * used instead of a brute-force scan of the whole window.
+     * start, one per-calendar-day candidate at that same time-of-day (see below),
+     * plus (every existing slot's endtime + gap) in that room, restricted to times
+     * that still leave room for the full duration before the window ends. See
+     * run_autoscheduler()'s docblock for why this is used instead of a brute-force
+     * scan of the whole window.
+     *
+     * The per-day seeding (user feedback, 2026-07-05: "Autoscheduler is not
+     * respecting preferred dates") exists because this scheduling data model has no
+     * "business hours reset each day" concept anywhere -- only one continuous
+     * [conferencestart, conferenceend] span (see validate_placement()). Without it, an
+     * EMPTY room's only candidate was ever $windowstart itself: a room's later days
+     * only became reachable once its OWN existing slots already chained all the way
+     * there, which never happens for the first submissions placed into a fresh,
+     * multi-day conference. That silently made a submitter's preferred day
+     * unreachable whenever it wasn't the window's own first day, in the single most
+     * common real-world case: running the autoscheduler once, from scratch (caught
+     * live, not by the original feature's own tests -- see
+     * test_run_autoscheduler_honours_preferred_dates_in_a_fresh_multiday_conference()'s
+     * docblock for why the original test's pre-occupied-room fixture never exercised
+     * this). Each seeded day-candidate preserves $windowstart's own time-of-day
+     * (assumes a consistent daily start hour, e.g. every day at 09:00) rather than
+     * assuming midnight, which would never be a realistic placement anyway; it is
+     * still subject to the same window-bounds filter and the same authoritative
+     * overlap/gap re-validation as every other candidate (attempt_place()), so a
+     * seeded time that turns out to collide with something is simply skipped like
+     * any other rejected candidate.
      *
      * @param \stdClass[] $roomslots Slots already in the room (from get_slots_in_room())
      * @param int $windowstart Unix timestamp
@@ -1126,6 +1148,18 @@ class api {
         int $gapseconds
     ): array {
         $times = [$windowstart];
+
+        $timeofday = $windowstart - usergetmidnight($windowstart);
+        $day = usergetmidnight($windowstart);
+        $lastday = usergetmidnight($windowend);
+        // Capped defensively (matches api::get_conference_days()'s own 366-iteration
+        // cap in mod_confsubmissions): an organiser typo spanning decades must not be
+        // able to hang this in an unbounded loop.
+        for ($i = 0; $i < 366 && $day <= $lastday; $i++) {
+            $times[] = $day + $timeofday;
+            $day = usergetmidnight(strtotime('+1 day', $day));
+        }
+
         foreach ($roomslots as $slot) {
             $times[] = (int) $slot->endtime + $gapseconds;
         }
