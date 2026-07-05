@@ -63,6 +63,18 @@ Part of the [Conference Tools](https://github.com/adamjenkins/moodle-conference-
   placement — there is no separate "simulate then commit" step. This trades
   a little redundant validation-query overhead for a guarantee that the
   autoscheduler can never place something `add_slot()` would have refused.
+- **Candidate start times are seeded per calendar day, not just per existing
+  slot (fixed 2026-07-05, user feedback: "Autoscheduler is not respecting
+  preferred dates")**: this scheduling model has no "business hours reset
+  each day" concept — only one continuous `[conferencestart, conferenceend]`
+  span. `candidate_start_times_for_room()` therefore also seeds one candidate
+  per calendar day in the window (at the window start's own time-of-day), not
+  just the window start plus each existing slot's end — otherwise an empty
+  room's only reachable candidate was ever the window's first day, since a
+  room's later days only became reachable once its own slots already chained
+  sequentially that far. This made a submitter's preferred day unreachable
+  whenever it wasn't the window's first day, in the single most common
+  real-world case: running the autoscheduler once, from scratch.
 - **Display mode is a separate AMD module, not a shared renderer with an
   edit/read-only flag (Phase 3.5)**: `amd/src/scheduler_grid.js`'s block
   rendering is tightly interleaved with `core/dragdrop` state — drag
