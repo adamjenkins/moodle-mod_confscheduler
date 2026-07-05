@@ -227,6 +227,85 @@ final class api_autoscheduler_test extends advanced_testcase {
     }
 
     /**
+     * The autoscheduler places a submission on one of its preferred conference days
+     * when a candidate slot is available there, even though another, non-preferred
+     * candidate is also available elsewhere in the window (user feedback,
+     * 2026-07-05). Room A is pre-occupied by a span block covering the whole of day
+     * 1, so its only remaining candidate for a new placement falls on day 2; Room B
+     * is empty, so its only candidate is the window start, on day 1 -- giving the
+     * autoscheduler a genuine choice between a day-1 candidate and a day-2 one (with
+     * an empty room, candidate_start_times_for_room() only ever offers the window
+     * start itself as a candidate, so a naive test without this pre-occupied room
+     * would only ever have one candidate to offer, never actually exercising the
+     * day-preference partition -- caught by this test itself failing intermittently
+     * before this fixture was reworked to guarantee a real choice exists).
+     * Repeated with several different seeds, since the day-preference partition
+     * must win regardless of the room/time shuffle order.
+     */
+    public function test_run_autoscheduler_honours_preferred_dates(): void {
+        global $DB;
+        $this->resetAfterTest();
+
+        [$confscheduler, $confprogram, $confsubmissions] = $this->create_full_fixture();
+        $roomaid = api::add_room((int) $confscheduler->id, 'Room A');
+        api::add_room((int) $confscheduler->id, 'Room B');
+
+        $day1 = strtotime('2026-09-01 00:00:00');
+        $day2 = strtotime('2026-09-02 00:00:00');
+        $windowend = strtotime('2026-09-03 00:00:00');
+
+        $submissionid = $this->create_accepted_submission($confsubmissions, $confprogram, 'Talk A');
+        \mod_confsubmissions\api::sync_date_preferences($submissionid, [$day2]);
+
+        foreach ([1, 2, 3, 4, 5] as $seed) {
+            $DB->delete_records('confscheduler_slotroom', []);
+            $DB->delete_records('confscheduler_slot', []);
+            api::add_slot((int) $confscheduler->id, [$roomaid], $day1, $day2, null, 'Occupied');
+
+            $summary = api::run_autoscheduler((int) $confscheduler->id, $day1, $windowend, false, $seed);
+
+            $this->assertSame(1, $summary['scheduled'], "seed=$seed");
+
+            $slot = $DB->get_record(
+                'confscheduler_slot',
+                ['confscheduler' => $confscheduler->id, 'submissionid' => $submissionid]
+            );
+            $this->assertSame(
+                $day2,
+                usergetmidnight((int) $slot->starttime),
+                "seed=$seed: placement should land on the preferred day, not the other day in the window."
+            );
+        }
+    }
+
+    /**
+     * A submission with no recorded date preference (the common case: the feature is
+     * off, or it predates this feature entirely) is unaffected by the day-preference
+     * partition -- it can land on any day in the window, exactly as before this
+     * feature existed.
+     */
+    public function test_run_autoscheduler_places_freely_with_no_date_preference(): void {
+        global $DB;
+        $this->resetAfterTest();
+
+        [$confscheduler, $confprogram, $confsubmissions] = $this->create_full_fixture();
+        api::add_room((int) $confscheduler->id, 'Room A');
+
+        $submissionid = $this->create_accepted_submission($confsubmissions, $confprogram, 'Talk A');
+        $this->assertSame([], \mod_confsubmissions\api::get_date_preferences($submissionid));
+
+        $summary = api::run_autoscheduler(
+            (int) $confscheduler->id,
+            strtotime('2026-09-01 00:00:00'),
+            strtotime('2026-09-03 00:00:00'),
+            false,
+            1
+        );
+
+        $this->assertSame(1, $summary['scheduled']);
+    }
+
+    /**
      * An autoscheduler run over a tightly-packed fixture (multiple track
      * groups and ungrouped submissions competing for limited room capacity,
      * with SnapGap > 0) never produces a true overlap or a SnapGap violation

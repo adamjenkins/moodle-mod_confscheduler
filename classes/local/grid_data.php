@@ -46,6 +46,9 @@ class grid_data {
      * @param int $userid The current user id, used to resolve per-user favourited state
      * @return array{rooms: array, slots: array, unscheduled: array, gapminutes: int, pxperhour: int,
      *     conferencestart: ?int, conferenceend: ?int}
+     *
+     * Each 'unscheduled' entry also includes 'preferreddates' (int[], midnight
+     * timestamps; empty means no preference recorded).
      */
     public static function build(\stdClass $confscheduler, int $userid): array {
         global $DB;
@@ -152,6 +155,10 @@ class grid_data {
                 'durationminutes' => $submissiontypeid !== null && isset($typedurationsbyid[$submissiontypeid])
                     ? $typedurationsbyid[$submissiontypeid]
                     : \mod_confscheduler\api::DEFAULT_DURATION_MINUTES,
+                // Empty means "no preference recorded" -- the client must treat that as
+                // "show on every day", not "hide everywhere" (user feedback, 2026-07-05;
+                // see mod_confsubmissions\api::get_date_preferences()'s docblock).
+                'preferreddates'  => submissions_api::get_date_preferences((int) $submission->id),
             ];
         }
 

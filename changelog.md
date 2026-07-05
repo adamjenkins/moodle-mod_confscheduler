@@ -2,6 +2,30 @@
 
 ## Unreleased
 
+- User feedback (2026-07-05): "the autoscheduler should try to honor these
+  [submitter-preferred] preferences (time of day should still be shuffled) and in
+  edit mode, the unscheduled presentation block should not show presentations if a
+  non-preferred day is selected." `api::run_autoscheduler()`'s placement search
+  (`try_place_single()`) now stably partitions its candidate list by whether a
+  candidate falls on one of the submission's preferred days (from
+  `mod_confsubmissions\api::get_date_preferences()`) before its existing
+  track-overlap-avoidance partition, so a day-preference match always outranks
+  same-track-elsewhere avoidance -- without touching which candidates exist or
+  their own shuffled order, so time-of-day randomisation is unaffected. A
+  submission with no recorded preference (the common case) is unaffected entirely.
+  The edit-mode unscheduled-submissions panel now also hides a submission outright
+  when the currently-selected single day isn't one of its preferred days (still
+  shows everything in "All days" mode, where dragging is disabled anyway). New
+  tests: `test_run_autoscheduler_honours_preferred_dates` (across 5 seeds, to prove
+  the day-preference partition isn't shuffle-order-dependent) and
+  `test_run_autoscheduler_places_freely_with_no_date_preference`. Known limitation
+  documented in `amd/src/scheduler_grid.js`: the unscheduled-panel filter's day-key
+  comparison is subject to the same browser-local-timezone-vs-Moodle-configured-
+  timezone caveat as the rest of this module's day-key handling (see
+  `amd/src/day_utils.js`) -- caught live during testing (a headless browser
+  defaulting to UTC against a server configured for Europe/London genuinely showed
+  the inverted day), not something this feature can fix without touching that
+  pre-existing, already-accepted architecture.
 - Added a Japanese (`lang/ja/confscheduler.php`) language pack, translating every
   string in `lang/en/confscheduler.php` (verified live: every key present in both,
   no extras or omissions on either side; confirmed rendering correctly in-browser,

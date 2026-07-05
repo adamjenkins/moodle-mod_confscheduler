@@ -115,6 +115,10 @@ class get_grid_data extends external_api {
                         PARAM_INT,
                         'This submission\'s type\'s duration in minutes, or the fallback default if unset'
                     ),
+                    'preferreddates' => new external_multiple_structure(
+                        new external_value(PARAM_INT, 'A preferred day, unix timestamp of local midnight'),
+                        'Preferred conference days; empty means no preference recorded'
+                    ),
                 ])
             ),
             'gapminutes' => new external_value(PARAM_INT, 'The instance\'s configured SnapGap minimum gap, in minutes'),

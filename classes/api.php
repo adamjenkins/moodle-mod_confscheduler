@@ -925,6 +925,14 @@ class api {
             return $minutes * MINSECS;
         };
 
+        // Preferred conference days (user feedback, 2026-07-05): an empty array means
+        // "no preference recorded" (see mod_confsubmissions\api::get_date_preferences()'s
+        // docblock) and must not restrict placement at all -- most submissions predate
+        // this feature or belong to an instance that never enabled it.
+        $preferreddaysfor = static function (\stdClass $submission): array {
+            return \mod_confsubmissions\api::get_date_preferences((int) $submission->id);
+        };
+
         $alreadyscheduled = [];
         foreach (self::get_slots($confschedulerid) as $slot) {
             if ($slot->submissionid !== null) {
@@ -996,7 +1004,8 @@ class api {
                     $preferredroomid,
                     $randomsource,
                     $trackid,
-                    $trackidcache
+                    $trackidcache,
+                    $preferreddaysfor($submission)
                 );
                 if ($placed !== null) {
                     $summary['scheduled']++;
@@ -1023,7 +1032,8 @@ class api {
                 null,
                 $randomsource,
                 null,
-                $trackidcache
+                $trackidcache,
+                $preferreddaysfor($submission)
             );
             if ($placed !== null) {
                 $summary['scheduled']++;
@@ -1219,11 +1229,16 @@ class api {
      * that call's shuffled order for the rest.
      *
      * Within a room, candidate start times come from
-     * candidate_start_times_for_room(). When $avoidtrackid is given, the
-     * resulting candidate list is stably partitioned into "does not overlap
-     * another $avoidtrackid submission in a different room" (tried first) and
-     * "does" (tried only as a fallback) -- see track_overlaps_elsewhere().
-     * The first candidate that add_slot() accepts wins.
+     * candidate_start_times_for_room(). If $preferreddays is non-empty (user
+     * feedback, 2026-07-05), the candidate list is first stably partitioned into
+     * "falls on a preferred day" (tried first) and "does not" (fallback) -- time of
+     * day within each day is unaffected, since this only reorders which day's
+     * candidates are tried first, not the candidates themselves. When $avoidtrackid
+     * is given, EACH of those two day groups is then separately, stably partitioned
+     * again into "does not overlap another $avoidtrackid submission in a different
+     * room" (tried first within its group) and "does" (fallback within its group) --
+     * see track_overlaps_elsewhere() -- so a day-preference match always outranks
+     * track-overlap avoidance. The first candidate that add_slot() accepts wins.
      *
      * @param int $confschedulerid The confscheduler instance id
      * @param int $submissionid The confsubmissions_submission id to place
@@ -1236,6 +1251,8 @@ class api {
      * @param \Closure $randomsource Source of randomness for this call's room-order shuffle (see make_random_source())
      * @param int|null $avoidtrackid A trackid whose different-room overlaps should be avoided if possible, or null
      * @param array $trackidcache Shared submission-id => trackid memo (see track_overlaps_elsewhere())
+     * @param int[] $preferreddays Midnight timestamps of days to prefer, or empty for no preference
+     *        (see mod_confsubmissions\api::get_date_preferences())
      * @return array{slotid: int, roomid: int}|null The placement made, or null if none was possible
      */
     protected static function try_place_single(
@@ -1249,7 +1266,8 @@ class api {
         ?int $preferredroomid,
         \Closure $randomsource,
         ?int $avoidtrackid,
-        array &$trackidcache
+        array &$trackidcache,
+        array $preferreddays = []
     ): ?array {
         $searchorder = self::fisher_yates_shuffle($roomids, $randomsource);
         if ($preferredroomid !== null && in_array($preferredroomid, $roomids, true)) {
@@ -1271,10 +1289,23 @@ class api {
             }
         }
 
-        if ($avoidtrackid !== null) {
+        // Track-overlap avoidance, as its own reusable partition -- applied per day-
+        // preference group below, not globally, so a day-preference match always
+        // outranks track-overlap avoidance rather than the two getting reshuffled
+        // together (a "good" but wrong-day candidate must not jump ahead of a "bad"
+        // but right-day one).
+        $avoidoverlap = static function (array $group) use (
+            $confschedulerid,
+            $avoidtrackid,
+            $durationseconds,
+            &$trackidcache
+        ): array {
+            if ($avoidtrackid === null) {
+                return $group;
+            }
             $good = [];
             $bad = [];
-            foreach ($candidates as $candidate) {
+            foreach ($group as $candidate) {
                 $endtime = $candidate['starttime'] + $durationseconds;
                 $overlaps = self::track_overlaps_elsewhere(
                     $confschedulerid,
@@ -1290,7 +1321,29 @@ class api {
                     $good[] = $candidate;
                 }
             }
-            $candidates = array_merge($good, $bad);
+            return array_merge($good, $bad);
+        };
+
+        // Preferred conference days (user feedback, 2026-07-05): reorder candidates so
+        // one falling on a day the submitter preferred is tried before one that
+        // doesn't, WITHOUT changing which candidates exist or their time-of-day order
+        // within each day -- an empty $preferreddays ("no preference recorded") skips
+        // this partition entirely, leaving every candidate in its original,
+        // already-shuffled order (subject only to the track-overlap partition below).
+        if ($preferreddays) {
+            $preferred = [];
+            $other = [];
+            foreach ($candidates as $candidate) {
+                $day = usergetmidnight($candidate['starttime']);
+                if (in_array($day, $preferreddays, true)) {
+                    $preferred[] = $candidate;
+                } else {
+                    $other[] = $candidate;
+                }
+            }
+            $candidates = array_merge($avoidoverlap($preferred), $avoidoverlap($other));
+        } else {
+            $candidates = $avoidoverlap($candidates);
         }
 
         foreach ($candidates as $candidate) {

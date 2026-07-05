@@ -894,10 +894,39 @@ const renderBlock = (state, columnsWrap, slot) => {
 };
 
 /**
+ * Whether an unscheduled submission should show while a given single day is
+ * selected (user feedback, 2026-07-05: "in edit mode, the unscheduled presentation
+ * block should not show presentations if a non-preferred day is selected"). An
+ * empty preferreddates list means no preference was ever recorded (see
+ * mod_confsubmissions\api::get_date_preferences()'s docblock) and must show on
+ * every day, not be hidden everywhere.
+ *
+ * Known limitation, same class as the rest of this module's day-key handling (see
+ * amd/src/day_utils.js's own docblock): item.preferreddates timestamps are "local
+ * midnight" as computed server-side by Moodle's configured timezone, but
+ * DayUtils.dayKeyForTimestamp() below reads the browser's LOCAL timezone. The two
+ * only necessarily agree when a user's browser timezone matches Moodle's
+ * configured one -- a mismatch could shift which calendar day a preference is
+ * seen to fall on by this filter, near a day boundary.
+ *
+ * @param {Object} item One entry from state.unscheduled
+ * @param {String} dayKey The currently-selected day (YYYY-MM-DD), or ALL_DAYS/null
+ * @return {Boolean}
+ */
+const matchesSelectedDay = (item, dayKey) => {
+    if (!dayKey || dayKey === DayUtils.ALL_DAYS || !item.preferreddates || !item.preferreddates.length) {
+        return true;
+    }
+    return item.preferreddates.some((timestamp) => DayUtils.dayKeyForTimestamp(timestamp) === dayKey);
+};
+
+/**
  * Renders the "unscheduled" panel: accepted submissions not yet placed in the grid.
  * Dimmed (not hidden -- still useful to see what's outstanding) while "All days" is
  * selected, since dragging a card out of it is disabled in that view (see
- * bindEvents()'s startDrag()).
+ * bindEvents()'s startDrag()). While a single day is selected, a submission with a
+ * recorded date preference that does not include that day is left out of the list
+ * entirely (see matchesSelectedDay()).
  *
  * @param {Object} state The module state object
  */
@@ -913,29 +942,33 @@ const renderUnscheduledPanel = (state) => {
     }
     list.innerHTML = '';
 
-    state.unscheduled.forEach((item) => {
-        const card = document.createElement('div');
-        card.className = 'mod_confscheduler-unscheduled-card';
-        card.setAttribute('role', 'listitem');
-        card.dataset.submissionid = item.submissionid;
-        card.dataset.durationminutes = item.durationminutes;
+    state.unscheduled
+        .filter((item) => matchesSelectedDay(item, state.selectedDay))
+        .forEach((item) => {
+            const card = document.createElement('div');
+            card.className = 'mod_confscheduler-unscheduled-card';
+            card.setAttribute('role', 'listitem');
+            card.dataset.submissionid = item.submissionid;
+            card.dataset.durationminutes = item.durationminutes;
 
-        const title = document.createElement('div');
-        title.className = 'mod_confscheduler-unscheduled-title';
-        title.textContent = item.title;
-        card.appendChild(title);
+            const title = document.createElement('div');
+            title.className = 'mod_confscheduler-unscheduled-title';
+            title.textContent = item.title;
+            card.appendChild(title);
 
-        const speakers = document.createElement('div');
-        speakers.className = 'mod_confscheduler-unscheduled-speakers';
-        speakers.textContent = item.speakers;
-        card.appendChild(speakers);
+            const speakers = document.createElement('div');
+            speakers.className = 'mod_confscheduler-unscheduled-speakers';
+            speakers.textContent = item.speakers;
+            card.appendChild(speakers);
 
-        if (item.track) {
-            card.appendChild(buildTrackPill(state.programUrl, item.trackid, item.track, state.strings.filterbytrack));
-        }
+            if (item.track) {
+                card.appendChild(
+                    buildTrackPill(state.programUrl, item.trackid, item.track, state.strings.filterbytrack)
+                );
+            }
 
-        list.appendChild(card);
-    });
+            list.appendChild(card);
+        });
 };
 
 /**
