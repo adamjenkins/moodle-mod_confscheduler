@@ -86,7 +86,14 @@ import * as ConferenceBoundsUtils from 'mod_confscheduler/conference_bounds_util
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
-/** @type {Number} Fixed column width in pixels; keep in sync with styles.css .mod_confscheduler-room-header/-room-column. */
+/**
+ * @type {Number} Minimum column width in pixels; keep in sync with styles.css
+ * .mod_confscheduler-room-header/-room-column. Columns stretch wider than this to
+ * fill available space (user feedback, 2026-07-05), so this alone is NOT the
+ * actual rendered column width -- see buildGridInto()'s docblock, and the
+ * per-call getBoundingClientRect()-based measurements wherever a real pixel
+ * position needs converting to/from a room index.
+ */
 const COLUMN_WIDTH = 200;
 
 /**
@@ -245,8 +252,10 @@ const showDragPreview = (state, target) => {
 
     el.style.display = 'block';
     el.classList.toggle('mod_confscheduler-drag-preview-invalid', !target.valid);
-    el.style.left = (minIndex * COLUMN_WIDTH) + 'px';
-    el.style.width = (span * COLUMN_WIDTH - 6) + 'px';
+    // Percentages, not pixels -- see renderBlock()'s identical treatment.
+    const roomcount = Math.max(state.rooms.length, 1);
+    el.style.left = ((minIndex / roomcount) * 100) + '%';
+    el.style.width = `calc(${(span / roomcount) * 100}% - 6px)`;
     el.style.top = timeToY(state, target.start) + 'px';
     el.style.height = Math.max(20, timeToY(state, target.end) - timeToY(state, target.start)) + 'px';
     el.querySelector('.mod_confscheduler-drag-preview-label').textContent =
@@ -631,7 +640,15 @@ const buildGridInto = (state, gridEl, slots, dayKey) => {
 
     const columnsWrap = document.createElement('div');
     columnsWrap.className = 'mod_confscheduler-columns';
-    columnsWrap.style.width = (Math.max(state.rooms.length, 1) * COLUMN_WIDTH) + 'px';
+    // min-width, not width (user feedback, 2026-07-05): lets this stretch to fill
+    // any extra row width via its own flex-grow (see styles.css) when there's more
+    // room than state.rooms.length * COLUMN_WIDTH would need, while still
+    // guaranteeing every room column at least COLUMN_WIDTH px (past which
+    // .mod_confscheduler-grid-scroll's overflow-x: auto takes over) -- blocks
+    // inside are positioned in percentages (see renderBlock()), so they remain
+    // correctly aligned to their room column regardless of its actual rendered
+    // width.
+    columnsWrap.style.minWidth = (Math.max(state.rooms.length, 1) * COLUMN_WIDTH) + 'px';
     columnsWrap.style.height = totalHeight + 'px';
 
     state.rooms.forEach((room) => {
@@ -795,8 +812,14 @@ const renderBlock = (state, columnsWrap, slot) => {
     // dataset values are always strings; '' (not the literal string "null") represents
     // null here, mirroring how scheduler_display.js already stores this same field.
     block.dataset.submissionid = slot.submissionid !== null ? slot.submissionid : '';
-    block.style.left = (minIndex * COLUMN_WIDTH) + 'px';
-    block.style.width = (span * COLUMN_WIDTH - 6) + 'px';
+    // Percentages of columnsWrap's own width (position: relative, so this is the
+    // containing block for these position: absolute children), not pixels -- stays
+    // correctly aligned to its room column(s) regardless of how wide columnsWrap
+    // actually renders (fixed at COLUMN_WIDTH px per room, or stretched wider to
+    // fill available space; see buildGridInto()'s docblock).
+    const roomcount = Math.max(state.rooms.length, 1);
+    block.style.left = ((minIndex / roomcount) * 100) + '%';
+    block.style.width = `calc(${(span / roomcount) * 100}% - 6px)`;
     block.style.top = timeToY(state, slot.starttime) + 'px';
     block.style.height = Math.max(20, timeToY(state, slot.endtime) - timeToY(state, slot.starttime)) + 'px';
 
@@ -1031,7 +1054,12 @@ const beginMoveDrag = (state, event, blockEl) => {
         const relX = offsetLeft - (columnsRect.left + window.scrollX);
         const relY = offsetTop - (columnsRect.top + window.scrollY);
 
-        const index = clamp(Math.round(relX / COLUMN_WIDTH), 0, Math.max(state.rooms.length - span, 0));
+        // The actual rendered column width, not the COLUMN_WIDTH constant: columns
+        // stretch to fill available space above that minimum (user feedback,
+        // 2026-07-05), so dividing the real, current rendered width by room count
+        // is the only way this stays correct once they do.
+        const columnwidth = columnsRect.width / state.rooms.length;
+        const index = clamp(Math.round(relX / columnwidth), 0, Math.max(state.rooms.length - span, 0));
         const rawDesiredStart = snapTime(yToTime(state, relY), SNAP_MINUTES);
         // Bounce the raw drop position back inside the conference dates BEFORE the
         // SnapGap nudge runs, so SnapGap's own search starts from an already-in-range
@@ -1208,11 +1236,14 @@ const beginScheduleDrag = (state, event, cardEl) => {
         const relX = offsetLeft - (columnsRect.left + window.scrollX);
         const relY = offsetTop - (columnsRect.top + window.scrollY);
 
-        if (relX < 0 || relX >= state.rooms.length * COLUMN_WIDTH || relY < 0) {
+        if (relX < 0 || relX >= columnsRect.width || relY < 0) {
             return null;
         }
 
-        const index = clamp(Math.floor(relX / COLUMN_WIDTH), 0, state.rooms.length - 1);
+        // The actual rendered column width, not the COLUMN_WIDTH constant -- see
+        // beginMoveDrag()'s identical treatment.
+        const columnwidth = columnsRect.width / state.rooms.length;
+        const index = clamp(Math.floor(relX / columnwidth), 0, state.rooms.length - 1);
         const rawDesiredStart = snapTime(yToTime(state, relY), SNAP_MINUTES);
         // See beginMoveDrag()'s identical treatment: bounce the raw drop position back
         // inside the conference dates before the SnapGap nudge runs.

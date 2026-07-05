@@ -63,7 +63,13 @@ import * as ColourUtils from 'mod_confscheduler/colour_utils';
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
-/** @type {Number} Fixed column width in pixels; keep in sync with scheduler_grid.js/styles.css. */
+/**
+ * @type {Number} Minimum column width in pixels; keep in sync with
+ * scheduler_grid.js/styles.css. Columns stretch wider than this to fill available
+ * space (user feedback, 2026-07-05); see renderBlock()'s percentage-based
+ * positioning, which does not depend on this constant matching the actual
+ * rendered width.
+ */
 const COLUMN_WIDTH = 200;
 
 /**
@@ -255,8 +261,14 @@ const renderBlock = (state, columnsWrap, slot) => {
     block.dataset.slotid = slot.id;
     block.dataset.submissionid = slot.submissionid !== null ? slot.submissionid : '';
     block.dataset.favourited = slot.favourited ? '1' : '0';
-    block.style.left = (minIndex * COLUMN_WIDTH) + 'px';
-    block.style.width = (span * COLUMN_WIDTH - 6) + 'px';
+    // Percentages of columnsWrap's own width, not pixels -- see
+    // scheduler_grid.js's identical treatment (renderBlock()'s docblock there)
+    // for why: stays correctly aligned to its room column(s) regardless of how
+    // wide columnsWrap actually renders once columns stretch to fill available
+    // space (user feedback, 2026-07-05).
+    const roomcount = Math.max(state.rooms.length, 1);
+    block.style.left = ((minIndex / roomcount) * 100) + '%';
+    block.style.width = `calc(${(span / roomcount) * 100}% - 6px)`;
     const topY = timeToY(state, state.dayStart, slot.starttime);
     const bottomY = timeToY(state, state.dayStart, slot.endtime);
     block.style.top = topY + 'px';
@@ -440,7 +452,9 @@ const buildDayGridInto = (state, gridEl, slots, dayKey) => {
 
     const columnsWrap = document.createElement('div');
     columnsWrap.className = 'mod_confscheduler-columns';
-    columnsWrap.style.width = (Math.max(state.rooms.length, 1) * COLUMN_WIDTH) + 'px';
+    // min-width, not width -- see scheduler_grid.js's identical treatment
+    // (buildGridInto()'s docblock) for why.
+    columnsWrap.style.minWidth = (Math.max(state.rooms.length, 1) * COLUMN_WIDTH) + 'px';
     columnsWrap.style.height = totalHeight + 'px';
 
     state.rooms.forEach((room) => {

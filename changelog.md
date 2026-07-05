@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+- User feedback (2026-07-05): "the column widths should be responsive to fill all
+  the available space (like in css grid repeat(1fr)). There should be a min-width
+  of 200px." Room columns (`.mod_confscheduler-room-header`/`-room-column`) now
+  use `flex: 1 1 200px; min-width: 200px` instead of a fixed `flex: 0 0 200px`, so
+  a small room set stretches to fill the available width instead of leaving empty
+  space, while a large one still triggers the existing horizontal scroll once
+  columns hit the 200px floor. This required more than a CSS change: the drag grid
+  previously assumed a fixed, hard-coded `COLUMN_WIDTH` (200px) for every pixel
+  computation -- block/preview positioning now uses percentages of the columns
+  container's own width instead (correct regardless of actual rendered width),
+  and the two drag-time mouse-position-to-room-index conversions now measure the
+  real rendered column width live via `getBoundingClientRect()` (only safe at
+  drag-time, once layout is guaranteed complete, unlike at initial render). Live-
+  verified: 2 rooms in a wide viewport stretch to fill it (each ~656px in a test
+  at 1800px), the same 2 rooms settle just above the 200px floor in a narrow
+  viewport without triggering scroll, and a debug-instrumented drag confirmed the
+  live-measured room-index computation lands on the intended column. 123/123
+  PHPUnit passing, eslint/AMD rebuild clean.
 - User feedback (2026-07-05): "the autoscheduler should try to honor these
   [submitter-preferred] preferences (time of day should still be shuffled) and in
   edit mode, the unscheduled presentation block should not show presentations if a

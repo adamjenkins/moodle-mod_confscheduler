@@ -18,13 +18,18 @@
  * Styles for the mod_confscheduler edit-mode drag-and-drop grid
  * (amd/src/scheduler_grid.js).
  *
- * Column width (200px column width, 70px time-axis width) must stay in sync with the
- * COLUMN_WIDTH constant in amd/src/scheduler_grid.js. Hour gridline spacing is no
- * longer a fixed constant here (user feedback, 2026-07-05): the room column's
- * repeating-gradient background is authored at a 144px-per-hour reference tile, but
- * amd/src/scheduler_grid.js/amd/src/scheduler_display.js override background-size
- * per-instance to the organiser-configured state.pxperhour (60-480, see
- * classes/api.php's DEFAULT_PX_PER_HOUR/MIN_PX_PER_HOUR/MAX_PX_PER_HOUR).
+ * Column MINIMUM width (200px, 70px time-axis width) must stay in sync with the
+ * COLUMN_WIDTH constant in amd/src/scheduler_grid.js -- room columns grow past
+ * that floor to fill available width (user feedback, 2026-07-05: "the column
+ * widths should be responsive to fill all the available space ... min-width of
+ * 200px"), via flex-grow rather than a fixed pixel width; see
+ * .mod_confscheduler-room-header/-room-column below and buildGridInto()'s
+ * docblock in amd/src/scheduler_grid.js. Hour gridline spacing is no longer a
+ * fixed constant here: the room column's repeating-gradient background is
+ * authored at a 144px-per-hour reference tile, but amd/src/scheduler_grid.js/
+ * amd/src/scheduler_display.js override background-size per-instance to the
+ * organiser-configured state.pxperhour (60-480, see classes/api.php's
+ * DEFAULT_PX_PER_HOUR/MIN_PX_PER_HOUR/MAX_PX_PER_HOUR).
  */
 
 .mod_confscheduler-toolbar {
@@ -101,8 +106,13 @@
 }
 
 .mod_confscheduler-room-header {
-    flex: 0 0 200px;
-    width: 200px;
+    /* Responsive columns (user feedback, 2026-07-05): grow to fill any extra width
+       the room columns don't need (like CSS grid's repeat(auto-fit, minmax(200px,
+       1fr))), rather than sitting at a fixed 200px with empty space trailing a
+       narrow room set, but never shrink below 200px -- past that point
+       .mod_confscheduler-grid-scroll's existing overflow-x: auto takes over. */
+    flex: 1 1 200px;
+    min-width: 200px;
     box-sizing: border-box;
     display: flex;
     align-items: center;
@@ -192,13 +202,20 @@
 }
 
 .mod_confscheduler-columns {
+    /* Responsive columns (user feedback, 2026-07-05): grows to fill the row inside
+       .mod_confscheduler-grid (a flex container: this plus the fixed-width time
+       axis), matching this element's JS-set min-width (state.rooms.length * 200px)
+       once that's reached -- see buildGridInto()'s docblock. */
+    flex: 1 1 auto;
     position: relative;
     display: flex;
 }
 
 .mod_confscheduler-room-column {
-    flex: 0 0 200px;
-    width: 200px;
+    /* Must track .mod_confscheduler-room-header's sizing exactly, or the header
+       row and the grid body below it fall out of column alignment. */
+    flex: 1 1 200px;
+    min-width: 200px;
     box-sizing: border-box;
     position: relative;
     border-right: 1px solid rgba(0, 0, 0, 0.08);
