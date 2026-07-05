@@ -2,6 +2,25 @@
 
 ## Unreleased
 
+- User feedback (2026-07-05): "the autoscheduler should randomly shuffle the order
+  in which it schedules presentations. Of course it still needs to honour the
+  tracks rule ... and the preferred days if that is set, but after that, the order
+  the presentations appear is should be randomized every time the autoscheduler
+  runs." Previously, only which track group (and the ungrouped set) got processed
+  first was shuffled -- submissions *within* a single track group were always
+  attempted in ascending submission-id order, so which one landed in the earliest
+  slot of that group's shared room was fully deterministic. That group's own
+  member order is now shuffled too, using the same seeded random source as
+  everything else, so it's reproducible under a fixed test seed but genuinely
+  random in production. The two rules this must still respect are untouched by
+  this change: same-track submissions still preferentially land in the same room
+  (that logic doesn't depend on processing order), and a submission with a
+  recorded date preference still only lands on one of its preferred days
+  (try_place_single()'s day-preference partition runs per-submission, independent
+  of what order submissions are processed in). New test,
+  `test_run_autoscheduler_shuffles_order_within_a_track_group`, places the same
+  4-submission track group across 6 seeds and asserts at least one produces a
+  different chronological order. 124/124 PHPUnit passing.
 - User feedback (2026-07-05): "the column widths should be responsive to fill all
   the available space (like in css grid repeat(1fr)). There should be a min-width
   of 200px." Room columns (`.mod_confscheduler-room-header`/`-room-column`) now

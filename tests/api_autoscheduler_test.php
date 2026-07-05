@@ -227,6 +227,63 @@ final class api_autoscheduler_test extends advanced_testcase {
     }
 
     /**
+     * Within a single track group, which submission lands in the earliest slot of
+     * the group's shared room is randomised run to run (user feedback, 2026-07-05:
+     * "the order the presentations appear is should be randomized every time the
+     * autoscheduler runs"), not always the lowest submission id first -- while the
+     * grouping rule itself (same room) is untouched, covered separately above.
+     */
+    public function test_run_autoscheduler_shuffles_order_within_a_track_group(): void {
+        global $DB;
+        $this->resetAfterTest();
+
+        [$confscheduler, $confprogram, $confsubmissions] = $this->create_full_fixture();
+        api::add_room((int) $confscheduler->id, 'Room A');
+
+        $trackid = \mod_confsubmissions\api::add_track((int) $confsubmissions->id, 'Data Science');
+        $ids = [];
+        for ($i = 1; $i <= 4; $i++) {
+            $ids[] = $this->create_accepted_submission($confsubmissions, $confprogram, "DS Talk $i", $trackid);
+        }
+
+        $orderfor = function (int $seed) use ($DB, $confscheduler): array {
+            $DB->delete_records('confscheduler_slotroom', []);
+            $DB->delete_records('confscheduler_slot', []);
+            api::run_autoscheduler(
+                (int) $confscheduler->id,
+                strtotime('2026-09-01 09:00:00'),
+                strtotime('2026-09-01 17:00:00'),
+                false,
+                $seed
+            );
+            $slots = $DB->get_records(
+                'confscheduler_slot',
+                ['confscheduler' => $confscheduler->id],
+                'starttime ASC'
+            );
+            return array_map(static fn($slot) => (int) $slot->submissionid, array_values($slots));
+        };
+
+        $baseline = $orderfor(1);
+        sort($ids);
+        $sortedbaseline = $baseline;
+        sort($sortedbaseline);
+        $this->assertSame($ids, $sortedbaseline, 'Sanity check: every submission got placed, in some order.');
+
+        $founddifferentorder = false;
+        foreach ([2, 3, 4, 5, 6] as $altseed) {
+            if ($orderfor($altseed) !== $baseline) {
+                $founddifferentorder = true;
+                break;
+            }
+        }
+        $this->assertTrue(
+            $founddifferentorder,
+            'At least one alternate seed should place this track group in a different chronological order.'
+        );
+    }
+
+    /**
      * The autoscheduler places a submission on one of its preferred conference days
      * when a candidate slot is available there, even though another, non-preferred
      * candidate is also available elsewhere in the window (user feedback,

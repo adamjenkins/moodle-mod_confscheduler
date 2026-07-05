@@ -803,18 +803,23 @@ class api {
      *      overlap another same-track submission already scheduled in a
      *      *different* room.
      *   2. Everything else (no track) is placed with no grouping preference.
-     * Processing order *within* each of the two tiers above is itself
-     * shuffled (which track goes first, the order ungrouped submissions are
-     * attempted in) via the optional $seed parameter, so repeated runs over
-     * the same input vary while still respecting the priority rules -- see
-     * make_random_source()'s docblock for why a self-contained seedable
-     * generator is used instead of mt_srand()/shuffle() (which would mutate
-     * global PHP RNG state). The order rooms are searched in is *also*
-     * freshly shuffled for every individual placement attempt (see
-     * try_place_single()'s docblock) -- without that, the room-preference
-     * mechanism used for track groups would be a no-op, since a fixed room
-     * order always fills the same "first" room to capacity before ever
-     * trying the next one anyway.
+     * Processing order is shuffled at every level (user feedback, 2026-07-05:
+     * "the order the presentations appear is should be randomized every time
+     * the autoscheduler runs"): which track goes first, the order ungrouped
+     * submissions are attempted in, AND the order submissions *within* a
+     * single track group are attempted in (so which one lands in the
+     * earliest slot of that group's shared room varies run to run too) --
+     * all via the optional $seed parameter, so repeated runs over the same
+     * input vary while still respecting the priority rules above (same-track
+     * submissions still preferentially land in the same room regardless of
+     * which one goes first within the group). See make_random_source()'s
+     * docblock for why a self-contained seedable generator is used instead
+     * of mt_srand()/shuffle() (which would mutate global PHP RNG state). The
+     * order rooms are searched in is *also* freshly shuffled for every
+     * individual placement attempt (see try_place_single()'s docblock) --
+     * without that, the room-preference mechanism used for track groups
+     * would be a no-op, since a fixed room order always fills the same
+     * "first" room to capacity before ever trying the next one anyway.
      *
      * Removed (Revision round 1 batch B, 2026-07-03): this method previously
      * had a higher-priority tier ("same-session-tag consecutive-same-room")
@@ -972,14 +977,18 @@ class api {
             }
         }
 
-        // Stable, deterministic order *within* a group (not shuffled -- only
-        // the order groups/submissions are processed IN is shuffled, per the
-        // docblock above).
-        $byidasc = static function (\stdClass $first, \stdClass $second): int {
-            return $first->id <=> $second->id;
-        };
+        // Shuffled *within* a group too (user feedback, 2026-07-05: "the order the
+        // presentations appear is should be randomized every time the autoscheduler
+        // runs"), not just which groups/submissions get processed first -- this
+        // changes which submission in a track group lands in the earliest slot on a
+        // given run, without changing the two rules that still apply after this
+        // shuffle: same-track submissions stay preferentially in the same room (see
+        // $preferredroomid below, untouched by this), and a submission with a
+        // recorded date preference (see $preferreddaysfor) still only lands on one
+        // of its preferred days (try_place_single()'s day-preference partition,
+        // itself unaffected by processing order).
         foreach ($trackgroups as &$members) {
-            usort($members, $byidasc);
+            $members = self::fisher_yates_shuffle($members, $randomsource);
         }
         unset($members);
 
