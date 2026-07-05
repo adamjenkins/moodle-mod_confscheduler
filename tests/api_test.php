@@ -418,6 +418,134 @@ final class api_test extends advanced_testcase {
     }
 
     /**
+     * add_slot() rejects a placement starting before the instance's configured
+     * conference start date (user feedback, 2026-07-05), when both conference dates
+     * are set.
+     */
+    public function test_add_slot_rejects_placement_before_conference_start(): void {
+        global $DB;
+        $this->resetAfterTest();
+
+        [$confscheduler, $confprogram, $confsubmissions] = $this->create_full_fixture();
+        $DB->set_field('confscheduler', 'conferencestart', strtotime('2026-09-01 09:00:00'), ['id' => $confscheduler->id]);
+        $DB->set_field('confscheduler', 'conferenceend', strtotime('2026-09-03 17:00:00'), ['id' => $confscheduler->id]);
+        $roomid = api::add_room((int) $confscheduler->id, 'Main Hall');
+        $submissionid = $this->create_accepted_submission($confsubmissions, $confprogram);
+
+        $this->expectException(\moodle_exception::class);
+        api::add_slot(
+            (int) $confscheduler->id,
+            [$roomid],
+            strtotime('2026-09-01 08:00:00'),
+            strtotime('2026-09-01 08:30:00'),
+            $submissionid
+        );
+    }
+
+    /**
+     * add_slot() rejects a placement ending after the instance's configured
+     * conference end date.
+     */
+    public function test_add_slot_rejects_placement_after_conference_end(): void {
+        global $DB;
+        $this->resetAfterTest();
+
+        [$confscheduler, $confprogram, $confsubmissions] = $this->create_full_fixture();
+        $DB->set_field('confscheduler', 'conferencestart', strtotime('2026-09-01 09:00:00'), ['id' => $confscheduler->id]);
+        $DB->set_field('confscheduler', 'conferenceend', strtotime('2026-09-03 17:00:00'), ['id' => $confscheduler->id]);
+        $roomid = api::add_room((int) $confscheduler->id, 'Main Hall');
+        $submissionid = $this->create_accepted_submission($confsubmissions, $confprogram);
+
+        $this->expectException(\moodle_exception::class);
+        api::add_slot(
+            (int) $confscheduler->id,
+            [$roomid],
+            strtotime('2026-09-03 17:30:00'),
+            strtotime('2026-09-03 18:00:00'),
+            $submissionid
+        );
+    }
+
+    /**
+     * add_slot() allows a placement entirely within the configured conference date
+     * range, including exactly touching both boundaries.
+     */
+    public function test_add_slot_allows_placement_within_conference_range(): void {
+        global $DB;
+        $this->resetAfterTest();
+
+        [$confscheduler, $confprogram, $confsubmissions] = $this->create_full_fixture();
+        $DB->set_field('confscheduler', 'conferencestart', strtotime('2026-09-01 09:00:00'), ['id' => $confscheduler->id]);
+        $DB->set_field('confscheduler', 'conferenceend', strtotime('2026-09-01 17:00:00'), ['id' => $confscheduler->id]);
+        $roomid = api::add_room((int) $confscheduler->id, 'Main Hall');
+        $submissionid = $this->create_accepted_submission($confsubmissions, $confprogram);
+
+        $slotid = api::add_slot(
+            (int) $confscheduler->id,
+            [$roomid],
+            strtotime('2026-09-01 09:00:00'),
+            strtotime('2026-09-01 09:30:00'),
+            $submissionid
+        );
+
+        $this->assertGreaterThan(0, $slotid);
+    }
+
+    /**
+     * add_slot()'s conference-bounds check is a no-op when either conference date is
+     * unset (an existing instance saved before conference dates were made a required
+     * field may still have neither) -- backward compatible, unchanged behaviour.
+     */
+    public function test_add_slot_ignores_conference_bounds_when_unset(): void {
+        $this->resetAfterTest();
+
+        [$confscheduler, $confprogram, $confsubmissions] = $this->create_full_fixture();
+        $roomid = api::add_room((int) $confscheduler->id, 'Main Hall');
+        $submissionid = $this->create_accepted_submission($confsubmissions, $confprogram);
+
+        $slotid = api::add_slot(
+            (int) $confscheduler->id,
+            [$roomid],
+            strtotime('2026-09-01 03:00:00'),
+            strtotime('2026-09-01 03:30:00'),
+            $submissionid
+        );
+
+        $this->assertGreaterThan(0, $slotid);
+    }
+
+    /**
+     * update_slot() applies the same conference-bounds check as add_slot() when
+     * rescheduling an existing slot.
+     */
+    public function test_update_slot_rejects_reschedule_outside_conference_range(): void {
+        global $DB;
+        $this->resetAfterTest();
+
+        [$confscheduler, $confprogram, $confsubmissions] = $this->create_full_fixture();
+        $DB->set_field('confscheduler', 'conferencestart', strtotime('2026-09-01 09:00:00'), ['id' => $confscheduler->id]);
+        $DB->set_field('confscheduler', 'conferenceend', strtotime('2026-09-01 17:00:00'), ['id' => $confscheduler->id]);
+        $roomid = api::add_room((int) $confscheduler->id, 'Main Hall');
+        $submissionid = $this->create_accepted_submission($confsubmissions, $confprogram);
+
+        $slotid = api::add_slot(
+            (int) $confscheduler->id,
+            [$roomid],
+            strtotime('2026-09-01 09:00:00'),
+            strtotime('2026-09-01 09:30:00'),
+            $submissionid
+        );
+
+        $this->expectException(\moodle_exception::class);
+        api::update_slot(
+            $slotid,
+            [$roomid],
+            strtotime('2026-09-01 17:30:00'),
+            strtotime('2026-09-01 18:00:00')
+        );
+    }
+
+    /**
      * With gapminutes = 0, a slot starting exactly when another ends in the same
      * room (flush adjacency, zero gap) is allowed.
      */
@@ -636,6 +764,43 @@ final class api_test extends advanced_testcase {
         $this->assertEquals(strtotime('2026-09-01 14:00:00'), (int) $slot->starttime);
         $this->assertEquals(strtotime('2026-09-01 15:00:00'), (int) $slot->endtime);
         $this->assertSame(2, $DB->count_records('confscheduler_slotroom', ['slotid' => $slotid]));
+    }
+
+    /**
+     * update_span_block() applies the same conference-bounds check as add_slot()/
+     * update_slot() (moodle-reviewer caught this endpoint bypassing it entirely --
+     * the "edit span block" pencil modal lets an organiser type an arbitrary new
+     * time range, which must still be rejected if it falls outside the conference
+     * dates, exactly like a dragged reschedule already is).
+     */
+    public function test_update_span_block_rejects_reschedule_outside_conference_range(): void {
+        global $DB;
+        $this->resetAfterTest();
+
+        [$confscheduler] = $this->create_full_fixture();
+        $DB->set_field('confscheduler', 'conferencestart', strtotime('2026-09-01 09:00:00'), ['id' => $confscheduler->id]);
+        $DB->set_field('confscheduler', 'conferenceend', strtotime('2026-09-01 17:00:00'), ['id' => $confscheduler->id]);
+        $room1 = api::add_room((int) $confscheduler->id, 'A');
+
+        $slotid = api::add_slot(
+            (int) $confscheduler->id,
+            [$room1],
+            strtotime('2026-09-01 12:00:00'),
+            strtotime('2026-09-01 13:00:00'),
+            null,
+            'Lunch',
+            '#3366cc'
+        );
+
+        $this->expectException(\moodle_exception::class);
+        api::update_span_block(
+            $slotid,
+            'Lunch',
+            '#3366cc',
+            [$room1],
+            strtotime('2026-09-01 17:30:00'),
+            strtotime('2026-09-01 18:00:00')
+        );
     }
 
     /**

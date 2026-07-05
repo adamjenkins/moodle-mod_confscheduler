@@ -46,6 +46,17 @@
     padding: 0.5rem;
 }
 
+/* "All days" view (user feedback, 2026-07-05): dragging out of this panel is
+   disabled while every day is shown at once, so dim it rather than pretend it's
+   still interactive -- still visible, still useful to see what's outstanding. */
+.mod_confscheduler-unscheduled-panel-inert {
+    opacity: 0.5;
+}
+
+.mod_confscheduler-unscheduled-panel-inert .mod_confscheduler-unscheduled-card {
+    cursor: default;
+}
+
 .mod_confscheduler-unscheduled-panel h3 {
     font-size: 1rem;
     margin-bottom: 0.5rem;
@@ -126,6 +137,43 @@
     position: relative;
 }
 
+/*
+ * "All days" view (user feedback, 2026-07-05): every selectable day rendered as its
+ * own complete table, stacked vertically -- see amd/src/scheduler_grid.js's
+ * renderAllDaysBody(). ".mod_confscheduler-day-grid" mirrors ".mod_confscheduler-grid"
+ * above exactly rather than sharing that class, so state.root.querySelector() calls
+ * elsewhere that assume ".mod_confscheduler-grid" matches exactly one element (the
+ * single-day mode's persistent grid) stay unambiguous.
+ */
+.mod_confscheduler-day-grid {
+    display: flex;
+    position: relative;
+}
+
+.mod_confscheduler-alldays-container {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+.mod_confscheduler-day-table-wrapper {
+    display: flex;
+    flex-direction: column;
+}
+
+.mod_confscheduler-day-heading {
+    font-size: 1rem;
+    margin: 0 0 0.5rem;
+}
+
+/* Per-day header rows inside the "All days" view reuse .mod_confscheduler-room-headers
+   for its box-styling, but must NOT be sticky: with several stacked one after another,
+   all trying to stick to the same viewport top at once would look broken. */
+.mod_confscheduler-day-table-wrapper .mod_confscheduler-room-headers {
+    position: static;
+    z-index: auto;
+}
+
 .mod_confscheduler-time-axis {
     flex: 0 0 70px;
     width: 70px;
@@ -173,6 +221,31 @@
     opacity: 0.12;
     pointer-events: none;
     z-index: 0;
+}
+
+/*
+ * Greyed-out out-of-conference-hours band (user feedback, 2026-07-05): spans the full
+ * width of .mod_confscheduler-columns (not per-room, since it's a time restriction,
+ * not a room one), positioned/sized via inline top/height set by
+ * amd/src/scheduler_grid.js's/scheduler_display.js's shared renderOutOfHoursBands()
+ * helper from amd/src/day_utils.js's outOfHoursBands(). Deliberately NOT
+ * pointer-events: none -- an organiser can still see/interact with a legacy block
+ * that happens to fall in a greyed band (e.g. scheduled before conference dates were
+ * set); the actual prevention is the drag bounce-back (conference_bounds_utils.js)
+ * plus the authoritative server-side check, not a CSS click-block.
+ */
+.mod_confscheduler-outofhours-band {
+    position: absolute;
+    left: 0;
+    right: 0;
+    z-index: 0;
+    background: repeating-linear-gradient(
+        45deg,
+        rgba(0, 0, 0, 0.07),
+        rgba(0, 0, 0, 0.07) 8px,
+        rgba(0, 0, 0, 0.03) 8px,
+        rgba(0, 0, 0, 0.03) 16px
+    );
 }
 
 .mod_confscheduler-block {

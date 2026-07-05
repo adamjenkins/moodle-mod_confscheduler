@@ -120,3 +120,103 @@ export const formatDayLabel = (dayKey) => {
     const date = new Date(year, month - 1, day);
     return date.toLocaleDateString(undefined, {weekday: 'short', year: 'numeric', month: 'short', day: 'numeric'});
 };
+
+/**
+ * Returns the "greyed out" (out-of-conference-hours) vertical bands to render within a
+ * single day-table's rendered timeline, given the instance's configured conference
+ * start/end dates (user feedback, 2026-07-05) -- a top band (timelineStart -> where
+ * the conference actually starts, only non-empty on the day conferencestart falls on)
+ * and/or a bottom band (where the conference actually ends -> timelineEnd, only
+ * non-empty on the day conferenceend falls on). A day entirely outside the conference
+ * range (e.g. a legacy slot's day, before conference dates were set or after they were
+ * narrowed) greys its ENTIRE rendered timeline. Returns [] (nothing greyed) when
+ * either bound is unset, or the day is fully within the conference range.
+ *
+ * @param {String} dayKey The day this table is rendering (YYYY-MM-DD)
+ * @param {Number} timelineStart This table's own rendered timeline start, unix timestamp
+ * @param {Number} timelineEnd This table's own rendered timeline end, unix timestamp
+ * @param {Number|null} conferencestart Unix timestamp, or null/0 if unset
+ * @param {Number|null} conferenceend Unix timestamp, or null/0 if unset
+ * @return {{start: Number, end: Number}[]} 0-2 bands, each within [timelineStart, timelineEnd]
+ */
+export const outOfHoursBands = (dayKey, timelineStart, timelineEnd, conferencestart, conferenceend) => {
+    if (!conferencestart || !conferenceend) {
+        return [];
+    }
+
+    const {start: dayStart, end: dayEnd} = dayBounds(dayKey);
+    const validStart = Math.max(dayStart, conferencestart);
+    const validEnd = Math.min(dayEnd, conferenceend);
+
+    if (validStart >= validEnd) {
+        // This day is entirely outside the conference range: grey the whole table.
+        return [{start: timelineStart, end: timelineEnd}];
+    }
+
+    const bands = [];
+    if (timelineStart < validStart) {
+        bands.push({start: timelineStart, end: Math.min(validStart, timelineEnd)});
+    }
+    if (timelineEnd > validEnd) {
+        bands.push({start: Math.max(validEnd, timelineStart), end: timelineEnd});
+    }
+    return bands;
+};
+
+/**
+ * @type {String} Sentinel day-selector value meaning "show every day at once, each as
+ * its own table" rather than a single YYYY-MM-DD key (user feedback, 2026-07-05).
+ * Deliberately not a valid day-key shape so it can never collide with a real one.
+ */
+export const ALL_DAYS = 'all';
+
+/**
+ * Returns every calendar day key spanning a conference date range, inclusive of both
+ * ends, regardless of whether any slot exists on a given day -- unlike
+ * groupSlotsByDay()/sortedDayKeys(), which only ever produce keys for days that
+ * already have at least one slot. This is what lets an organiser page to, or drop a
+ * presentation onto, a day that's part of the conference but has nothing scheduled on
+ * it yet.
+ *
+ * @param {Number|null} conferencestart Unix timestamp, or null/0 if unset
+ * @param {Number|null} conferenceend Unix timestamp, or null/0 if unset
+ * @return {String[]} Day keys (YYYY-MM-DD), chronologically ordered; [] if either
+ *     bound is unset or the range is reversed
+ */
+export const dayKeysInRange = (conferencestart, conferenceend) => {
+    if (!conferencestart || !conferenceend || conferenceend < conferencestart) {
+        return [];
+    }
+
+    const startDate = new Date(conferencestart * 1000);
+    const endDate = new Date(conferenceend * 1000);
+    const cursor = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate());
+    const last = new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate());
+
+    const keys = [];
+    // Safety cap (~10 years) against an absurd/malformed range looping unreasonably long.
+    let guard = 0;
+    while (cursor.getTime() <= last.getTime() && guard < 3660) {
+        keys.push(dayKeyForTimestamp(Math.floor(cursor.getTime() / 1000)));
+        cursor.setDate(cursor.getDate() + 1);
+        guard++;
+    }
+    return keys;
+};
+
+/**
+ * Returns every day key that should be selectable: the conference's own date range
+ * (so an organiser can page to/schedule onto an empty day within it) UNIONED with any
+ * day that already has a slot (so pre-existing data is never hidden, e.g. a slot
+ * scheduled before conference dates were set, or before they were later narrowed).
+ *
+ * @param {Number|null} conferencestart Unix timestamp, or null/0 if unset
+ * @param {Number|null} conferenceend Unix timestamp, or null/0 if unset
+ * @param {Object[]} slots Slot objects, each with a numeric 'starttime'
+ * @return {String[]} Day keys (YYYY-MM-DD), chronologically ordered, de-duplicated
+ */
+export const selectableDayKeys = (conferencestart, conferenceend, slots) => {
+    const fromRange = dayKeysInRange(conferencestart, conferenceend);
+    const fromSlots = sortedDayKeys(groupSlotsByDay(slots));
+    return Array.from(new Set([...fromRange, ...fromSlots])).sort();
+};

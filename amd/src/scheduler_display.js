@@ -96,16 +96,19 @@ const formatTime = (timestamp) => new Date(timestamp * 1000).toLocaleTimeString(
 const timeToY = (state, daystart, timestamp) => Math.max(0, (timestamp - daystart) / 60 * (state.pxperhour / 60));
 
 /**
- * Computes the visible vertical time range for the currently selected day: the
- * earliest/latest of that day's slot start/end times, padded by 30 minutes at
- * each end and rounded to whole hours, with an 8-hour minimum span. Mirrors
- * scheduler_grid.js's computeTimeline(), scoped to one day's slots instead of
- * the whole instance's.
+ * Computes the visible vertical time range for one day's slots: the earliest/latest
+ * of that day's slot start/end times, padded by 30 minutes at each end and rounded to
+ * whole hours, with an 8-hour minimum span. Mirrors scheduler_grid.js's
+ * computeTimelineBounds(), scoped to one day's slots instead of the whole instance's.
  *
- * @param {Object[]} dayslots Slots belonging to the currently selected day
+ * @param {Object[]} dayslots Slots belonging to the day being rendered
+ * @param {String} fallbackDayKey The day (YYYY-MM-DD) to default to (08:00-18:00
+ *     local) when `dayslots` is empty -- the day being rendered, so an empty day's
+ *     axis reflects ITS OWN date rather than always defaulting to "today" regardless
+ *     of which day is shown.
  * @return {{start: Number, end: Number}}
  */
-const computeDayTimeRange = (dayslots) => {
+const computeDayTimeRange = (dayslots, fallbackDayKey) => {
     const times = [];
     dayslots.forEach((slot) => {
         times.push(slot.starttime);
@@ -118,9 +121,11 @@ const computeDayTimeRange = (dayslots) => {
         start = Math.min(...times);
         end = Math.max(...times);
     } else {
-        const today = new Date();
-        today.setHours(8, 0, 0, 0);
-        start = Math.floor(today.getTime() / 1000);
+        // No slots and no valid day key to anchor an empty day's axis to (e.g. a
+        // fresh instance with no conference dates and nothing scheduled yet, or
+        // "All days" itself briefly having no selectable days): fall back to today.
+        const anchorKey = fallbackDayKey || DayUtils.dayKeyForTimestamp(Math.floor(Date.now() / 1000));
+        start = DayUtils.dayBounds(anchorKey).start + (8 * 3600);
         end = start + (10 * 3600);
     }
 
@@ -336,17 +341,14 @@ const renderBlock = (state, columnsWrap, slot) => {
 };
 
 /**
- * Renders the room column headers (no drag handle, no edit/delete actions).
+ * Builds one room-header row (no drag handle, no edit/delete actions -- this is
+ * read-only Display mode). Shared by renderHeaders() (the single persistent row) and
+ * renderAllDaysBody() (one row per day; user feedback, 2026-07-05).
  *
  * @param {Object} state The module state object
+ * @return {HTMLElement} The header row element (not yet inserted anywhere)
  */
-const renderHeaders = (state) => {
-    const scrollEl = state.root.querySelector('.mod_confscheduler-grid-scroll');
-    const existing = state.root.querySelector('.mod_confscheduler-room-headers');
-    if (existing) {
-        existing.remove();
-    }
-
+const buildRoomHeaderRow = (state) => {
     const headerRow = document.createElement('div');
     headerRow.className = 'mod_confscheduler-room-headers';
 
@@ -374,8 +376,27 @@ const renderHeaders = (state) => {
         headerRow.appendChild(header);
     });
 
+    return headerRow;
+};
+
+/**
+ * Renders the single, persistent room column header row for single-day mode.
+ *
+ * @param {Object} state The module state object
+ */
+const renderHeaders = (state) => {
+    const scrollEl = state.root.querySelector('.mod_confscheduler-grid-scroll');
+    const existing = state.root.querySelector('.mod_confscheduler-room-headers');
+    if (existing) {
+        existing.remove();
+    }
+
+    const headerRow = buildRoomHeaderRow(state);
+
     const gridEl = state.root.querySelector('.mod_confscheduler-grid');
     scrollEl.insertBefore(headerRow, gridEl);
+    gridEl.style.display = '';
+    headerRow.style.display = '';
 };
 
 /**
@@ -384,12 +405,23 @@ const renderHeaders = (state) => {
  *
  * @param {Object} state The module state object
  */
-const renderBody = (state) => {
-    const dayslots = state.selectedDay ? (state.slotsByDay[state.selectedDay] || []) : [];
-    const range = computeDayTimeRange(dayslots);
+/**
+ * Builds one day's complete grid (time axis + room columns + out-of-hours bands +
+ * scheduled blocks) into the given container element, temporarily setting
+ * state.dayStart to this day's range start -- renderBlock()/timeToY() read it from
+ * state rather than taking it as a parameter. Shared by renderBody() (single-day
+ * mode, into the one persistent .mod_confscheduler-grid) and renderAllDaysBody() (one
+ * fresh grid per day; user feedback, 2026-07-05).
+ *
+ * @param {Object} state The module state object
+ * @param {HTMLElement} gridEl The .mod_confscheduler-grid container to build into (cleared first)
+ * @param {Object[]} slots This day's slots to render as blocks
+ * @param {String} dayKey The day being rendered (YYYY-MM-DD)
+ */
+const buildDayGridInto = (state, gridEl, slots, dayKey) => {
+    const range = computeDayTimeRange(slots, dayKey);
     state.dayStart = range.start;
 
-    const gridEl = state.root.querySelector('.mod_confscheduler-grid');
     gridEl.innerHTML = '';
 
     const totalHeight = timeToY(state, range.start, range.end);
@@ -425,9 +457,100 @@ const renderBody = (state) => {
 
     gridEl.appendChild(columnsWrap);
 
-    dayslots.forEach((slot) => renderBlock(state, columnsWrap, slot));
+    const bands = DayUtils.outOfHoursBands(dayKey, range.start, range.end, state.conferencestart, state.conferenceend);
+    bands.forEach((band) => {
+        const bandEl = document.createElement('div');
+        bandEl.className = 'mod_confscheduler-outofhours-band';
+        bandEl.style.top = timeToY(state, range.start, band.start) + 'px';
+        bandEl.style.height = Math.max(0, timeToY(state, range.start, band.end) - timeToY(state, range.start, band.start)) + 'px';
+        columnsWrap.appendChild(bandEl);
+    });
+
+    slots.forEach((slot) => renderBlock(state, columnsWrap, slot));
+};
+
+/**
+ * Renders the grid body for single-day mode, into the one persistent
+ * .mod_confscheduler-grid element.
+ *
+ * @param {Object} state The module state object
+ */
+const renderBody = (state) => {
+    const dayslots = state.selectedDay ? (state.slotsByDay[state.selectedDay] || []) : [];
+    const gridEl = state.root.querySelector('.mod_confscheduler-grid');
+    buildDayGridInto(state, gridEl, dayslots, state.selectedDay);
 
     state.root.classList.toggle('mod_confscheduler-mytimetable-active', state.myTimetableActive);
+};
+
+/**
+ * Renders the "All days" view (user feedback, 2026-07-05): every selectable day as
+ * its own complete read-only table (heading + room headers + grid), stacked
+ * vertically. Simpler than scheduler_grid.js's equivalent since Display mode has no
+ * drag-and-drop to guard against across multiple simultaneous tables -- every
+ * interaction here is already a plain click (favourite star, the modal link-through).
+ *
+ * @param {Object} state The module state object
+ */
+const renderAllDaysBody = (state) => {
+    const scrollEl = state.root.querySelector('.mod_confscheduler-grid-scroll');
+
+    const singleDayHeaders = state.root.querySelector('.mod_confscheduler-room-headers');
+    const singleDayGrid = state.root.querySelector('.mod_confscheduler-grid');
+    if (singleDayHeaders) {
+        singleDayHeaders.style.display = 'none';
+    }
+    if (singleDayGrid) {
+        singleDayGrid.style.display = 'none';
+    }
+
+    const existingContainer = state.root.querySelector('.mod_confscheduler-alldays-container');
+    if (existingContainer) {
+        existingContainer.remove();
+    }
+
+    const container = document.createElement('div');
+    container.className = 'mod_confscheduler-alldays-container';
+
+    state.dayKeys.forEach((dayKey) => {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'mod_confscheduler-day-table-wrapper';
+
+        const heading = document.createElement('h4');
+        heading.className = 'mod_confscheduler-day-heading';
+        heading.textContent = DayUtils.formatDayLabel(dayKey);
+        wrapper.appendChild(heading);
+
+        const headerRow = buildRoomHeaderRow(state);
+        wrapper.appendChild(headerRow);
+
+        const gridEl = document.createElement('div');
+        gridEl.className = 'mod_confscheduler-day-grid';
+        gridEl.setAttribute('role', 'table');
+        wrapper.appendChild(gridEl);
+
+        buildDayGridInto(state, gridEl, state.slotsByDay[dayKey] || [], dayKey);
+
+        container.appendChild(wrapper);
+    });
+
+    scrollEl.appendChild(container);
+
+    state.root.classList.toggle('mod_confscheduler-mytimetable-active', state.myTimetableActive);
+};
+
+/**
+ * Dispatches to renderBody() (single-day mode) or renderAllDaysBody() ("All days"
+ * mode) depending on state.selectedDay (user feedback, 2026-07-05).
+ *
+ * @param {Object} state The module state object
+ */
+const renderGridBody = (state) => {
+    if (state.selectedDay === DayUtils.ALL_DAYS) {
+        renderAllDaysBody(state);
+    } else {
+        renderBody(state);
+    }
 };
 
 /**
@@ -449,6 +572,12 @@ const renderDaySelector = (state) => {
     }
     select.hidden = false;
 
+    const allDaysOption = document.createElement('option');
+    allDaysOption.value = DayUtils.ALL_DAYS;
+    allDaysOption.textContent = state.strings.alldays;
+    allDaysOption.selected = state.selectedDay === DayUtils.ALL_DAYS;
+    select.appendChild(allDaysOption);
+
     state.dayKeys.forEach((key) => {
         const option = document.createElement('option');
         option.value = key;
@@ -467,14 +596,18 @@ const renderDaySelector = (state) => {
 const fetchAndRenderAll = (state) => Repository.getGridData(state.cmid).then((data) => {
     state.rooms = data.rooms;
     state.pxperhour = data.pxperhour;
+    state.conferencestart = data.conferencestart;
+    state.conferenceend = data.conferenceend;
     state.slotsByDay = DayUtils.groupSlotsByDay(data.slots);
-    state.dayKeys = DayUtils.sortedDayKeys(state.slotsByDay);
-    if (!state.selectedDay || !state.dayKeys.includes(state.selectedDay)) {
+    state.dayKeys = DayUtils.selectableDayKeys(state.conferencestart, state.conferenceend, data.slots);
+    if (!state.selectedDay || (state.selectedDay !== DayUtils.ALL_DAYS && !state.dayKeys.includes(state.selectedDay))) {
         state.selectedDay = DayUtils.defaultDayKey(state.dayKeys);
     }
-    renderHeaders(state);
+    if (state.selectedDay !== DayUtils.ALL_DAYS) {
+        renderHeaders(state);
+    }
     renderDaySelector(state);
-    renderBody(state);
+    renderGridBody(state);
     return null;
 }).catch(Notification.exception);
 
@@ -566,7 +699,7 @@ const bindEvents = (state) => {
         const daySelect = event.target.closest('.mod_confscheduler-day-select');
         if (daySelect) {
             state.selectedDay = daySelect.value;
-            renderBody(state);
+            renderGridBody(state);
             return;
         }
 
@@ -602,9 +735,10 @@ export const init = async(cmid, confschedulerid, confprogramcmid, programurl, ca
         return;
     }
 
-    const [favourite, filterbytrack] = await Promise.all([
+    const [favourite, filterbytrack, alldays] = await Promise.all([
         getString('favourite', 'mod_confscheduler'),
         getString('filterbytrack', 'mod_confscheduler'),
+        getString('alldays', 'mod_confscheduler'),
     ]);
 
     const state = {
@@ -616,12 +750,14 @@ export const init = async(cmid, confschedulerid, confprogramcmid, programurl, ca
         root,
         rooms: [],
         pxperhour: DEFAULT_PX_PER_HOUR,
+        conferencestart: null,
+        conferenceend: null,
         slotsByDay: {},
         dayKeys: [],
         selectedDay: null,
         dayStart: 0,
         myTimetableActive: readMyTimetableState(cmid),
-        strings: {favourite, filterbytrack},
+        strings: {favourite, filterbytrack, alldays},
     };
 
     const myTimetableBtn = root.querySelector('.mod_confscheduler-mytimetable-toggle');

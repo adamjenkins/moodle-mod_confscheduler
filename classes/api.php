@@ -461,9 +461,12 @@ class api {
      * @param int|null $submissionid The submission this slot is for, or null for a span-block
      * @param int $gapminutes The instance's configured SnapGap minimum gap, in minutes
      * @param int|null $excludeslotid A slot id to exclude from the conflict check (when rescheduling it)
+     * @param int|null $conferencestart The instance's configured conference start, unix timestamp, or null if unset
+     * @param int|null $conferenceend The instance's configured conference end, unix timestamp, or null if unset
      * @return void
      * @throws \invalid_parameter_exception if $roomids is empty or references a room outside this instance
-     * @throws \moodle_exception if the time range is invalid, overlaps another slot, or violates SnapGap
+     * @throws \moodle_exception if the time range is invalid, falls outside the conference dates (when
+     *         both are set), overlaps another slot, or violates SnapGap
      */
     protected static function validate_placement(
         int $confschedulerid,
@@ -472,12 +475,29 @@ class api {
         int $endtime,
         ?int $submissionid,
         int $gapminutes,
-        ?int $excludeslotid = null
+        ?int $excludeslotid = null,
+        ?int $conferencestart = null,
+        ?int $conferenceend = null
     ): void {
         global $DB;
 
         if ($endtime <= $starttime) {
             throw new \moodle_exception('error:invalidtimerange', 'mod_confscheduler');
+        }
+
+        // Out-of-conference-hours check (user feedback, 2026-07-05): only enforced
+        // when BOTH bounds are actually set -- an existing instance saved before
+        // conference dates were made a required field may still have neither, and
+        // must keep working exactly as before rather than suddenly rejecting every
+        // placement. Client-side, amd/src/conference_bounds_utils.js mirrors this
+        // exact check to auto-nudge a drag back inside the range (the same
+        // "bounce back rather than hard-reject" pattern already established for
+        // SnapGap in amd/src/snapgap_utils.js) -- this method remains the sole
+        // authoritative check regardless of what the client computes or submits.
+        if ($conferencestart !== null && $conferenceend !== null) {
+            if ($starttime < $conferencestart || $endtime > $conferenceend) {
+                throw new \moodle_exception('error:outsideconferencedates', 'mod_confscheduler');
+            }
         }
 
         $uniqueroomids = array_values(array_unique(array_map('intval', $roomids)));
@@ -591,7 +611,10 @@ class api {
             $starttime,
             $endtime,
             $submissionid,
-            (int) $confscheduler->gapminutes
+            (int) $confscheduler->gapminutes,
+            null,
+            $confscheduler->conferencestart !== null ? (int) $confscheduler->conferencestart : null,
+            $confscheduler->conferenceend !== null ? (int) $confscheduler->conferenceend : null
         );
 
         $now = time();
@@ -647,7 +670,9 @@ class api {
             $endtime,
             $slot->submissionid !== null ? (int) $slot->submissionid : null,
             (int) $confscheduler->gapminutes,
-            (int) $slotid
+            (int) $slotid,
+            $confscheduler->conferencestart !== null ? (int) $confscheduler->conferencestart : null,
+            $confscheduler->conferenceend !== null ? (int) $confscheduler->conferenceend : null
         );
 
         $DB->update_record('confscheduler_slot', (object) [
@@ -717,7 +742,9 @@ class api {
             $endtime,
             null,
             (int) $confscheduler->gapminutes,
-            (int) $slotid
+            (int) $slotid,
+            $confscheduler->conferencestart !== null ? (int) $confscheduler->conferencestart : null,
+            $confscheduler->conferenceend !== null ? (int) $confscheduler->conferenceend : null
         );
 
         $DB->update_record('confscheduler_slot', (object) [

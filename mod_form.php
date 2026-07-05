@@ -61,11 +61,34 @@ class mod_confscheduler_mod_form extends moodleform_mod {
 
         $this->standard_intro_elements();
 
-        // Conference start/end dates (Revision round 1, 2026-07-03): purely an
-        // organiser-declared setting, not currently derived from or validated against
-        // any scheduled slot -- see confscheduler.conferencestart/conferenceend's
-        // db/install.xml comments. Deliberately in the General section (not a separate
-        // settings screen), per the user's explicit feedback.
+        // Conference start/end dates (Revision round 1, 2026-07-03; made required,
+        // 2026-07-05): organiser-declared, and now REQUIRED -- the edit-mode grid's
+        // day selector, its "All days" view, the autoscheduler's default window, and
+        // the greyed-out/bounce-back out-of-conference-hours behaviour (see
+        // classes/api.php's validate_placement()) all now derive from this range, so
+        // an instance needs it set to get any of that.
+        //
+        // Still built with 'optional' => true, NOT removed despite "required" above:
+        // a plain formslib 'required' rule cannot actually enforce this on a
+        // date_time_selector, because that element has no representable "empty"
+        // state without its own optional-disable checkbox -- with 'optional' absent,
+        // it always submits SOME real timestamp (defaulting to "now"), so a bare
+        // empty()/required check could never fire (confirmed live: an earlier version
+        // of this fix silently saved "now" as the conference date without the
+        // organiser ever consciously choosing one). Keeping 'optional' => true (with
+        // its checkbox left UNCHECKED by default, see setDefault(..., 0) below) is
+        // what gives the field a genuine "not set" (0) state that validation() below
+        // can actually detect and reject -- the checkbox itself is the only way
+        // formslib supports "required" for this element type.
+        //
+        // An existing instance saved before this change may still have null dates
+        // until next edited (the DB columns themselves stay nullable -- every reader
+        // of them still tolerates null, matching this project's established
+        // graceful-degradation pattern for optional cross-references, e.g.
+        // RELATIONS.md's dangling-reference discussion), but the form itself no
+        // longer allows saving a NEW or edited instance without both actually set.
+        // Deliberately in the General section (not a separate settings screen), per
+        // the original explicit feedback.
         $mform->addElement(
             'date_time_selector',
             'conferencestart',
@@ -144,6 +167,18 @@ class mod_confscheduler_mod_form extends moodleform_mod {
             // offered (e.g. a confprogram activity in an unrelated course), since every
             // downstream page trusts confscheduler.confprogramcmid implicitly.
             $errors['confprogramcmid'] = get_string('error:invalidconfprogramcmid', 'mod_confscheduler');
+        }
+
+        // Conference dates made required (2026-07-05): the "optional" checkbox on
+        // each date_time_selector above (see its docblock for why that's kept, not
+        // removed) submits 0 when left unchecked -- this is the actual "required"
+        // enforcement, since downstream code (day selector, autoscheduler defaults,
+        // out-of-hours greying/bounce-back) depends on both being genuinely set.
+        if (empty($data['conferencestart'])) {
+            $errors['conferencestart'] = get_string('required');
+        }
+        if (empty($data['conferenceend'])) {
+            $errors['conferenceend'] = get_string('required');
         }
 
         if (

@@ -2,6 +2,32 @@
 
 ## Unreleased
 
+- User feedback (2026-07-05): conference start/end dates are now **required**
+  (`mod_form.php` keeps the `optional => true` checkbox, unchecked by default, so a
+  genuinely-unset state is still representable for validation to reject -- an earlier
+  attempt that removed `optional => true` entirely was a real bug, since a
+  `date_time_selector` without it always submits a real timestamp defaulting to "now",
+  so a bare `empty()` check could never fire; caught live before being reverted). This
+  range now drives: the day selector's list of selectable days (`DayUtils.
+  selectableDayKeys()`, unioned with any day that already has a slot so legacy data is
+  never hidden); a new **"All days" view** in both edit mode and read-only Display
+  mode, rendering every day as its own complete table instead of one continuous
+  timeline (dragging is disabled while "All days" is showing -- a viewing-only mode
+  for that state; every click-based interaction still works); the autoscheduler
+  modal's default time window; and a new **greyed-out out-of-conference-hours band**
+  (`DayUtils.outOfHoursBands()`) with a matching **server-side rejection** in
+  `api::validate_placement()` (a no-op when either date is unset, for backward
+  compatibility with existing instances) and a client-side "bounce back" nudge
+  (`amd/src/conference_bounds_utils.js`, mirroring the existing SnapGap pattern).
+  **`moodle-reviewer` caught a real gap**: `api::update_span_block()` (the "edit span
+  block" pencil-modal path) was not forwarding the new conference-bounds check at all,
+  unlike `add_slot()`/`update_slot()` -- fixed, with a new covering test. 125/125
+  PHPUnit passing (was 115), phpcs/moodlecheck/eslint clean, AMD rebuilt from scratch
+  and diff-verified stable. Extensive live verification (Playwright): day selector
+  correctly conference-range-scoped; greyed bands verified via direct DOM inspection
+  at the exact expected pixel offsets; "All days" correct in both modes; autoscheduler
+  defaults correct; required-date validation correctly blocks submission (this is
+  what caught the `date_time_selector` bug above).
 - User feedback (2026-07-05), found during a live bug-hunt session: scheduled blocks
   wasted their entire first line on just the favourite-star icon, with the title
   pushed below it by a fixed top margin. Fixed by floating the remove (×) and

@@ -24,6 +24,7 @@
 
 $string['addroom'] = 'Add room';
 $string['addspanblock'] = 'Add span block';
+$string['alldays'] = 'All days';
 $string['autoscheduler'] = 'Autoscheduler';
 $string['autoschedulerclearfirst'] = 'Clear existing schedule in this window first';
 $string['autoschedulerclearfirst_help'] = 'If checked, every block already scheduled anywhere in the chosen window is removed before the autoscheduler places anything new. Blocks outside the window are never touched. If unchecked (the default), the autoscheduler simply avoids colliding with whatever is already scheduled.';
@@ -34,9 +35,9 @@ $string['autoschedulersummary'] = '{$a->scheduled} scheduled, {$a->skipped} coul
 $string['autoschedulerwindowend'] = 'Window end';
 $string['autoschedulerwindowstart'] = 'Window start';
 $string['conferenceend'] = 'Conference end';
-$string['conferenceend_help'] = 'The date/time the conference ends. Purely an organiser-declared setting: it is not currently derived from, or validated against, any scheduled slot.';
+$string['conferenceend_help'] = 'The date/time the conference ends. Required: this drives which days are selectable on the schedule grid (including "All days"), the autoscheduler\'s default window, and greys out (and refuses to schedule into) times after this point.';
 $string['conferencestart'] = 'Conference start';
-$string['conferencestart_help'] = 'The date/time the conference starts. Purely an organiser-declared setting: it is not currently derived from, or validated against, any scheduled slot.';
+$string['conferencestart_help'] = 'The date/time the conference starts. Required: this drives which days are selectable on the schedule grid (including "All days"), the autoscheduler\'s default window, and greys out (and refuses to schedule into) times before this point.';
 $string['confirmdeleteroom'] = 'Delete this room? This cannot be undone.';
 $string['confprogramcmid'] = 'Conference Program activity';
 $string['confprogramcmid_help'] = 'The Conference Program activity in this course whose accepted submissions this Conference Scheduler instance will schedule.';
@@ -61,6 +62,7 @@ $string['error:invalidtimerange'] = 'The end time must be after the start time.'
 $string['error:labelrequired'] = 'Enter a label for this block.';
 $string['error:noconfprogram'] = 'There are no Conference Program activities in this course yet. Add one first.';
 $string['error:notaspanblock'] = 'This operation only applies to a column-spanning block with no presentation.';
+$string['error:outsideconferencedates'] = 'This placement falls outside the conference start/end dates.';
 $string['error:roomhasslots'] = 'This room still has scheduled blocks in it. Unschedule them first.';
 $string['error:roomnamerequired'] = 'Enter a room name.';
 $string['error:timeoverlap'] = 'This placement overlaps another block already scheduled in the same room.';

@@ -25,6 +25,7 @@ import * as Repository from 'mod_confscheduler/repository';
 import * as DayUtils from 'mod_confscheduler/day_utils';
 import * as ColourUtils from 'mod_confscheduler/colour_utils';
 import * as SnapGapUtils from 'mod_confscheduler/snapgap_utils';
+import * as ConferenceBoundsUtils from 'mod_confscheduler/conference_bounds_utils';
 
 /**
  * Edit-mode drag-and-drop schedule grid (Phase 3.3).
@@ -266,14 +267,21 @@ const clearDragPreview = (state) => {
 };
 
 /**
- * Computes the visible timeline range (state.timelineStart/timelineEnd) from the currently loaded slots,
- * padded by 30 minutes at each end and rounded to whole hours, with an 8-hour minimum span.
+ * Computes a visible timeline range from a set of slots, padded by 30 minutes at each
+ * end and rounded to whole hours, with an 8-hour minimum span. Pure/stateless so it
+ * can be called once per day when rendering the "All days" view (user feedback,
+ * 2026-07-05), not just for the single currently-selected day.
  *
- * @param {Object} state The module state object
+ * @param {Object[]} slots Slots to derive the range from (each with starttime/endtime)
+ * @param {String} fallbackDayKey The day (YYYY-MM-DD) to default to (08:00-18:00 local)
+ *     when `slots` is empty -- the day being rendered, so an empty day's axis reflects
+ *     ITS OWN date rather than always defaulting to "today" regardless of which day
+ *     is shown.
+ * @return {{start: Number, end: Number}}
  */
-const computeTimeline = (state) => {
+const computeTimelineBounds = (slots, fallbackDayKey) => {
     const times = [];
-    state.slots.forEach((slot) => {
+    slots.forEach((slot) => {
         times.push(slot.starttime);
         times.push(slot.endtime);
     });
@@ -284,9 +292,7 @@ const computeTimeline = (state) => {
         start = Math.min(...times);
         end = Math.max(...times);
     } else {
-        const today = new Date();
-        today.setHours(8, 0, 0, 0);
-        start = Math.floor(today.getTime() / 1000);
+        start = DayUtils.dayBounds(fallbackDayKey).start + (8 * 3600);
         end = start + (10 * 3600);
     }
 
@@ -296,8 +302,22 @@ const computeTimeline = (state) => {
         end = start + (8 * 3600);
     }
 
-    state.timelineStart = start;
-    state.timelineEnd = end;
+    return {start, end};
+};
+
+/**
+ * Computes the visible timeline range (state.timelineStart/timelineEnd) for the
+ * single currently-selected day, from state.slots.
+ *
+ * @param {Object} state The module state object
+ */
+const computeTimeline = (state) => {
+    const fallbackKey = (state.selectedDay && state.selectedDay !== DayUtils.ALL_DAYS)
+        ? state.selectedDay
+        : DayUtils.dayKeyForTimestamp(Math.floor(Date.now() / 1000));
+    const bounds = computeTimelineBounds(state.slots, fallbackKey);
+    state.timelineStart = bounds.start;
+    state.timelineEnd = bounds.end;
 };
 
 /**
@@ -313,12 +333,20 @@ const fetchAndRenderAll = (state) => Repository.getGridData(state.cmid).then((da
     state.unscheduled = data.unscheduled;
     state.gapminutes = data.gapminutes;
     state.pxperhour = data.pxperhour;
+    state.conferencestart = data.conferencestart;
+    state.conferenceend = data.conferenceend;
     syncGapMinutesInput(state);
     syncPxPerHourInput(state);
     applyDayFilter(state);
-    renderHeaders(state);
+    // Skip in "All days" mode: renderAllDaysBody() (via renderGridBody() below) hides
+    // the single-day header/grid entirely and builds its own per-day headers, so
+    // rebuilding/re-showing the single-day sortable_list header here would just be
+    // immediately undone -- see renderHeaders()'s and renderAllDaysBody()'s own docblocks.
+    if (state.selectedDay !== DayUtils.ALL_DAYS) {
+        renderHeaders(state);
+    }
     renderDaySelector(state);
-    renderBody(state);
+    renderGridBody(state);
     renderUnscheduledPanel(state);
     return null;
 }).catch(Notification.exception);
@@ -337,11 +365,13 @@ const fetchAndRenderBody = (state) => Repository.getGridData(state.cmid).then((d
     state.unscheduled = data.unscheduled;
     state.gapminutes = data.gapminutes;
     state.pxperhour = data.pxperhour;
+    state.conferencestart = data.conferencestart;
+    state.conferenceend = data.conferenceend;
     syncGapMinutesInput(state);
     syncPxPerHourInput(state);
     applyDayFilter(state);
     renderDaySelector(state);
-    renderBody(state);
+    renderGridBody(state);
     renderUnscheduledPanel(state);
     return null;
 }).catch(Notification.exception);
@@ -375,25 +405,34 @@ const syncPxPerHourInput = (state) => {
 };
 
 /**
- * Groups state.allSlots by day, picks/keeps a selected day, and sets state.slots to that
- * day's subset -- the only array computeTimeline()/renderBody() read from. Room headers
- * and the unscheduled panel are rendered from state.rooms/state.unscheduled directly, so
- * they are unaffected by which day is selected.
+ * Groups state.allSlots by day, picks/keeps a selected day (or "All days", see
+ * DayUtils.ALL_DAYS), and sets state.slots to the single selected day's subset (used
+ * by the single-day render path only -- the "All days" path reads state.slotsByDay
+ * directly, one day at a time, in renderAllDaysBody()).
+ *
+ * Selectable days now come from the instance's own configured conference date range
+ * (user feedback, 2026-07-05), not just days that already have a slot -- see
+ * DayUtils.selectableDayKeys() -- so an organiser can page to, or drop a presentation
+ * onto, a day within the conference that has nothing scheduled on it yet.
  *
  * @param {Object} state The module state object
  */
 const applyDayFilter = (state) => {
-    const groups = DayUtils.groupSlotsByDay(state.allSlots);
-    state.dayKeys = DayUtils.sortedDayKeys(groups);
-    if (!state.selectedDay || !state.dayKeys.includes(state.selectedDay)) {
+    state.slotsByDay = DayUtils.groupSlotsByDay(state.allSlots);
+    state.dayKeys = DayUtils.selectableDayKeys(state.conferencestart, state.conferenceend, state.allSlots);
+    if (!state.selectedDay || (state.selectedDay !== DayUtils.ALL_DAYS && !state.dayKeys.includes(state.selectedDay))) {
         state.selectedDay = DayUtils.defaultDayKey(state.dayKeys);
     }
-    state.slots = state.selectedDay ? (groups[state.selectedDay] || []) : [];
+    state.slots = (state.selectedDay && state.selectedDay !== DayUtils.ALL_DAYS)
+        ? (state.slotsByDay[state.selectedDay] || [])
+        : [];
 };
 
 /**
- * Renders the day-selector <select> options and wires it to re-filter/re-render the body
- * on change. A no-op (element left hidden) when there is nothing scheduled yet.
+ * Renders the day-selector <select> options (including "All days") and wires it to
+ * re-filter/re-render the body on change. A no-op (element left hidden) when there is
+ * no conference date range configured and nothing scheduled yet (an existing instance
+ * saved before conference dates were made required, with nothing on the grid).
  *
  * @param {Object} state The module state object
  */
@@ -410,6 +449,12 @@ const renderDaySelector = (state) => {
     }
     select.hidden = false;
 
+    const allDaysOption = document.createElement('option');
+    allDaysOption.value = DayUtils.ALL_DAYS;
+    allDaysOption.textContent = state.strings.alldays;
+    allDaysOption.selected = state.selectedDay === DayUtils.ALL_DAYS;
+    select.appendChild(allDaysOption);
+
     state.dayKeys.forEach((key) => {
         const option = document.createElement('option');
         option.value = key;
@@ -420,17 +465,18 @@ const renderDaySelector = (state) => {
 };
 
 /**
- * Renders the room column headers, including the drag handle (core/sortable_list) and edit/delete buttons.
+ * Builds one room-header row (the boxes only, not the wrapping container's own
+ * class/insertion) -- shared by renderHeaders() (the single persistent, sticky,
+ * sortable_list-reorderable row) and renderAllDaysBody() (one non-sticky,
+ * non-reorderable row per day; user feedback, 2026-07-05 -- reordering rooms while
+ * viewing every day at once is a rare edge case an organiser can do from a
+ * single-day view instead).
  *
  * @param {Object} state The module state object
+ * @param {Boolean} draggable Whether to include the sortable_list drag handle
+ * @return {HTMLElement} The header row element (not yet inserted anywhere)
  */
-const renderHeaders = (state) => {
-    const scrollEl = state.root.querySelector('.mod_confscheduler-grid-scroll');
-    const existing = state.root.querySelector('.mod_confscheduler-room-headers');
-    if (existing) {
-        existing.remove();
-    }
-
+const buildRoomHeaderRow = (state, draggable) => {
     const headerRow = document.createElement('div');
     headerRow.className = 'mod_confscheduler-room-headers';
 
@@ -450,14 +496,16 @@ const renderHeaders = (state) => {
             }
         }
 
-        const handle = document.createElement('span');
-        handle.className = 'mod_confscheduler-room-draghandle';
-        handle.setAttribute('data-drag-type', 'move');
-        handle.setAttribute('tabindex', '0');
-        handle.setAttribute('role', 'button');
-        handle.setAttribute('aria-label', state.strings.movecolumn);
-        handle.textContent = '⋮⋮';
-        header.appendChild(handle);
+        if (draggable) {
+            const handle = document.createElement('span');
+            handle.className = 'mod_confscheduler-room-draghandle';
+            handle.setAttribute('data-drag-type', 'move');
+            handle.setAttribute('tabindex', '0');
+            handle.setAttribute('role', 'button');
+            handle.setAttribute('aria-label', state.strings.movecolumn);
+            handle.textContent = '⋮⋮';
+            header.appendChild(handle);
+        }
 
         const name = document.createElement('span');
         name.className = 'mod_confscheduler-room-name';
@@ -485,8 +533,28 @@ const renderHeaders = (state) => {
         headerRow.appendChild(header);
     });
 
+    return headerRow;
+};
+
+/**
+ * Renders the single, persistent, sticky room column header row (drag-to-reorder via
+ * core/sortable_list, edit/delete buttons) for single-day mode.
+ *
+ * @param {Object} state The module state object
+ */
+const renderHeaders = (state) => {
+    const scrollEl = state.root.querySelector('.mod_confscheduler-grid-scroll');
+    const existing = state.root.querySelector('.mod_confscheduler-room-headers');
+    if (existing) {
+        existing.remove();
+    }
+
+    const headerRow = buildRoomHeaderRow(state, true);
+
     const gridEl = state.root.querySelector('.mod_confscheduler-grid');
     scrollEl.insertBefore(headerRow, gridEl);
+    gridEl.style.display = '';
+    headerRow.style.display = '';
 
     // core/sortable_list has no public teardown API; re-instantiating on a freshly-built
     // header row each time (rather than trying to reuse one instance across room set
@@ -502,15 +570,49 @@ const renderHeaders = (state) => {
 };
 
 /**
- * Renders the grid body: the time axis and, per room, an absolutely-positioned column containing
- * every scheduled block (single-room and column-spanning alike).
+ * Appends the greyed-out out-of-conference-hours band(s) for one rendered day-table
+ * (user feedback, 2026-07-05) -- a no-op (appends nothing) when either conference
+ * date is unset, or the day is fully within the conference range. See
+ * DayUtils.outOfHoursBands()'s docblock for the exact rule.
+ *
+ * @param {Object} state The module state object (reads state.timelineStart/timelineEnd, must
+ *     already be set for the day being rendered)
+ * @param {HTMLElement} columnsWrap The .mod_confscheduler-columns container to append into
+ * @param {String} dayKey The day being rendered (YYYY-MM-DD)
+ */
+const renderOutOfHoursBands = (state, columnsWrap, dayKey) => {
+    const bands = DayUtils.outOfHoursBands(
+        dayKey,
+        state.timelineStart,
+        state.timelineEnd,
+        state.conferencestart,
+        state.conferenceend
+    );
+    bands.forEach((band) => {
+        const bandEl = document.createElement('div');
+        bandEl.className = 'mod_confscheduler-outofhours-band';
+        bandEl.style.top = timeToY(state, band.start) + 'px';
+        bandEl.style.height = Math.max(0, timeToY(state, band.end) - timeToY(state, band.start)) + 'px';
+        columnsWrap.appendChild(bandEl);
+    });
+};
+
+/**
+ * Builds one day's complete grid (time axis + room columns + out-of-hours bands +
+ * scheduled blocks) into the given container element, using state.timelineStart/
+ * timelineEnd -- the caller is responsible for setting those to the day being built
+ * BEFORE calling this (computeTimeline()/computeTimelineBounds()), since renderBlock()/
+ * timeToY() read them from state rather than taking them as parameters. Shared by
+ * renderBody() (single-day mode, into the one persistent .mod_confscheduler-grid) and
+ * renderAllDaysBody() (one fresh grid per day; user feedback, 2026-07-05).
  *
  * @param {Object} state The module state object
+ * @param {HTMLElement} gridEl The .mod_confscheduler-grid container to build into (cleared first)
+ * @param {Object[]} slots This day's slots to render as blocks
+ * @param {String} dayKey The day being rendered (YYYY-MM-DD), for the out-of-hours band calculation
+ * @return {HTMLElement} The constructed .mod_confscheduler-columns element
  */
-const renderBody = (state) => {
-    computeTimeline(state);
-
-    const gridEl = state.root.querySelector('.mod_confscheduler-grid');
+const buildGridInto = (state, gridEl, slots, dayKey) => {
     gridEl.innerHTML = '';
 
     const totalHeight = timeToY(state, state.timelineEnd);
@@ -549,9 +651,116 @@ const renderBody = (state) => {
     });
 
     gridEl.appendChild(columnsWrap);
-    state.columnsWrap = columnsWrap;
 
-    state.slots.forEach((slot) => renderBlock(state, columnsWrap, slot));
+    renderOutOfHoursBands(state, columnsWrap, dayKey);
+    slots.forEach((slot) => renderBlock(state, columnsWrap, slot));
+
+    return columnsWrap;
+};
+
+/**
+ * Renders the grid body for single-day mode: the time axis and, per room, an
+ * absolutely-positioned column containing every scheduled block (single-room and
+ * column-spanning alike), into the one persistent .mod_confscheduler-grid element.
+ *
+ * @param {Object} state The module state object
+ */
+const renderBody = (state) => {
+    computeTimeline(state);
+
+    const gridEl = state.root.querySelector('.mod_confscheduler-grid');
+    state.columnsWrap = buildGridInto(state, gridEl, state.slots, state.selectedDay);
+};
+
+/**
+ * Dispatches to renderBody() (single-day mode) or renderAllDaysBody() ("All days"
+ * mode) depending on state.selectedDay -- the single call site every other function
+ * in this module should use instead of calling renderBody() directly (user feedback,
+ * 2026-07-05).
+ *
+ * @param {Object} state The module state object
+ */
+const renderGridBody = (state) => {
+    if (state.selectedDay === DayUtils.ALL_DAYS) {
+        renderAllDaysBody(state);
+    } else {
+        renderBody(state);
+    }
+};
+
+/**
+ * Renders the "All days" view (user feedback, 2026-07-05): every selectable day as
+ * its own complete table (heading + room headers + grid), stacked vertically inside
+ * a single new container, instead of the single persistent .mod_confscheduler-grid
+ * element (which this hides rather than reuses, so switching back to a single day
+ * later is a clean, simple show/hide rather than having to distinguish which
+ * .mod_confscheduler-grid is "the" one).
+ *
+ * Room-header rows here are NOT drag-reorderable (see buildRoomHeaderRow()'s
+ * docblock) and blocks are NOT draggable while this view is showing -- see
+ * bindEvents()'s startDrag(), which no-ops on mousedown/touchstart whenever
+ * state.selectedDay === DayUtils.ALL_DAYS. Every click-based interaction (favourite
+ * star, unschedule ×, edit-span-block pencil, track pill link) is unaffected, since
+ * those are handled by the existing delegated click listener regardless of which
+ * table a block happens to be in.
+ *
+ * @param {Object} state The module state object
+ */
+const renderAllDaysBody = (state) => {
+    const scrollEl = state.root.querySelector('.mod_confscheduler-grid-scroll');
+
+    const singleDayHeaders = state.root.querySelector('.mod_confscheduler-room-headers');
+    const singleDayGrid = state.root.querySelector('.mod_confscheduler-grid');
+    if (singleDayHeaders) {
+        singleDayHeaders.style.display = 'none';
+    }
+    if (singleDayGrid) {
+        singleDayGrid.style.display = 'none';
+    }
+
+    const existingContainer = state.root.querySelector('.mod_confscheduler-alldays-container');
+    if (existingContainer) {
+        existingContainer.remove();
+    }
+
+    const container = document.createElement('div');
+    container.className = 'mod_confscheduler-alldays-container';
+
+    state.dayTimelines = {};
+
+    state.dayKeys.forEach((dayKey) => {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'mod_confscheduler-day-table-wrapper';
+
+        const heading = document.createElement('h4');
+        heading.className = 'mod_confscheduler-day-heading';
+        heading.textContent = DayUtils.formatDayLabel(dayKey);
+        wrapper.appendChild(heading);
+
+        const headerRow = buildRoomHeaderRow(state, false);
+        wrapper.appendChild(headerRow);
+
+        const daySlots = state.slotsByDay[dayKey] || [];
+        const bounds = computeTimelineBounds(daySlots, dayKey);
+        state.timelineStart = bounds.start;
+        state.timelineEnd = bounds.end;
+
+        // Deliberately NOT also class "mod_confscheduler-grid" -- state.root.querySelector()
+        // calls elsewhere assume that class matches exactly one element (the single-day
+        // mode's persistent grid); "mod_confscheduler-day-grid" gets its own near-identical
+        // CSS rule instead (see styles.css) to avoid that ambiguity entirely.
+        const gridEl = document.createElement('div');
+        gridEl.className = 'mod_confscheduler-day-grid';
+        gridEl.setAttribute('role', 'table');
+        wrapper.appendChild(gridEl);
+
+        const columnsWrap = buildGridInto(state, gridEl, daySlots, dayKey);
+        state.dayTimelines[dayKey] = {start: bounds.start, end: bounds.end, columnsWrap};
+
+        container.appendChild(wrapper);
+    });
+
+    scrollEl.appendChild(container);
 };
 
 /**
@@ -686,10 +895,18 @@ const renderBlock = (state, columnsWrap, slot) => {
 
 /**
  * Renders the "unscheduled" panel: accepted submissions not yet placed in the grid.
+ * Dimmed (not hidden -- still useful to see what's outstanding) while "All days" is
+ * selected, since dragging a card out of it is disabled in that view (see
+ * bindEvents()'s startDrag()).
  *
  * @param {Object} state The module state object
  */
 const renderUnscheduledPanel = (state) => {
+    const panel = state.root.querySelector('.mod_confscheduler-unscheduled-panel');
+    if (panel) {
+        panel.classList.toggle('mod_confscheduler-unscheduled-panel-inert', state.selectedDay === DayUtils.ALL_DAYS);
+    }
+
     const list = state.root.querySelector('.mod_confscheduler-unscheduled-list');
     if (!list) {
         return;
@@ -782,7 +999,17 @@ const beginMoveDrag = (state, event, blockEl) => {
         const relY = offsetTop - (columnsRect.top + window.scrollY);
 
         const index = clamp(Math.round(relX / COLUMN_WIDTH), 0, Math.max(state.rooms.length - span, 0));
-        const desiredStart = snapTime(yToTime(state, relY), SNAP_MINUTES);
+        const rawDesiredStart = snapTime(yToTime(state, relY), SNAP_MINUTES);
+        // Bounce the raw drop position back inside the conference dates BEFORE the
+        // SnapGap nudge runs, so SnapGap's own search starts from an already-in-range
+        // position (a no-op when either conference date is unset -- see
+        // conference_bounds_utils.js's docblock).
+        const desiredStart = ConferenceBoundsUtils.clampToConferenceBounds(
+            rawDesiredStart,
+            duration,
+            state.conferencestart,
+            state.conferenceend
+        );
         const targetRoomids = state.rooms.slice(index, index + span).map((room) => room.id);
 
         const gapseconds = (state.gapminutes || 0) * 60;
@@ -800,7 +1027,9 @@ const beginMoveDrag = (state, event, blockEl) => {
         // validate_placement() will reject it and the pre-existing error+revert path
         // (Notification.exception(), block never actually moved in the DOM) still applies.
         const start = nudged !== null ? nudged : desiredStart;
-        return {roomids: targetRoomids, start, end: start + duration, valid: nudged !== null};
+        const valid = nudged !== null
+            && ConferenceBoundsUtils.isWithinConferenceBounds(start, duration, state.conferencestart, state.conferenceend);
+        return {roomids: targetRoomids, start, end: start + duration, valid};
     };
 
     Dragdrop.start(event, proxy, (pageX, pageY, proxyEl) => {
@@ -951,7 +1180,15 @@ const beginScheduleDrag = (state, event, cardEl) => {
         }
 
         const index = clamp(Math.floor(relX / COLUMN_WIDTH), 0, state.rooms.length - 1);
-        const desiredStart = snapTime(yToTime(state, relY), SNAP_MINUTES);
+        const rawDesiredStart = snapTime(yToTime(state, relY), SNAP_MINUTES);
+        // See beginMoveDrag()'s identical treatment: bounce the raw drop position back
+        // inside the conference dates before the SnapGap nudge runs.
+        const desiredStart = ConferenceBoundsUtils.clampToConferenceBounds(
+            rawDesiredStart,
+            duration,
+            state.conferencestart,
+            state.conferenceend
+        );
         const roomids = [state.rooms[index].id];
 
         const gapseconds = (state.gapminutes || 0) * 60;
@@ -969,7 +1206,9 @@ const beginScheduleDrag = (state, event, cardEl) => {
         // it and the pre-existing error-notification path still applies (the card simply
         // stays in the unscheduled panel, as it already does today on any rejection).
         const start = nudged !== null ? nudged : desiredStart;
-        return {roomids, start, end: start + duration, valid: nudged !== null};
+        const valid = nudged !== null
+            && ConferenceBoundsUtils.isWithinConferenceBounds(start, duration, state.conferencestart, state.conferenceend);
+        return {roomids, start, end: start + duration, valid};
     };
 
     Dragdrop.start(event, proxy, (pageX, pageY, proxyEl) => {
@@ -1169,6 +1408,20 @@ const openAutoschedulerModal = async(state) => {
         removeOnClose: true,
     });
 
+    // Default the window to the instance's own configured conference dates (user
+    // feedback, 2026-07-05), saving the organiser from re-typing the same range every
+    // run; still freely editable before saving. A no-op (inputs stay blank, as
+    // before) when either bound is unset -- see conference_bounds_utils.js's
+    // docblock for why that's still possible for an instance saved before conference
+    // dates were made a required field.
+    const root = modal.getRoot()[0];
+    if (state.conferencestart) {
+        root.querySelector('[name=windowstart]').value = toDatetimeLocalValue(state.conferencestart);
+    }
+    if (state.conferenceend) {
+        root.querySelector('[name=windowend]').value = toDatetimeLocalValue(state.conferenceend);
+    }
+
     modal.getRoot().on(ModalEvents.save, (event) => {
         event.preventDefault();
 
@@ -1293,11 +1546,11 @@ const onPxPerHourChange = (state, input) => {
     const previous = state.pxperhour;
     state.pxperhour = value;
     input.disabled = true;
-    renderBody(state);
+    renderGridBody(state);
     Promise.resolve(Repository.setPxPerHour(state.cmid, value)).catch((error) => {
         state.pxperhour = previous;
         input.value = previous;
-        renderBody(state);
+        renderGridBody(state);
         Notification.exception(error);
     }).finally(() => {
         input.disabled = false;
@@ -1400,6 +1653,15 @@ const bindEvents = (state) => {
     });
 
     const startDrag = (event) => {
+        // "All days" view (user feedback, 2026-07-05) is a viewing mode: no
+        // scheduling/rescheduling/resizing drag across its multiple simultaneous
+        // per-day tables. Every click-based interaction (favourite star, unschedule
+        // ×, edit-span-block pencil, track pill link) is unaffected -- switch to a
+        // single day to drag-schedule.
+        if (state.selectedDay === DayUtils.ALL_DAYS) {
+            return;
+        }
+
         // Track pills are real <a> links (Revision round 1): let a click on one navigate
         // normally rather than being captured as a drag/schedule-drag start.
         if (event.target.closest('.mod_confscheduler-track-pill')) {
@@ -1431,7 +1693,12 @@ const bindEvents = (state) => {
         if (daySelect) {
             state.selectedDay = daySelect.value;
             applyDayFilter(state);
-            renderBody(state);
+            renderGridBody(state);
+            // Dims/undims the unscheduled panel depending on the newly-selected day
+            // (inert while "All days" is showing, see renderUnscheduledPanel()'s
+            // docblock) -- its list content is unaffected by which day is selected,
+            // only this class toggle needs to happen here.
+            renderUnscheduledPanel(state);
             return;
         }
 
@@ -1475,7 +1742,7 @@ export const init = async(cmid, confschedulerid, programurl = null) => {
     const [
         unschedule, favourite, editroom, deleteroom, confirmdeleteroom,
         cancel, movecolumn, addroom, addspanblock, editspanblock, autoschedulerrun,
-        filterbytrack,
+        filterbytrack, alldays,
     ] = await getStrings([
         {key: 'unschedule', component: 'mod_confscheduler'},
         {key: 'favourite', component: 'mod_confscheduler'},
@@ -1489,6 +1756,7 @@ export const init = async(cmid, confschedulerid, programurl = null) => {
         {key: 'editspanblock', component: 'mod_confscheduler'},
         {key: 'autoschedulerrun', component: 'mod_confscheduler'},
         {key: 'filterbytrack', component: 'mod_confscheduler'},
+        {key: 'alldays', component: 'mod_confscheduler'},
     ]);
 
     const state = {
@@ -1499,11 +1767,15 @@ export const init = async(cmid, confschedulerid, programurl = null) => {
         rooms: [],
         allSlots: [],
         slots: [],
+        slotsByDay: {},
+        dayTimelines: {},
         dayKeys: [],
         selectedDay: null,
         unscheduled: [],
         gapminutes: 0,
         pxperhour: DEFAULT_PX_PER_HOUR,
+        conferencestart: null,
+        conferenceend: null,
         timelineStart: 0,
         timelineEnd: 0,
         columnsWrap: null,
@@ -1512,7 +1784,7 @@ export const init = async(cmid, confschedulerid, programurl = null) => {
         strings: {
             unschedule, favourite, editroom, deleteroom, confirmdeleteroom,
             cancel, movecolumn, addroom, addspanblock, editspanblock, autoschedulerrun,
-            filterbytrack,
+            filterbytrack, alldays,
         },
     };
 

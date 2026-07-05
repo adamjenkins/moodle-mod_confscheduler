@@ -119,6 +119,18 @@ class get_grid_data extends external_api {
             ),
             'gapminutes' => new external_value(PARAM_INT, 'The instance\'s configured SnapGap minimum gap, in minutes'),
             'pxperhour'  => new external_value(PARAM_INT, 'The instance\'s configured row height, in pixels per hour'),
+            'conferencestart' => new external_value(
+                PARAM_INT,
+                'The instance\'s configured conference start, unix timestamp, or null if unset',
+                VALUE_DEFAULT,
+                null
+            ),
+            'conferenceend' => new external_value(
+                PARAM_INT,
+                'The instance\'s configured conference end, unix timestamp, or null if unset',
+                VALUE_DEFAULT,
+                null
+            ),
         ]);
     }
 }
