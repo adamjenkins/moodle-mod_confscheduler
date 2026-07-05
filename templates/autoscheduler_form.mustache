@@ -28,20 +28,56 @@
     mod_confsubmissions submission type's duration, which made a single
     uniform override meaningless.
 
-    Context variables required for this template: none.
+    Date/time fields are rendered as explicit year/month/day/hour/minute selects
+    (see amd/src/datetime_select_utils.js's docblock for why, in place of a
+    native `<input type="datetime-local">`), so this template needs the shared
+    option-list arrays as context, built by that module's buildDateTimeSelectOptions().
+
+    Context variables required for this template:
+    * years array - zero-padded/plain year strings for every select's year dropdown
+    * months array - zero-padded "01".."12" strings for every select's month dropdown
+    * days array - zero-padded "01".."31" strings for every select's day dropdown
+    * hours array - zero-padded "00".."23" strings for every select's hour dropdown
+    * minutes array - zero-padded "00","05",.."55" strings for every select's minute dropdown
 
     Example context (json):
-    {}
+    {
+        "years": ["2025", "2026", "2027"],
+        "months": ["01", "02"],
+        "days": ["01", "02"],
+        "hours": ["00", "01"],
+        "minutes": ["00", "05"]
+    }
+}}
+{{!
+    datetimeselectgroup: reused for windowstart and windowend below. Uses
+    Bootstrap 5's `.row`/`.col-*` grid classes (NOT the Bootstrap 4-only
+    `.form-row`/`.no-gutters`, which this Moodle version's theme no longer
+    ships CSS for at all -- using them silently degrades to unstyled stacked
+    divs instead of a side-by-side row; caught live via Playwright while
+    verifying this fix, see changelog.md).
 }}
 <form class="mod_confscheduler-autoscheduler-form">
-    <div class="form-row">
-        <div class="form-group col">
-            <label for="mod_confscheduler-autoscheduler-windowstart">{{#str}} autoschedulerwindowstart, mod_confscheduler {{/str}}</label>
-            <input type="datetime-local" class="form-control" id="mod_confscheduler-autoscheduler-windowstart" name="windowstart" required>
+    <div class="row">
+        <div class="form-group col-12">
+            <label>{{#str}} autoschedulerwindowstart, mod_confscheduler {{/str}}</label>
+            <div class="row g-2">
+                <div class="col-3"><select class="form-control" name="windowstart_year" title="{{#str}} year, mod_confscheduler {{/str}}">{{#years}}<option value="{{.}}">{{.}}</option>{{/years}}</select></div>
+                <div class="col-2"><select class="form-control" name="windowstart_month" title="{{#str}} month, mod_confscheduler {{/str}}">{{#months}}<option value="{{.}}">{{.}}</option>{{/months}}</select></div>
+                <div class="col-2"><select class="form-control" name="windowstart_day" title="{{#str}} day, mod_confscheduler {{/str}}">{{#days}}<option value="{{.}}">{{.}}</option>{{/days}}</select></div>
+                <div class="col-2"><select class="form-control" name="windowstart_hour" title="{{#str}} hour, mod_confscheduler {{/str}}">{{#hours}}<option value="{{.}}">{{.}}</option>{{/hours}}</select></div>
+                <div class="col-3"><select class="form-control" name="windowstart_minute" title="{{#str}} minute, mod_confscheduler {{/str}}">{{#minutes}}<option value="{{.}}">{{.}}</option>{{/minutes}}</select></div>
+            </div>
         </div>
-        <div class="form-group col">
-            <label for="mod_confscheduler-autoscheduler-windowend">{{#str}} autoschedulerwindowend, mod_confscheduler {{/str}}</label>
-            <input type="datetime-local" class="form-control" id="mod_confscheduler-autoscheduler-windowend" name="windowend" required>
+        <div class="form-group col-12">
+            <label>{{#str}} autoschedulerwindowend, mod_confscheduler {{/str}}</label>
+            <div class="row g-2">
+                <div class="col-3"><select class="form-control" name="windowend_year" title="{{#str}} year, mod_confscheduler {{/str}}">{{#years}}<option value="{{.}}">{{.}}</option>{{/years}}</select></div>
+                <div class="col-2"><select class="form-control" name="windowend_month" title="{{#str}} month, mod_confscheduler {{/str}}">{{#months}}<option value="{{.}}">{{.}}</option>{{/months}}</select></div>
+                <div class="col-2"><select class="form-control" name="windowend_day" title="{{#str}} day, mod_confscheduler {{/str}}">{{#days}}<option value="{{.}}">{{.}}</option>{{/days}}</select></div>
+                <div class="col-2"><select class="form-control" name="windowend_hour" title="{{#str}} hour, mod_confscheduler {{/str}}">{{#hours}}<option value="{{.}}">{{.}}</option>{{/hours}}</select></div>
+                <div class="col-3"><select class="form-control" name="windowend_minute" title="{{#str}} minute, mod_confscheduler {{/str}}">{{#minutes}}<option value="{{.}}">{{.}}</option>{{/minutes}}</select></div>
+            </div>
         </div>
     </div>
     <div class="form-check">

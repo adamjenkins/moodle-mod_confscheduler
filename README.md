@@ -18,6 +18,12 @@ Part of the [Conference Tools](https://github.com/adamjenkins/moodle-conference-
 
 ## Architecture notes
 
+- **The "Run autoscheduler" and "Add/edit span block" modals use explicit year/month/day/hour/minute
+  `<select>` groups (`amd/src/datetime_select_utils.js`) instead of a native `<input type="datetime-local">`**:
+  a native datetime-local input's value is always ISO internally, but the widget the browser draws for it
+  follows the browser/OS locale, not the page or site language -- an en-US browser renders it mm/dd/yyyy
+  regardless of what the site is configured to. This matches the same reasoning behind this plugin's own
+  instance-settings mform using Moodle's `date_time_selector` element instead of a plain date input.
 - **Drag-and-drop**: the grid uses core's `core/dragdrop` AMD module for free-form
   2D block placement (it exposes `prepare()`/`start()` and leaves hit-testing on
   raw page X/Y to the caller, which suits a time × room grid better than a

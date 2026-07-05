@@ -23,25 +23,37 @@
     rather than drag-and-drop. Used for both actions; slotid is present
     (and js reads it to decide add vs. update) only when editing.
 
+    Date/time fields are rendered as explicit year/month/day/hour/minute selects
+    (see amd/src/datetime_select_utils.js's docblock for why, in place of a
+    native `<input type="datetime-local">`), pre-filled after render via that
+    module's setDateTimeSelectGroup() -- there is no per-select "selected" value
+    passed through context, only the shared option-list arrays.
+
     Context variables required for this template:
     * slotid int|string - the confscheduler_slot id, when editing an existing span block (empty string when adding)
     * label string - the current label (empty when adding)
     * colour string|null - the current hex colour, or null
-    * starttime string - a datetime-local value (YYYY-MM-DDTHH:mm), or empty when adding
-    * endtime string - a datetime-local value (YYYY-MM-DDTHH:mm), or empty when adding
     * rooms array - [{id, name, startselected, endselected}, ...] in column order, for the start/end room selects
+    * years array - zero-padded/plain year strings for every select's year dropdown
+    * months array - zero-padded "01".."12" strings for every select's month dropdown
+    * days array - zero-padded "01".."31" strings for every select's day dropdown
+    * hours array - zero-padded "00".."23" strings for every select's hour dropdown
+    * minutes array - zero-padded "00","05",.."55" strings for every select's minute dropdown
 
     Example context (json):
     {
         "slotid": 7,
         "label": "Lunch Break",
         "colour": "#3366cc",
-        "starttime": "2026-09-01T12:00",
-        "endtime": "2026-09-01T13:00",
         "rooms": [
             {"id": 1, "name": "Main Hall", "startselected": true, "endselected": false},
             {"id": 2, "name": "Room B", "startselected": false, "endselected": true}
-        ]
+        ],
+        "years": ["2025", "2026", "2027"],
+        "months": ["01", "02"],
+        "days": ["01", "02"],
+        "hours": ["00", "01"],
+        "minutes": ["00", "05"]
     }
 }}
 <form class="mod_confscheduler-spanblock-form">
@@ -50,7 +62,8 @@
         <label for="mod_confscheduler-spanblock-label">{{#str}} spanblocklabel, mod_confscheduler {{/str}}</label>
         <input type="text" class="form-control" id="mod_confscheduler-spanblock-label" name="label" required maxlength="255" value="{{label}}">
     </div>
-    <div class="form-row">
+    {{! Bootstrap 5's `.row`/`.col-*`, not the Bootstrap 4-only `.form-row`/`.no-gutters` -- see autoscheduler_form.mustache's docblock. }}
+    <div class="row">
         <div class="form-group col">
             <label for="mod_confscheduler-spanblock-startroom">{{#str}} spanblockstartroom, mod_confscheduler {{/str}}</label>
             <select class="form-control" id="mod_confscheduler-spanblock-startroom" name="startroom">
@@ -68,14 +81,26 @@
             </select>
         </div>
     </div>
-    <div class="form-row">
-        <div class="form-group col">
-            <label for="mod_confscheduler-spanblock-start">{{#str}} spanblockstart, mod_confscheduler {{/str}}</label>
-            <input type="datetime-local" class="form-control" id="mod_confscheduler-spanblock-start" name="starttime" required value="{{starttime}}">
+    <div class="row">
+        <div class="form-group col-12">
+            <label>{{#str}} spanblockstart, mod_confscheduler {{/str}}</label>
+            <div class="row g-2">
+                <div class="col-3"><select class="form-control" name="starttime_year" title="{{#str}} year, mod_confscheduler {{/str}}">{{#years}}<option value="{{.}}">{{.}}</option>{{/years}}</select></div>
+                <div class="col-2"><select class="form-control" name="starttime_month" title="{{#str}} month, mod_confscheduler {{/str}}">{{#months}}<option value="{{.}}">{{.}}</option>{{/months}}</select></div>
+                <div class="col-2"><select class="form-control" name="starttime_day" title="{{#str}} day, mod_confscheduler {{/str}}">{{#days}}<option value="{{.}}">{{.}}</option>{{/days}}</select></div>
+                <div class="col-2"><select class="form-control" name="starttime_hour" title="{{#str}} hour, mod_confscheduler {{/str}}">{{#hours}}<option value="{{.}}">{{.}}</option>{{/hours}}</select></div>
+                <div class="col-3"><select class="form-control" name="starttime_minute" title="{{#str}} minute, mod_confscheduler {{/str}}">{{#minutes}}<option value="{{.}}">{{.}}</option>{{/minutes}}</select></div>
+            </div>
         </div>
-        <div class="form-group col">
-            <label for="mod_confscheduler-spanblock-end">{{#str}} spanblockend, mod_confscheduler {{/str}}</label>
-            <input type="datetime-local" class="form-control" id="mod_confscheduler-spanblock-end" name="endtime" required value="{{endtime}}">
+        <div class="form-group col-12">
+            <label>{{#str}} spanblockend, mod_confscheduler {{/str}}</label>
+            <div class="row g-2">
+                <div class="col-3"><select class="form-control" name="endtime_year" title="{{#str}} year, mod_confscheduler {{/str}}">{{#years}}<option value="{{.}}">{{.}}</option>{{/years}}</select></div>
+                <div class="col-2"><select class="form-control" name="endtime_month" title="{{#str}} month, mod_confscheduler {{/str}}">{{#months}}<option value="{{.}}">{{.}}</option>{{/months}}</select></div>
+                <div class="col-2"><select class="form-control" name="endtime_day" title="{{#str}} day, mod_confscheduler {{/str}}">{{#days}}<option value="{{.}}">{{.}}</option>{{/days}}</select></div>
+                <div class="col-2"><select class="form-control" name="endtime_hour" title="{{#str}} hour, mod_confscheduler {{/str}}">{{#hours}}<option value="{{.}}">{{.}}</option>{{/hours}}</select></div>
+                <div class="col-3"><select class="form-control" name="endtime_minute" title="{{#str}} minute, mod_confscheduler {{/str}}">{{#minutes}}<option value="{{.}}">{{.}}</option>{{/minutes}}</select></div>
+            </div>
         </div>
     </div>
     <div class="form-group">

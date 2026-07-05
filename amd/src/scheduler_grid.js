@@ -26,6 +26,11 @@ import * as DayUtils from 'mod_confscheduler/day_utils';
 import * as ColourUtils from 'mod_confscheduler/colour_utils';
 import * as SnapGapUtils from 'mod_confscheduler/snapgap_utils';
 import * as ConferenceBoundsUtils from 'mod_confscheduler/conference_bounds_utils';
+import {
+    buildDateTimeSelectOptions,
+    setDateTimeSelectGroup,
+    getDateTimeSelectGroupTimestamp,
+} from 'mod_confscheduler/datetime_select_utils';
 
 /**
  * Edit-mode drag-and-drop schedule grid (Phase 3.3).
@@ -143,22 +148,6 @@ const snapTime = (timestamp, minutes) => Math.round(timestamp / (minutes * 60)) 
  */
 const formatTime = (timestamp) => new Date(timestamp * 1000).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
 
-/**
- * Formats a unix timestamp as a datetime-local input value (YYYY-MM-DDTHH:mm) in the
- * browser's local timezone -- the inverse of the `new Date(value).getTime() / 1000`
- * parsing this module already does when reading a datetime-local input back out. Used
- * to pre-fill the span-block modal's start/end fields when editing an existing block.
- *
- * @param {Number} timestamp Unix timestamp (seconds)
- * @return {String}
- */
-const toDatetimeLocalValue = (timestamp) => {
-    const date = new Date(timestamp * 1000);
-    const pad = (value) => String(value).padStart(2, '0');
-    const datepart = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
-    const timepart = `${pad(date.getHours())}:${pad(date.getMinutes())}`;
-    return `${datepart}T${timepart}`;
-};
 
 /**
  * Builds a track pill element (an <a> linking to the linked mod_confprogram instance's
@@ -1384,14 +1373,13 @@ const openSpanBlockModal = async(state, slot = null) => {
         slotid: isEdit ? slot.id : '',
         label: isEdit ? (slot.label || '') : '',
         colour: isEdit ? slot.colour : null,
-        starttime: isEdit ? toDatetimeLocalValue(slot.starttime) : '',
-        endtime: isEdit ? toDatetimeLocalValue(slot.endtime) : '',
         rooms: state.rooms.map((room) => ({
             id: room.id,
             name: room.name,
             startselected: room.id === startroomid,
             endselected: room.id === endroomid,
         })),
+        ...buildDateTimeSelectOptions(),
     });
 
     const modal = await ModalSaveCancel.create({
@@ -1401,6 +1389,13 @@ const openSpanBlockModal = async(state, slot = null) => {
         removeOnClose: true,
     });
 
+    // Selects always carry a value (unlike the datetime-local input this replaced),
+    // so a fresh "add" block defaults both to now rather than being left blank.
+    const root = modal.getRoot()[0];
+    const now = Math.floor(Date.now() / 1000);
+    setDateTimeSelectGroup(root, 'starttime', isEdit ? slot.starttime : now);
+    setDateTimeSelectGroup(root, 'endtime', isEdit ? slot.endtime : now);
+
     modal.getRoot().on(ModalEvents.save, (event) => {
         event.preventDefault();
 
@@ -1409,12 +1404,10 @@ const openSpanBlockModal = async(state, slot = null) => {
         const label = form.querySelector('[name=label]').value.trim();
         const startroom = Number(form.querySelector('[name=startroom]').value);
         const endroom = Number(form.querySelector('[name=endroom]').value);
-        const starttimeValue = form.querySelector('[name=starttime]').value;
-        const endtimeValue = form.querySelector('[name=endtime]').value;
         const nocolour = form.querySelector('[name=nocolour]').checked;
         const colour = nocolour ? null : form.querySelector('[name=colour]').value;
 
-        if (label === '' || !starttimeValue || !endtimeValue) {
+        if (label === '') {
             return;
         }
 
@@ -1427,8 +1420,8 @@ const openSpanBlockModal = async(state, slot = null) => {
         const hi = Math.max(startIndex, endIndex);
         const roomids = state.rooms.slice(lo, hi + 1).map((room) => room.id);
 
-        const starttime = Math.floor(new Date(starttimeValue).getTime() / 1000);
-        const endtime = Math.floor(new Date(endtimeValue).getTime() / 1000);
+        const starttime = getDateTimeSelectGroupTimestamp(form, 'starttime');
+        const endtime = getDateTimeSelectGroupTimestamp(form, 'endtime');
 
         const promise = slotid
             ? Repository.updateSpanBlock(state.cmid, slotid, label, roomids, starttime, endtime, colour)
@@ -1473,7 +1466,7 @@ const showAutoschedulerSummary = (state, result) => getString(
  * @return {Promise}
  */
 const openAutoschedulerModal = async(state) => {
-    const body = await Templates.render('mod_confscheduler/autoscheduler_form', {});
+    const body = await Templates.render('mod_confscheduler/autoscheduler_form', buildDateTimeSelectOptions());
 
     const modal = await ModalSaveCancel.create({
         title: state.strings.autoschedulerrun,
@@ -1484,33 +1477,24 @@ const openAutoschedulerModal = async(state) => {
 
     // Default the window to the instance's own configured conference dates (user
     // feedback, 2026-07-05), saving the organiser from re-typing the same range every
-    // run; still freely editable before saving. A no-op (inputs stay blank, as
-    // before) when either bound is unset -- see conference_bounds_utils.js's
-    // docblock for why that's still possible for an instance saved before conference
-    // dates were made a required field.
+    // run; still freely editable before saving. Selects always carry a value (unlike
+    // the datetime-local input this replaced), so an instance saved before conference
+    // dates were made a required field (see conference_bounds_utils.js's docblock)
+    // falls back to defaulting both bounds to now instead of being left blank.
     const root = modal.getRoot()[0];
-    if (state.conferencestart) {
-        root.querySelector('[name=windowstart]').value = toDatetimeLocalValue(state.conferencestart);
-    }
-    if (state.conferenceend) {
-        root.querySelector('[name=windowend]').value = toDatetimeLocalValue(state.conferenceend);
-    }
+    const now = Math.floor(Date.now() / 1000);
+    setDateTimeSelectGroup(root, 'windowstart', state.conferencestart || now);
+    setDateTimeSelectGroup(root, 'windowend', state.conferenceend || now);
 
     modal.getRoot().on(ModalEvents.save, (event) => {
         event.preventDefault();
 
         const form = modal.getRoot()[0].querySelector('.mod_confscheduler-autoscheduler-form');
-        const windowstartValue = form.querySelector('[name=windowstart]').value;
-        const windowendValue = form.querySelector('[name=windowend]').value;
         const clearfirst = form.querySelector('[name=clearfirst]').checked;
         const ignorepreferreddates = form.querySelector('[name=ignorepreferreddates]').checked;
 
-        if (!windowstartValue || !windowendValue) {
-            return;
-        }
-
-        const windowstart = Math.floor(new Date(windowstartValue).getTime() / 1000);
-        const windowend = Math.floor(new Date(windowendValue).getTime() / 1000);
+        const windowstart = getDateTimeSelectGroupTimestamp(form, 'windowstart');
+        const windowend = getDateTimeSelectGroupTimestamp(form, 'windowend');
         if (windowend <= windowstart) {
             return;
         }

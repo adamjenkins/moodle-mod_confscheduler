@@ -2,7 +2,22 @@
 
 ## Unreleased
 
-- User feedback (2026-07-05): "Autoscheduler is not respecting preferred dates
+- User feedback (2026-07-05): "In the autoscheduler the date format is
+  dd-mm-yyyy but it needs to be yyyy-mm-dd" (clarified: actually mm-dd-yyyy).
+  Root cause: the "Run autoscheduler" and "Add/edit span block" modals used a
+  plain native `<input type="datetime-local">`; its underlying value is
+  always ISO (yyyy-mm-ddThh:mm), but the on-screen widget the browser draws
+  for it follows the browser/OS locale, not the page -- an en-US browser
+  renders it mm/dd/yyyy regardless of what the site's own language is set to.
+  This is the same ambiguity this plugin's own instance-settings mform
+  already avoids by using Moodle's `date_time_selector` element
+  (`conferencestart`/`conferenceend` in `mod_form.php`) instead of a native
+  date input. Replaced both modals' datetime-local inputs with explicit
+  year/month/day/hour/minute `<select>` groups (new
+  `amd/src/datetime_select_utils.js`), so the displayed order is always
+  unambiguous regardless of browser locale. New lang strings `year`,
+  `month`, `hour`, `minute` (EN+JA; `day` already existed). AMD rebuilt
+  (`grunt amd --force`) and diff-verified stable.
   when the window is set to a dates that a presentation has set as not
   preferred. That should return a '1 could not be placed' message. In edit
   mode, there should be an option to 'ignore preferred dates'. Using this, a
