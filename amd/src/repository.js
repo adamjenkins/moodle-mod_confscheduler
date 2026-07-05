@@ -185,11 +185,15 @@ export const toggleFavourite = (cmid, slotid, favourited) => Ajax.call([{
  * @param {Number} windowstart Unix timestamp; start of the window to schedule into
  * @param {Number} windowend Unix timestamp; end of the window to schedule into
  * @param {Boolean} clearfirst Whether to first clear existing slots that overlap the window
+ * @param {Boolean} ignorepreferreddates When false (the default -- user feedback, 2026-07-05), a
+ *        submission with recorded date preferences and no available candidate on any of them is
+ *        skipped rather than placed on a non-preferred day; true restores the previous
+ *        soft-preference fallback behaviour
  * @return {Promise}
  */
-export const runAutoscheduler = (cmid, windowstart, windowend, clearfirst) => Ajax.call([{
+export const runAutoscheduler = (cmid, windowstart, windowend, clearfirst, ignorepreferreddates = false) => Ajax.call([{
     methodname: 'mod_confscheduler_run_autoscheduler',
-    args: {cmid, windowstart, windowend, clearfirst},
+    args: {cmid, windowstart, windowend, clearfirst, ignorepreferreddates},
 }])[0];
 
 /**

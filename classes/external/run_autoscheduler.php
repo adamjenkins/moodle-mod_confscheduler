@@ -53,6 +53,14 @@ class run_autoscheduler extends external_api {
             'windowstart' => new external_value(PARAM_INT, 'Unix timestamp; start of the window to schedule into'),
             'windowend'   => new external_value(PARAM_INT, 'Unix timestamp; end of the window to schedule into'),
             'clearfirst' => new external_value(PARAM_BOOL, 'Whether to first clear existing slots that overlap the window'),
+            'ignorepreferreddates' => new external_value(
+                PARAM_BOOL,
+                'When false (the default), a submission with recorded date preferences and no ' .
+                    'available candidate on any of them is skipped rather than placed on a ' .
+                    'non-preferred day; true restores the previous soft-preference fallback behaviour',
+                VALUE_DEFAULT,
+                false
+            ),
         ]);
     }
 
@@ -63,19 +71,23 @@ class run_autoscheduler extends external_api {
      * @param int $windowstart Unix timestamp
      * @param int $windowend Unix timestamp
      * @param bool $clearfirst Whether to first clear existing slots that overlap the window
+     * @param bool $ignorepreferreddates Whether preferred dates are a soft preference rather than a
+     *        hard constraint for this run
      * @return array{scheduled: int, skipped: int, skippedreasons: array}
      */
     public static function execute(
         int $cmid,
         int $windowstart,
         int $windowend,
-        bool $clearfirst
+        bool $clearfirst,
+        bool $ignorepreferreddates = false
     ): array {
         $params = self::validate_parameters(self::execute_parameters(), [
             'cmid'        => $cmid,
             'windowstart' => $windowstart,
             'windowend'   => $windowend,
             'clearfirst'  => $clearfirst,
+            'ignorepreferreddates' => $ignorepreferreddates,
         ]);
 
         [, , $confscheduler] = self::require_manage($params['cmid']);
@@ -84,7 +96,9 @@ class run_autoscheduler extends external_api {
             (int) $confscheduler->id,
             $params['windowstart'],
             $params['windowend'],
-            $params['clearfirst']
+            $params['clearfirst'],
+            null,
+            $params['ignorepreferreddates']
         );
     }
 

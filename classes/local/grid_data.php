@@ -48,7 +48,12 @@ class grid_data {
      *     conferencestart: ?int, conferenceend: ?int}
      *
      * Each 'unscheduled' entry also includes 'preferreddates' (int[], midnight
-     * timestamps; empty means no preference recorded).
+     * timestamps; empty means no preference recorded). Each 'slots' entry with a
+     * submissionid also includes 'nonpreferredday' (bool; true only when the
+     * submission has a non-empty preferred-dates list AND this slot's own day is
+     * not one of them -- user feedback, 2026-07-05) for the edit-mode grid to
+     * highlight; the read-only Display-mode grid deliberately never reads this
+     * field, so it renders identically whether a block is flagged or not.
      */
     public static function build(\stdClass $confscheduler, int $userid): array {
         global $DB;
@@ -100,18 +105,19 @@ class grid_data {
         $slotsout = [];
         foreach ($slots as $slot) {
             $entry = [
-                'id'           => (int) $slot->id,
-                'roomids'      => $slotroomsbyslot[(int) $slot->id] ?? [],
-                'starttime'    => (int) $slot->starttime,
-                'endtime'      => (int) $slot->endtime,
-                'label'        => $slot->label,
-                'colour'       => $slot->submissionid === null ? ($slot->colour ?? null) : null,
-                'submissionid' => $slot->submissionid !== null ? (int) $slot->submissionid : null,
-                'title'        => null,
-                'speakers'     => null,
-                'track'        => null,
-                'trackid'      => null,
-                'favourited'   => false,
+                'id'              => (int) $slot->id,
+                'roomids'         => $slotroomsbyslot[(int) $slot->id] ?? [],
+                'starttime'       => (int) $slot->starttime,
+                'endtime'         => (int) $slot->endtime,
+                'label'           => $slot->label,
+                'colour'          => $slot->submissionid === null ? ($slot->colour ?? null) : null,
+                'submissionid'    => $slot->submissionid !== null ? (int) $slot->submissionid : null,
+                'title'           => null,
+                'speakers'        => null,
+                'track'           => null,
+                'trackid'         => null,
+                'favourited'      => false,
+                'nonpreferredday' => false,
             ];
 
             if ($slot->submissionid !== null) {
@@ -126,6 +132,20 @@ class grid_data {
                         : null;
                     $entry['trackid'] = $hastrack ? (int) $submission->trackid : null;
                     $entry['favourited'] = \mod_confprogram\api::is_favourited($userid, (int) $submission->id);
+
+                    // Flagged for edit-mode-only highlighting (user feedback,
+                    // 2026-07-05: scheduling onto a non-preferred day is now only
+                    // possible via manual drag, or the autoscheduler's explicit
+                    // "ignore preferred dates" override -- see api::run_autoscheduler()'s
+                    // docblock). An empty preference array means "no preference
+                    // recorded," never flagged as non-preferred -- matches every other
+                    // consumer of get_date_preferences()'s "empty means unrestricted"
+                    // contract.
+                    $preferreddates = submissions_api::get_date_preferences((int) $submission->id);
+                    if ($preferreddates) {
+                        $day = usergetmidnight((int) $slot->starttime);
+                        $entry['nonpreferredday'] = !in_array($day, $preferreddates, true);
+                    }
                 }
             }
 

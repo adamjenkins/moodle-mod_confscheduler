@@ -336,6 +336,80 @@ final class api_autoscheduler_test extends advanced_testcase {
     }
 
     /**
+     * User feedback, 2026-07-05: "Autoscheduler is not respecting preferred dates
+     * when the window is set to a dates that a presentation has set as not
+     * preferred. That should return a '1 could not be placed' message." Preferred
+     * dates are now a HARD constraint by default: if a submission's only preferred
+     * day has no room anywhere in the window, it is left unscheduled (reported as
+     * skipped with a distinct 'nopreferreddatefit' reason) rather than falling back
+     * to a non-preferred day, unlike the previous soft-preference behaviour.
+     */
+    public function test_run_autoscheduler_skips_when_preferred_day_has_no_room_by_default(): void {
+        global $DB;
+        $this->resetAfterTest();
+
+        [$confscheduler, $confprogram, $confsubmissions] = $this->create_full_fixture();
+        $roomid = api::add_room((int) $confscheduler->id, 'Room A');
+
+        $day1 = strtotime('2026-09-01 00:00:00');
+        $day2 = strtotime('2026-09-02 00:00:00');
+        $windowend = strtotime('2026-09-03 00:00:00');
+
+        // Room A's entire day 2 is occupied by a span block, leaving no room for a
+        // presentation anywhere on day 2 -- the submission's only preferred day.
+        api::add_slot((int) $confscheduler->id, [$roomid], $day2, $windowend, null, 'Occupied');
+
+        $submissionid = $this->create_accepted_submission($confsubmissions, $confprogram, 'Talk A');
+        \mod_confsubmissions\api::sync_date_preferences($submissionid, [$day2]);
+
+        $summary = api::run_autoscheduler((int) $confscheduler->id, $day1, $windowend, false, 1);
+
+        $this->assertSame(0, $summary['scheduled']);
+        $this->assertSame(1, $summary['skipped']);
+        $this->assertCount(1, $summary['skippedreasons']);
+        $this->assertSame($submissionid, $summary['skippedreasons'][0]['submissionid']);
+
+        $this->assertFalse($DB->record_exists(
+            'confscheduler_slot',
+            ['confscheduler' => $confscheduler->id, 'submissionid' => $submissionid]
+        ));
+    }
+
+    /**
+     * The same fixture as above, but with $ignorepreferreddates = true (the "Ignore
+     * preferred dates" checkbox): the submission IS placed, on the only day that
+     * actually has room, even though that day is not one of its preferred days --
+     * restoring the previous soft-preference fallback behaviour.
+     */
+    public function test_run_autoscheduler_ignorepreferreddates_places_on_a_nonpreferred_day(): void {
+        global $DB;
+        $this->resetAfterTest();
+
+        [$confscheduler, $confprogram, $confsubmissions] = $this->create_full_fixture();
+        $roomid = api::add_room((int) $confscheduler->id, 'Room A');
+
+        $day1 = strtotime('2026-09-01 00:00:00');
+        $day2 = strtotime('2026-09-02 00:00:00');
+        $windowend = strtotime('2026-09-03 00:00:00');
+
+        api::add_slot((int) $confscheduler->id, [$roomid], $day2, $windowend, null, 'Occupied');
+
+        $submissionid = $this->create_accepted_submission($confsubmissions, $confprogram, 'Talk A');
+        \mod_confsubmissions\api::sync_date_preferences($submissionid, [$day2]);
+
+        $summary = api::run_autoscheduler((int) $confscheduler->id, $day1, $windowend, false, 1, true);
+
+        $this->assertSame(1, $summary['scheduled']);
+        $this->assertSame(0, $summary['skipped']);
+
+        $slot = $DB->get_record(
+            'confscheduler_slot',
+            ['confscheduler' => $confscheduler->id, 'submissionid' => $submissionid]
+        );
+        $this->assertSame($day1, usergetmidnight((int) $slot->starttime));
+    }
+
+    /**
      * The realistic case the test above's own docblock flags as NOT exercised by its
      * artificially-pre-occupied Room A: a genuinely fresh conference (every room
      * empty, nothing scheduled yet) where a submission prefers a day other than the

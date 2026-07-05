@@ -154,6 +154,75 @@ final class get_grid_data_test extends advanced_testcase {
     }
 
     /**
+     * A scheduled presentation's 'nonpreferredday' flag (user feedback,
+     * 2026-07-05, consumed by the edit-mode grid to highlight the block) is true
+     * only when the submission has a non-empty preferred-dates list AND the slot's
+     * own day is not one of them; false when there's no recorded preference at all,
+     * and false again once the slot is moved onto a preferred day.
+     */
+    public function test_slot_flags_nonpreferredday_correctly(): void {
+        $this->resetAfterTest();
+
+        [$course, $cmid, $confscheduler, , $submissionid] = $this->create_fixture();
+        $teacher = $this->getDataGenerator()->create_and_enrol($course, 'editingteacher');
+        $this->setUser($teacher);
+
+        $roomid = api::add_room((int) $confscheduler->id, 'Main Hall');
+        api::add_slot(
+            (int) $confscheduler->id,
+            [$roomid],
+            strtotime('2026-09-01 09:00:00'),
+            strtotime('2026-09-01 09:30:00'),
+            $submissionid
+        );
+
+        // No preference recorded at all: never flagged.
+        $result = get_grid_data::execute($cmid);
+        $this->assertFalse($result['slots'][0]['nonpreferredday']);
+
+        // Preference recorded, but for a DIFFERENT day than the one it's scheduled
+        // on: flagged.
+        $preferredday = usergetmidnight(strtotime('2026-09-02 00:00:00'));
+        \mod_confsubmissions\api::sync_date_preferences($submissionid, [$preferredday]);
+
+        $result = get_grid_data::execute($cmid);
+        $this->assertTrue($result['slots'][0]['nonpreferredday']);
+
+        // Preference recorded, and it DOES include the day it's scheduled on: not
+        // flagged.
+        $scheduledday = usergetmidnight(strtotime('2026-09-01 00:00:00'));
+        \mod_confsubmissions\api::sync_date_preferences($submissionid, [$scheduledday]);
+
+        $result = get_grid_data::execute($cmid);
+        $this->assertFalse($result['slots'][0]['nonpreferredday']);
+    }
+
+    /**
+     * A span block (no submissionid) is never flagged 'nonpreferredday' -- there is
+     * no submitter/preference concept for it at all.
+     */
+    public function test_span_block_never_flagged_nonpreferredday(): void {
+        $this->resetAfterTest();
+
+        [$course, $cmid, $confscheduler] = $this->create_fixture();
+        $teacher = $this->getDataGenerator()->create_and_enrol($course, 'editingteacher');
+        $this->setUser($teacher);
+
+        $roomid = api::add_room((int) $confscheduler->id, 'Main Hall');
+        api::add_slot(
+            (int) $confscheduler->id,
+            [$roomid],
+            strtotime('2026-09-01 09:00:00'),
+            strtotime('2026-09-01 09:30:00'),
+            null,
+            'Lunch'
+        );
+
+        $result = get_grid_data::execute($cmid);
+        $this->assertFalse($result['slots'][0]['nonpreferredday']);
+    }
+
+    /**
      * A user with viewschedule but not manageschedule (a plain student) can still
      * read the grid data, since this endpoint also backs the future read-only
      * Display mode.

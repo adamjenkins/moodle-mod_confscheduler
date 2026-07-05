@@ -802,6 +802,16 @@ const renderBlock = (state, columnsWrap, slot) => {
 
     const block = document.createElement('div');
     block.className = 'mod_confscheduler-block' + (isSpanBlock ? ' mod_confscheduler-block-span' : '');
+    if (slot.nonpreferredday) {
+        // Edit-mode-only highlight (user feedback, 2026-07-05): flagged server-side
+        // (see \mod_confscheduler\local\grid_data::build()'s docblock) whenever this
+        // presentation's day is not one of its submitter's recorded preferred days --
+        // possible via manual drag, or the autoscheduler's "ignore preferred dates"
+        // override. scheduler_display.js (read-only Display mode) never reads this
+        // field at all, so a flagged block still displays normally there.
+        block.classList.add('mod_confscheduler-block-nonpreferred');
+        block.title = state.strings.blocknonpreferredday;
+    }
     block.dataset.slotid = slot.id;
     block.dataset.roomids = JSON.stringify(slot.roomids);
     block.dataset.starttime = slot.starttime;
@@ -1493,6 +1503,7 @@ const openAutoschedulerModal = async(state) => {
         const windowstartValue = form.querySelector('[name=windowstart]').value;
         const windowendValue = form.querySelector('[name=windowend]').value;
         const clearfirst = form.querySelector('[name=clearfirst]').checked;
+        const ignorepreferreddates = form.querySelector('[name=ignorepreferreddates]').checked;
 
         if (!windowstartValue || !windowendValue) {
             return;
@@ -1504,7 +1515,7 @@ const openAutoschedulerModal = async(state) => {
             return;
         }
 
-        Repository.runAutoscheduler(state.cmid, windowstart, windowend, clearfirst).then((result) => {
+        Repository.runAutoscheduler(state.cmid, windowstart, windowend, clearfirst, ignorepreferreddates).then((result) => {
             modal.destroy();
             showAutoschedulerSummary(state, result);
             return fetchAndRenderAll(state);
@@ -1806,7 +1817,7 @@ export const init = async(cmid, confschedulerid, programurl = null) => {
     const [
         unschedule, favourite, editroom, deleteroom, confirmdeleteroom,
         cancel, movecolumn, addroom, addspanblock, editspanblock, autoschedulerrun,
-        filterbytrack, alldays,
+        filterbytrack, alldays, blocknonpreferredday,
     ] = await getStrings([
         {key: 'unschedule', component: 'mod_confscheduler'},
         {key: 'favourite', component: 'mod_confscheduler'},
@@ -1821,6 +1832,7 @@ export const init = async(cmid, confschedulerid, programurl = null) => {
         {key: 'autoschedulerrun', component: 'mod_confscheduler'},
         {key: 'filterbytrack', component: 'mod_confscheduler'},
         {key: 'alldays', component: 'mod_confscheduler'},
+        {key: 'blocknonpreferredday', component: 'mod_confscheduler'},
     ]);
 
     const state = {
@@ -1848,7 +1860,7 @@ export const init = async(cmid, confschedulerid, programurl = null) => {
         strings: {
             unschedule, favourite, editroom, deleteroom, confirmdeleteroom,
             cancel, movecolumn, addroom, addspanblock, editspanblock, autoschedulerrun,
-            filterbytrack, alldays,
+            filterbytrack, alldays, blocknonpreferredday,
         },
     };
 

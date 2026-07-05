@@ -102,6 +102,11 @@ class get_grid_data extends external_api {
                     'track'        => new external_value(PARAM_TEXT, 'Track name, or null', VALUE_DEFAULT, null),
                     'trackid'      => new external_value(PARAM_INT, 'Track id, or null', VALUE_DEFAULT, null),
                     'favourited'   => new external_value(PARAM_BOOL, 'Whether the current user has favourited this presentation'),
+                    'nonpreferredday' => new external_value(
+                        PARAM_BOOL,
+                        'Whether this slot\'s day is not one of the submission\'s recorded preferred days ' .
+                            '(always false for a span-block, or when no preference was recorded)'
+                    ),
                 ])
             ),
             'unscheduled' => new external_multiple_structure(

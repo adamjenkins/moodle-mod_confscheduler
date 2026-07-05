@@ -75,6 +75,21 @@ Part of the [Conference Tools](https://github.com/adamjenkins/moodle-conference-
   sequentially that far. This made a submitter's preferred day unreachable
   whenever it wasn't the window's first day, in the single most common
   real-world case: running the autoscheduler once, from scratch.
+- **Preferred dates are a hard constraint by default (2026-07-05 follow-up,
+  user feedback: "That should return a '1 could not be placed' message")**:
+  once the seeding fix above made a preferred day genuinely reachable,
+  `try_place_single()` was changed to only ever consider candidates on one of
+  a submission's preferred days when it has any recorded — if none of them
+  have room, the submission is skipped (reported via the existing "N could
+  not be placed" summary) rather than silently falling back to a
+  non-preferred day. The "Run autoscheduler" modal's new **"Ignore preferred
+  dates"** checkbox (`$ignorepreferreddates` parameter, off by default)
+  restores the old soft-preference fallback for a given run. A slot ending
+  up on a non-preferred day either way (manual drag, or an
+  ignore-preferred-dates run) is flagged `nonpreferredday` by
+  `grid_data::build()` and highlighted only in the edit-mode grid
+  (`scheduler_grid.js`) — the read-only Display mode (`scheduler_display.js`)
+  never reads that field, so it renders identically either way.
 - **Display mode is a separate AMD module, not a shared renderer with an
   edit/read-only flag (Phase 3.5)**: `amd/src/scheduler_grid.js`'s block
   rendering is tightly interleaved with `core/dragdrop` state — drag

@@ -829,6 +829,19 @@ class api {
      * former priority 2/3 (track grouping / ungrouped) tiers above are now
      * priority 1/2, unchanged in their own logic.
      *
+     * Preferred dates (user feedback, 2026-07-05): a submission with a recorded
+     * date preference (mod_confsubmissions\api::get_date_preferences()) is, by
+     * default, ONLY ever placed on one of its preferred days -- see
+     * try_place_single()'s docblock. If none of them have room, the submission
+     * is skipped and reported in skippedreasons, rather than silently landing on
+     * a day it was explicitly not offered as acceptable. Pass
+     * $ignorepreferreddates = true (the "Ignore preferred dates" checkbox in the
+     * "Run autoscheduler" modal) to restore the previous soft-preference
+     * behaviour instead, where a non-preferred day is used as a fallback. A
+     * submission placed on a non-preferred day this way is flagged
+     * 'nonpreferredday' in \mod_confscheduler\local\grid_data::build()'s output,
+     * so the edit-mode grid can highlight it -- see that class's docblock.
+     *
      * Placement search: rather than re-implementing validate_placement()'s
      * SnapGap/overlap math a second time (which would risk drifting out of
      * sync with it), every candidate placement this method considers is
@@ -866,6 +879,10 @@ class api {
      * @param bool $clearfirst Whether to first clear existing slots that overlap the window
      * @param int|null $seed Optional seed for deterministic randomisation (tests only); null (the
      *        default) means production callers get a different, non-reproducible ordering each run
+     * @param bool $ignorepreferreddates When false (the default -- user feedback, 2026-07-05), a
+     *        submission with recorded date preferences that has no available candidate on any of
+     *        them is skipped rather than placed on a non-preferred day; true restores the previous
+     *        soft-preference behaviour (falls back to a non-preferred day rather than skip)
      * @return array{scheduled: int, skipped: int, skippedreasons: array} Run summary
      * @throws \invalid_parameter_exception if $windowend <= $windowstart
      */
@@ -874,7 +891,8 @@ class api {
         int $windowstart,
         int $windowend,
         bool $clearfirst,
-        ?int $seed = null
+        ?int $seed = null,
+        bool $ignorepreferreddates = false
     ): array {
         global $DB;
 
@@ -1002,6 +1020,7 @@ class api {
         foreach ($trackids as $trackid) {
             $preferredroomid = null;
             foreach ($trackgroups[$trackid] as $submission) {
+                $preferreddays = $preferreddaysfor($submission);
                 $placed = self::try_place_single(
                     $confschedulerid,
                     (int) $submission->id,
@@ -1014,7 +1033,8 @@ class api {
                     $randomsource,
                     $trackid,
                     $trackidcache,
-                    $preferreddaysfor($submission)
+                    $preferreddays,
+                    $ignorepreferreddates
                 );
                 if ($placed !== null) {
                     $summary['scheduled']++;
@@ -1023,13 +1043,15 @@ class api {
                     }
                 } else {
                     $summary['skipped']++;
-                    $summary['skippedreasons'][] = self::autoscheduler_skip_reason($submission, 'nofit');
+                    $reasoncode = ($preferreddays && !$ignorepreferreddates) ? 'nopreferreddatefit' : 'nofit';
+                    $summary['skippedreasons'][] = self::autoscheduler_skip_reason($submission, $reasoncode);
                 }
             }
         }
 
         // Priority 2: everything else, no grouping preference.
         foreach ($ungrouped as $submission) {
+            $preferreddays = $preferreddaysfor($submission);
             $placed = self::try_place_single(
                 $confschedulerid,
                 (int) $submission->id,
@@ -1042,13 +1064,15 @@ class api {
                 $randomsource,
                 null,
                 $trackidcache,
-                $preferreddaysfor($submission)
+                $preferreddays,
+                $ignorepreferreddates
             );
             if ($placed !== null) {
                 $summary['scheduled']++;
             } else {
                 $summary['skipped']++;
-                $summary['skippedreasons'][] = self::autoscheduler_skip_reason($submission, 'nofit');
+                $reasoncode = ($preferreddays && !$ignorepreferreddates) ? 'nopreferreddatefit' : 'nofit';
+                $summary['skippedreasons'][] = self::autoscheduler_skip_reason($submission, $reasoncode);
             }
         }
 
@@ -1272,16 +1296,26 @@ class api {
      * that call's shuffled order for the rest.
      *
      * Within a room, candidate start times come from
-     * candidate_start_times_for_room(). If $preferreddays is non-empty (user
-     * feedback, 2026-07-05), the candidate list is first stably partitioned into
-     * "falls on a preferred day" (tried first) and "does not" (fallback) -- time of
-     * day within each day is unaffected, since this only reorders which day's
-     * candidates are tried first, not the candidates themselves. When $avoidtrackid
-     * is given, EACH of those two day groups is then separately, stably partitioned
-     * again into "does not overlap another $avoidtrackid submission in a different
-     * room" (tried first within its group) and "does" (fallback within its group) --
-     * see track_overlaps_elsewhere() -- so a day-preference match always outranks
-     * track-overlap avoidance. The first candidate that add_slot() accepts wins.
+     * candidate_start_times_for_room(). If $preferreddays is non-empty and
+     * $ignorepreferreddates is false (the default -- user feedback, 2026-07-05:
+     * "Autoscheduler is not respecting preferred dates ... That should return a
+     * '1 could not be placed' message"), preferred dates are now a HARD
+     * constraint: the candidate list is filtered down to ONLY those falling on a
+     * preferred day, and if none of them can be placed, this method returns null
+     * (the submission is skipped) rather than ever falling back to a non-preferred
+     * day. Passing $ignorepreferreddates = true (a new organiser-facing checkbox
+     * in the "Run autoscheduler" modal) restores the previous soft-preference
+     * behaviour: the candidate list is stably partitioned into "falls on a
+     * preferred day" (tried first) and "does not" (fallback), so a submission can
+     * still land on a non-preferred day rather than being left unscheduled. Either
+     * way, time of day within a day is unaffected -- this only reorders/filters
+     * which day's candidates are tried, not the candidates themselves. When
+     * $avoidtrackid is given, each remaining day-group is then separately, stably
+     * partitioned again into "does not overlap another $avoidtrackid submission in
+     * a different room" (tried first within its group) and "does" (fallback within
+     * its group) -- see track_overlaps_elsewhere() -- so a day-preference match
+     * always outranks track-overlap avoidance. The first candidate that add_slot()
+     * accepts wins.
      *
      * @param int $confschedulerid The confscheduler instance id
      * @param int $submissionid The confsubmissions_submission id to place
@@ -1296,6 +1330,8 @@ class api {
      * @param array $trackidcache Shared submission-id => trackid memo (see track_overlaps_elsewhere())
      * @param int[] $preferreddays Midnight timestamps of days to prefer, or empty for no preference
      *        (see mod_confsubmissions\api::get_date_preferences())
+     * @param bool $ignorepreferreddates When true, a non-empty $preferreddays is treated as a soft
+     *        preference (falls back to a non-preferred day) instead of a hard constraint
      * @return array{slotid: int, roomid: int}|null The placement made, or null if none was possible
      */
     protected static function try_place_single(
@@ -1310,7 +1346,8 @@ class api {
         \Closure $randomsource,
         ?int $avoidtrackid,
         array &$trackidcache,
-        array $preferreddays = []
+        array $preferreddays = [],
+        bool $ignorepreferreddates = false
     ): ?array {
         $searchorder = self::fisher_yates_shuffle($roomids, $randomsource);
         if ($preferredroomid !== null && in_array($preferredroomid, $roomids, true)) {
@@ -1367,12 +1404,10 @@ class api {
             return array_merge($good, $bad);
         };
 
-        // Preferred conference days (user feedback, 2026-07-05): reorder candidates so
-        // one falling on a day the submitter preferred is tried before one that
-        // doesn't, WITHOUT changing which candidates exist or their time-of-day order
-        // within each day -- an empty $preferreddays ("no preference recorded") skips
-        // this partition entirely, leaving every candidate in its original,
-        // already-shuffled order (subject only to the track-overlap partition below).
+        // Preferred conference days (user feedback, 2026-07-05): an empty
+        // $preferreddays ("no preference recorded") skips this partition/filter
+        // entirely, leaving every candidate in its original, already-shuffled
+        // order (subject only to the track-overlap partition below).
         if ($preferreddays) {
             $preferred = [];
             $other = [];
@@ -1384,7 +1419,19 @@ class api {
                     $other[] = $candidate;
                 }
             }
-            $candidates = array_merge($avoidoverlap($preferred), $avoidoverlap($other));
+
+            if ($ignorepreferreddates) {
+                // Soft preference: try preferred-day candidates first, but fall back
+                // to a non-preferred day rather than leave the submission unplaced.
+                $candidates = array_merge($avoidoverlap($preferred), $avoidoverlap($other));
+            } else {
+                // Hard constraint (the default, user feedback, 2026-07-05): a
+                // non-preferred-day candidate is never even attempted, so a
+                // submission whose preferred days have no room anywhere is
+                // correctly left unplaced (reported as skipped) instead of silently
+                // landing on a day it was explicitly not offered as acceptable.
+                $candidates = $avoidoverlap($preferred);
+            }
         } else {
             $candidates = $avoidoverlap($candidates);
         }
@@ -1410,7 +1457,7 @@ class api {
      * Builds a skippedreasons entry for the run_autoscheduler() summary.
      *
      * @param \stdClass $submission The submission that could not be placed
-     * @param string $reasoncode 'nofit' or 'noroomsconfigured'
+     * @param string $reasoncode 'nofit', 'noroomsconfigured', or 'nopreferreddatefit'
      * @return array{submissionid: int, title: string, reason: string}
      */
     protected static function autoscheduler_skip_reason(\stdClass $submission, string $reasoncode): array {

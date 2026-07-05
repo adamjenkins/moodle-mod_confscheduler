@@ -17,8 +17,11 @@
 {{!
     @template mod_confscheduler/autoscheduler_form
 
-    Modal body for running the autoscheduler: a time window and a "clear
-    first" checkbox (unchecked by default, per the Phase 3.4 spec). A
+    Modal body for running the autoscheduler: a time window, a "clear
+    first" checkbox (unchecked by default, per the Phase 3.4 spec), and an
+    "ignore preferred dates" checkbox (unchecked by default, user feedback
+    2026-07-05 -- preferred dates are a hard constraint unless this is
+    checked, see \mod_confscheduler\api::run_autoscheduler()'s docblock). A
     "default duration" input previously lived here too, applied uniformly to
     every submission the autoscheduler placed; it was removed (Revision
     round 1, 2026-07-04) once every submission started carrying its own
@@ -44,5 +47,9 @@
     <div class="form-check">
         <input type="checkbox" class="form-check-input" id="mod_confscheduler-autoscheduler-clearfirst" name="clearfirst">
         <label class="form-check-label" for="mod_confscheduler-autoscheduler-clearfirst">{{#str}} autoschedulerclearfirst, mod_confscheduler {{/str}}</label>
+    </div>
+    <div class="form-check">
+        <input type="checkbox" class="form-check-input" id="mod_confscheduler-autoscheduler-ignorepreferreddates" name="ignorepreferreddates">
+        <label class="form-check-label" for="mod_confscheduler-autoscheduler-ignorepreferreddates">{{#str}} autoschedulerignorepreferreddates, mod_confscheduler {{/str}}</label>
     </div>
 </form>

@@ -295,6 +295,26 @@
     opacity: 0.35;
 }
 
+/*
+ * Edit-mode-only highlight for a presentation scheduled on a day its submitter did
+ * NOT mark as preferred (user feedback, 2026-07-05) -- possible via manual drag, or
+ * the autoscheduler's explicit "ignore preferred dates" override. Only ever applied
+ * in amd/src/scheduler_grid.js (edit mode); amd/src/scheduler_display.js (read-only
+ * Display mode) never reads the underlying 'nonpreferredday' flag at all, so a
+ * flagged block still displays with the plain .mod_confscheduler-block styling
+ * there, per the explicit "with edit mode off, it should display normally" request.
+ */
+.mod_confscheduler-block-nonpreferred {
+    border: 2px solid #b8860b;
+    background-image: repeating-linear-gradient(
+        135deg,
+        rgba(184, 134, 11, 0.12),
+        rgba(184, 134, 11, 0.12) 6px,
+        transparent 6px,
+        transparent 12px
+    );
+}
+
 .mod_confscheduler-drag-proxy {
     opacity: 0.85;
 }

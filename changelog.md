@@ -2,7 +2,43 @@
 
 ## Unreleased
 
-- User feedback (2026-07-05): "Autoscheduler is not respecting preferred dates."
+- User feedback (2026-07-05): "Autoscheduler is not respecting preferred dates
+  when the window is set to a dates that a presentation has set as not
+  preferred. That should return a '1 could not be placed' message. In edit
+  mode, there should be an option to 'ignore preferred dates'. Using this, a
+  presentation could be added to a non-preferred date. If a presentation is
+  thus scheduled on a non-preferred date, it should be highlighted when in
+  edit mode (with edit mode off, it should display normally." Preferred dates
+  are now a **hard constraint by default**: `try_place_single()` only ever
+  considers candidates on one of a submission's preferred days when it has
+  any recorded; if none of them have room anywhere in the window, the
+  submission is skipped and reported (via the existing
+  `autoschedulersummary` string, already "N could not be placed") with a new,
+  distinct `autoschedulernopreferreddatefit` reason rather than silently
+  falling back to a non-preferred day. A new **"Ignore preferred dates"**
+  checkbox in the "Run autoscheduler" modal (`run_autoscheduler()`'s new
+  `$ignorepreferreddates` parameter, threaded through the AJAX external
+  function and `Repository.runAutoscheduler()`) restores the previous
+  soft-preference fallback behaviour for that one run. Independently of how a
+  presentation ends up on a non-preferred day (manual drag, or an
+  ignore-preferred-dates autoscheduler run), `grid_data::build()` now flags
+  every such slot `nonpreferredday`, and the edit-mode grid
+  (`amd/src/scheduler_grid.js`) renders it with a distinct amber
+  border/hatching and a tooltip; the read-only Display mode
+  (`amd/src/scheduler_display.js`) deliberately never reads this field at
+  all, so a flagged block still displays with plain styling there, per the
+  explicit "with edit mode off, it should display normally" request. New
+  tests: `test_run_autoscheduler_skips_when_preferred_day_has_no_room_by_default`,
+  `test_run_autoscheduler_ignorepreferreddates_places_on_a_nonpreferred_day`,
+  `test_slot_flags_nonpreferredday_correctly`,
+  `test_span_block_never_flagged_nonpreferredday`. 105/105 PHPUnit passing
+  (was 101), phpcs/moodlecheck/eslint clean, AMD rebuilt and diff-verified
+  stable, independently verified live via a CLI harness (no browser/
+  Playwright tool available this session): the modal's new checkbox renders,
+  the default run correctly skips with the exact expected reason message,
+  the ignore-preferred-dates run places the submission on the only day with
+  room, and the resulting slot is correctly flagged `nonpreferredday` by
+  `get_grid_data`.
   Root cause: `candidate_start_times_for_room()` only ever seeded the window start
   itself plus (each existing slot's endtime + gap) as candidates for a room -- there
   is no "business hours reset each day" concept anywhere in this scheduling data
