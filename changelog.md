@@ -15,9 +15,16 @@
   date input. Replaced both modals' datetime-local inputs with explicit
   year/month/day/hour/minute `<select>` groups (new
   `amd/src/datetime_select_utils.js`), so the displayed order is always
-  unambiguous regardless of browser locale. New lang strings `year`,
-  `month`, `hour`, `minute` (EN+JA; `day` already existed). AMD rebuilt
-  (`grunt amd --force`) and diff-verified stable.
+  unambiguous regardless of browser locale. Also fixed a latent Bootstrap-5
+  regression found live while verifying this: both templates used the
+  Bootstrap-4-only `.form-row`/`.no-gutters` classes, which this site's
+  Bootstrap 5 theme ships no CSS for at all -- they were silently rendering
+  as unstyled stacked `<div>`s instead of a row (caught via a Playwright
+  screenshot, not by any PHP-level check); replaced with Bootstrap 5's
+  `.row`/`.g-2`. New lang strings `year`, `month`, `hour`, `minute` (EN+JA;
+  `day` already existed). AMD rebuilt (`grunt amd --force`) and
+  diff-verified stable.
+- User feedback (2026-07-05): "Autoscheduler is not respecting preferred dates
   when the window is set to a dates that a presentation has set as not
   preferred. That should return a '1 could not be placed' message. In edit
   mode, there should be an option to 'ignore preferred dates'. Using this, a
