@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Added a Japanese (`lang/ja/confscheduler.php`) language pack, translating every
+  string in `lang/en/confscheduler.php` (verified live: every key present in both,
+  no extras or omissions on either side; confirmed rendering correctly in-browser,
+  including the newly-added row-height/"All days"/conference-date strings).
 - User feedback (2026-07-05): conference start/end dates are now **required**
   (`mod_form.php` keeps the `optional => true` checkbox, unchecked by default, so a
   genuinely-unset state is still representable for validation to reject -- an earlier
