@@ -137,6 +137,7 @@ if ($editmode) {
         'cmid'            => $cm->id,
         'confschedulerid' => (int) $confscheduler->id,
         'canfavourite'    => $canfavourite,
+        'exporturl'       => (new moodle_url('/mod/confscheduler/export.php', ['id' => $cm->id]))->out(false),
     ]);
 
     $PAGE->requires->js_call_amd('mod_confscheduler/scheduler_display', 'init', [

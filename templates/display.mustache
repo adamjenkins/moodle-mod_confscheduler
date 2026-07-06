@@ -28,12 +28,14 @@
     * cmid int - the confscheduler course-module id
     * confschedulerid int - the confscheduler instance id
     * canfavourite bool - whether the current user may toggle favourites
+    * exporturl string - the export.php URL for this instance's ICS "my timetable" download
 
     Example context (json):
     {
         "cmid": 5,
         "confschedulerid": 3,
-        "canfavourite": true
+        "canfavourite": true,
+        "exporturl": "https://example.com/mod/confscheduler/export.php?id=5"
     }
 }}
 <div id="mod_confscheduler-display-root"
@@ -47,6 +49,9 @@
             <button type="button" class="btn btn-outline-secondary btn-sm mod_confscheduler-mytimetable-toggle" aria-pressed="false">
                 {{#str}} mytimetable, mod_confscheduler {{/str}}
             </button>
+            <a href="{{exporturl}}" class="btn btn-outline-secondary btn-sm ml-2">
+                {{#str}} exportmytimetable, mod_confscheduler {{/str}}
+            </a>
         </div>
         <div class="mod_confscheduler-print-controls d-flex flex-wrap align-items-center">
             <fieldset class="mod_confscheduler-print-colourmode mr-3 mb-0">

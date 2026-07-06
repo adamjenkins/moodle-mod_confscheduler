@@ -74,6 +74,7 @@ $string['error:outsideconferencedates'] = 'This placement falls outside the conf
 $string['error:roomhasslots'] = 'This room still has scheduled blocks in it. Unschedule them first.';
 $string['error:roomnamerequired'] = 'Enter a room name.';
 $string['error:timeoverlap'] = 'This placement overlaps another block already scheduled in the same room.';
+$string['exportmytimetable'] = 'Export my timetable (.ics)';
 $string['favourite'] = 'Add to my timetable';
 $string['filterbytrack'] = 'Show the conference programme filtered to track: {$a}';
 $string['fullscreen'] = 'Fullscreen';
