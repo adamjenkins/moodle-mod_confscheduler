@@ -284,6 +284,14 @@ final class get_grid_data_test extends advanced_testcase {
         $result = get_grid_data::execute($cmid);
 
         $this->assertSame('#3366cc', $result['slots'][0]['trackcolour']);
+
+        // Also run the result through clean_returnvalue(), the same schema-stripping step
+        // Moodle's real AJAX transport applies -- execute() alone would have kept passing
+        // even when trackcolour was undeclared in execute_returns() and silently stripped
+        // in transit (the exact bug this field's addition already hit once; moodle-reviewer
+        // finding, 2026-07-06).
+        $clean = \core_external\external_api::clean_returnvalue(get_grid_data::execute_returns(), $result);
+        $this->assertSame('#3366cc', $clean['slots'][0]['trackcolour']);
     }
 
     /**
