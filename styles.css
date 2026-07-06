@@ -615,13 +615,44 @@ a.mod_confscheduler-track-pill:focus {
 }
 
 /*
- * Print support (Phase 3.5): colour/black-and-white and A4/A3/A2 portrait/landscape,
- * entirely via CSS -- no PDF generation. Paper size/orientation is applied as a
- * dynamically-written @page rule (see scheduler_display.js's applyPageSize(); @page
- * cannot itself be scoped under a class selector, so a dedicated <style> element's
- * content is rewritten instead). Black & white mode strips the room colour-theming
- * down to plain borders/text via the .mod_confscheduler-print-bw class below, applied
- * unconditionally (it only has any visual effect inside @media print).
+ * Black & white mode strips the room/track colour-theming down to plain borders/text
+ * via the .mod_confscheduler-bw class below (renamed from .mod_confscheduler-print-bw,
+ * user feedback 2026-07-06: it now applies live on screen too, not just when printing --
+ * toggling it is no longer a print-only setting). Applied unconditionally (not inside
+ * @media print) so it's visible immediately; print naturally inherits whatever is
+ * already on screen, with no separate print-only colour logic needed.
+ */
+.mod_confscheduler-bw .mod_confscheduler-room-header {
+    background-color: #fff !important;
+    color: #000;
+    border: 1px solid #000;
+}
+
+.mod_confscheduler-bw .mod_confscheduler-room-column.has-colour::before {
+    display: none;
+}
+
+.mod_confscheduler-bw .mod_confscheduler-block {
+    background: #fff !important;
+    color: #000;
+}
+
+.mod_confscheduler-bw .mod_confscheduler-track-pill {
+    background: #fff !important;
+    color: #000 !important;
+    border: 1px solid #000;
+}
+
+.mod_confscheduler-bw .mod_confscheduler-block-fav,
+.mod_confscheduler-bw .mod_confscheduler-block-fav-readonly {
+    color: #000;
+}
+
+/*
+ * Print support (Phase 3.5): the toolbar hides on print, block borders/shadows are
+ * simplified for a printed page. Paper size and orientation are deliberately left
+ * entirely to the browser's own print dialog (user feedback, 2026-07-06 -- see
+ * changelog.md); this plugin no longer writes a forced @page rule at all.
  */
 @media print {
     /* Compound selector (two classes) deliberately, not just .mod_confscheduler-print-toolbar:
@@ -642,31 +673,5 @@ a.mod_confscheduler-track-pill:focus {
         box-shadow: none;
         border: 1px solid #000;
         break-inside: avoid;
-    }
-
-    .mod_confscheduler-print-bw .mod_confscheduler-room-header {
-        background-color: #fff !important;
-        color: #000;
-        border: 1px solid #000;
-    }
-
-    .mod_confscheduler-print-bw .mod_confscheduler-room-column.has-colour::before {
-        display: none;
-    }
-
-    .mod_confscheduler-print-bw .mod_confscheduler-block {
-        background: #fff !important;
-        color: #000;
-    }
-
-    .mod_confscheduler-print-bw .mod_confscheduler-track-pill {
-        background: #fff !important;
-        color: #000 !important;
-        border: 1px solid #000;
-    }
-
-    .mod_confscheduler-print-bw .mod_confscheduler-block-fav,
-    .mod_confscheduler-print-bw .mod_confscheduler-block-fav-readonly {
-        color: #000;
     }
 }

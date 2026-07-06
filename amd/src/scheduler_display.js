@@ -699,9 +699,9 @@ const bindEvents = (state) => {
             return;
         }
 
-        const bwRadio = event.target.closest('[name=mod_confscheduler_printcolour]');
+        const bwRadio = event.target.closest('[name=mod_confscheduler_colourmode]');
         if (bwRadio) {
-            state.root.classList.toggle('mod_confscheduler-print-bw', bwRadio.value === 'bw' && bwRadio.checked);
+            state.root.classList.toggle('mod_confscheduler-bw', bwRadio.value === 'bw' && bwRadio.checked);
             return;
         }
 
