@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- User request (2026-07-06): added `composer.json` so the plugin can be
+  published on Packagist per the
+  [Moodle Composer guide](https://moodledev.io/docs/5.2/guides/composer) --
+  `moodle-mod` type, requires `moodle/moodle:^5.2` (matching this plugin's own
+  `version.php` floor) and `moodle/composer-installer`. Also added the
+  `.github/workflows` CI/release workflows that this plugin (unlike its three
+  siblings) never had, scoped to `MOODLE_502_STABLE` only to match
+  `version.php`'s requirement.
 - Day-bounds display window + print/colour cleanup (2026-07-06): three
   related changes to the schedule grid, all from the same user request.
   1. **New "day start"/"day end" quick control** in the edit-mode toolbar

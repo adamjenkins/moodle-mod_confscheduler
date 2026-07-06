@@ -1,0 +1,10 @@
+{
+    "name": "adamjenkins/moodle-mod_confscheduler",
+    "description": "Conference Scheduler - a Moodle activity module that turns accepted submissions into a drag-and-drop block schedule (time x room grid), with autoscheduling and print support.",
+    "type": "moodle-mod",
+    "require": {
+        "moodle/moodle": "^5.2",
+        "moodle/composer-installer": "*"
+    },
+    "license": "GPL-3.0-or-later"
+}
