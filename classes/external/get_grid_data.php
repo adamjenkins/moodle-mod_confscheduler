@@ -157,6 +157,18 @@ class get_grid_data extends external_api {
                 VALUE_DEFAULT,
                 null
             ),
+            'daystart' => new external_value(
+                PARAM_INT,
+                'The instance\'s configured daily display-window start, minutes since midnight, or null if unset',
+                VALUE_DEFAULT,
+                null
+            ),
+            'dayend' => new external_value(
+                PARAM_INT,
+                'The instance\'s configured daily display-window end, minutes since midnight, or null if unset',
+                VALUE_DEFAULT,
+                null
+            ),
             'pendingnotifications' => new external_value(
                 PARAM_INT,
                 'How many presentation slots have a scheduling change not yet notified'

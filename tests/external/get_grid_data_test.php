@@ -323,4 +323,51 @@ final class get_grid_data_test extends advanced_testcase {
 
         $this->assertNull($result['slots'][0]['trackcolour']);
     }
+
+    /**
+     * A fresh instance has null daystart/dayend (fully automatic, unchanged from
+     * before this feature existed) until an organiser configures them. Also runs
+     * the result through clean_returnvalue() (the same schema-stripping step
+     * Moodle's real AJAX transport applies), per the exact lesson this file's own
+     * trackcolour tests already learned the hard way this same round.
+     */
+    public function test_payload_includes_null_day_bounds_by_default(): void {
+        $this->resetAfterTest();
+
+        [$course, $cmid] = $this->create_fixture();
+        $teacher = $this->getDataGenerator()->create_and_enrol($course, 'editingteacher');
+        $this->setUser($teacher);
+
+        $result = get_grid_data::execute($cmid);
+
+        $this->assertNull($result['daystart']);
+        $this->assertNull($result['dayend']);
+
+        $clean = \core_external\external_api::clean_returnvalue(get_grid_data::execute_returns(), $result);
+        $this->assertArrayHasKey('daystart', $clean);
+        $this->assertArrayHasKey('dayend', $clean);
+    }
+
+    /**
+     * Once configured, both bounds are surfaced in the payload and survive
+     * clean_returnvalue().
+     */
+    public function test_payload_includes_configured_day_bounds(): void {
+        $this->resetAfterTest();
+
+        [$course, $cmid, $confscheduler] = $this->create_fixture();
+        $teacher = $this->getDataGenerator()->create_and_enrol($course, 'editingteacher');
+        $this->setUser($teacher);
+
+        api::set_day_bounds((int) $confscheduler->id, 480, 1080);
+
+        $result = get_grid_data::execute($cmid);
+
+        $this->assertSame(480, $result['daystart']);
+        $this->assertSame(1080, $result['dayend']);
+
+        $clean = \core_external\external_api::clean_returnvalue(get_grid_data::execute_returns(), $result);
+        $this->assertSame(480, $clean['daystart']);
+        $this->assertSame(1080, $clean['dayend']);
+    }
 }

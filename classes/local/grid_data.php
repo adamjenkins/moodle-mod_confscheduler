@@ -45,7 +45,7 @@ class grid_data {
      * @param \stdClass $confscheduler The confscheduler record
      * @param int $userid The current user id, used to resolve per-user favourited state
      * @return array{rooms: array, slots: array, unscheduled: array, gapminutes: int, pxperhour: int,
-     *     conferencestart: ?int, conferenceend: ?int, pendingnotifications: int}
+     *     conferencestart: ?int, conferenceend: ?int, daystart: ?int, dayend: ?int, pendingnotifications: int}
      *
      * Each 'unscheduled' entry also includes 'preferreddates' (int[], midnight
      * timestamps; empty means no preference recorded). Each 'slots' entry with a
@@ -226,6 +226,8 @@ class grid_data {
             'pxperhour'       => (int) $confscheduler->pxperhour,
             'conferencestart' => $confscheduler->conferencestart !== null ? (int) $confscheduler->conferencestart : null,
             'conferenceend'   => $confscheduler->conferenceend !== null ? (int) $confscheduler->conferenceend : null,
+            'daystart'        => $confscheduler->daystart !== null ? (int) $confscheduler->daystart : null,
+            'dayend'          => $confscheduler->dayend !== null ? (int) $confscheduler->dayend : null,
             // How many presentation slots have a scheduling change pending a
             // notification (user request, 2026-07-05) -- drives the edit-mode "Send
             // notifications" button's count, without itself sending anything.
