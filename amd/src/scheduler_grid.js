@@ -153,15 +153,29 @@ const formatTime = (timestamp) => new Date(timestamp * 1000).toLocaleTimeString(
  * Builds a track pill element (an <a> linking to the linked mod_confprogram instance's
  * accepted-submissions list, filtered to this track, when a programUrl/trackid are
  * available; otherwise a plain, non-interactive <span>) for a slot/unscheduled-panel
- * entry carrying a 'track'/'trackid' pair.
+ * entry carrying a 'track'/'trackid' pair. Applies the track's own configured colour
+ * (with automatic black/white contrast text), the same treatment already used for room
+ * headers and span blocks elsewhere in this file -- falls back to the plugin's default
+ * CSS colour when the track has none configured.
  *
  * @param {String|null} programUrl The linked mod_confprogram activity's base view URL (already has ?id=...), or null
  * @param {Number|null} trackid The confsubmissions_track id, or null
  * @param {String} trackname The track's display name
+ * @param {String|null} trackcolour The track's configured hex colour, or null/empty for the default
  * @param {String|null} filterbytrackstr The raw (unsubstituted) 'filterbytrack' lang string, or null
  * @return {HTMLElement}
  */
-const buildTrackPill = (programUrl, trackid, trackname, filterbytrackstr) => {
+const buildTrackPill = (programUrl, trackid, trackname, trackcolour, filterbytrackstr) => {
+    const applyColour = (pill) => {
+        if (trackcolour) {
+            pill.style.backgroundColor = trackcolour;
+            const textColour = ColourUtils.contrastTextColour(trackcolour);
+            if (textColour) {
+                pill.style.color = textColour;
+            }
+        }
+    };
+
     if (programUrl && trackid) {
         const pill = document.createElement('a');
         pill.className = 'mod_confscheduler-track-pill';
@@ -173,12 +187,14 @@ const buildTrackPill = (programUrl, trackid, trackname, filterbytrackstr) => {
         if (filterbytrackstr) {
             pill.setAttribute('aria-label', filterbytrackstr.replace('{$a}', trackname));
         }
+        applyColour(pill);
         return pill;
     }
 
     const pill = document.createElement('span');
     pill.className = 'mod_confscheduler-track-pill';
     pill.textContent = trackname;
+    applyColour(pill);
     return pill;
 };
 
@@ -918,7 +934,9 @@ const renderBlock = (state, columnsWrap, slot) => {
         const footer = document.createElement('div');
         footer.className = 'mod_confscheduler-block-footer';
         if (slot.track) {
-            footer.appendChild(buildTrackPill(state.programUrl, slot.trackid, slot.track, state.strings.filterbytrack));
+            footer.appendChild(
+                buildTrackPill(state.programUrl, slot.trackid, slot.track, slot.trackcolour, state.strings.filterbytrack)
+            );
         }
         footer.appendChild(document.createElement('span')).className = 'mod_confscheduler-block-roomtime-spacer';
         block.appendChild(footer);
@@ -1025,7 +1043,7 @@ const renderUnscheduledPanel = (state) => {
 
             if (item.track) {
                 card.appendChild(
-                    buildTrackPill(state.programUrl, item.trackid, item.track, state.strings.filterbytrack)
+                    buildTrackPill(state.programUrl, item.trackid, item.track, item.trackcolour, state.strings.filterbytrack)
                 );
             }
 

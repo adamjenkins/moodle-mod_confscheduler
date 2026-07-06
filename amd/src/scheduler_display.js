@@ -211,10 +211,21 @@ const openProgramDetail = (confprogramcmid, submissionid) => Ajax.call([{
  * @param {String|null} programUrl The linked mod_confprogram activity's base view URL (already has ?id=...), or null
  * @param {Number|null} trackid The confsubmissions_track id, or null
  * @param {String} trackname The track's display name
+ * @param {String|null} trackcolour The track's configured hex colour, or null/empty for the default
  * @param {String|null} filterbytrackstr The raw (unsubstituted) 'filterbytrack' lang string, or null
  * @return {HTMLElement}
  */
-const buildTrackPill = (programUrl, trackid, trackname, filterbytrackstr) => {
+const buildTrackPill = (programUrl, trackid, trackname, trackcolour, filterbytrackstr) => {
+    const applyColour = (pill) => {
+        if (trackcolour) {
+            pill.style.backgroundColor = trackcolour;
+            const textColour = ColourUtils.contrastTextColour(trackcolour);
+            if (textColour) {
+                pill.style.color = textColour;
+            }
+        }
+    };
+
     if (programUrl && trackid) {
         const pill = document.createElement('a');
         pill.className = 'mod_confscheduler-track-pill';
@@ -226,12 +237,14 @@ const buildTrackPill = (programUrl, trackid, trackname, filterbytrackstr) => {
         if (filterbytrackstr) {
             pill.setAttribute('aria-label', filterbytrackstr.replace('{$a}', trackname));
         }
+        applyColour(pill);
         return pill;
     }
 
     const pill = document.createElement('span');
     pill.className = 'mod_confscheduler-track-pill';
     pill.textContent = trackname;
+    applyColour(pill);
     return pill;
 };
 
@@ -335,7 +348,9 @@ const renderBlock = (state, columnsWrap, slot) => {
         const footer = document.createElement('div');
         footer.className = 'mod_confscheduler-block-footer';
         if (slot.track) {
-            footer.appendChild(buildTrackPill(state.programUrl, slot.trackid, slot.track, state.strings.filterbytrack));
+            footer.appendChild(
+                buildTrackPill(state.programUrl, slot.trackid, slot.track, slot.trackcolour, state.strings.filterbytrack)
+            );
         }
         block.appendChild(footer);
     }
