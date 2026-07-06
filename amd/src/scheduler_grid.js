@@ -281,47 +281,10 @@ const clearDragPreview = (state) => {
 };
 
 /**
- * Computes a visible timeline range from a set of slots, padded by 30 minutes at each
- * end and rounded to whole hours, with an 8-hour minimum span. Pure/stateless so it
- * can be called once per day when rendering the "All days" view (user feedback,
- * 2026-07-05), not just for the single currently-selected day.
- *
- * @param {Object[]} slots Slots to derive the range from (each with starttime/endtime)
- * @param {String} fallbackDayKey The day (YYYY-MM-DD) to default to (08:00-18:00 local)
- *     when `slots` is empty -- the day being rendered, so an empty day's axis reflects
- *     ITS OWN date rather than always defaulting to "today" regardless of which day
- *     is shown.
- * @return {{start: Number, end: Number}}
- */
-const computeTimelineBounds = (slots, fallbackDayKey) => {
-    const times = [];
-    slots.forEach((slot) => {
-        times.push(slot.starttime);
-        times.push(slot.endtime);
-    });
-
-    let start;
-    let end;
-    if (times.length) {
-        start = Math.min(...times);
-        end = Math.max(...times);
-    } else {
-        start = DayUtils.dayBounds(fallbackDayKey).start + (8 * 3600);
-        end = start + (10 * 3600);
-    }
-
-    start = (Math.floor(start / 3600) * 3600) - 1800;
-    end = (Math.ceil(end / 3600) * 3600) + 1800;
-    if (end - start < 8 * 3600) {
-        end = start + (8 * 3600);
-    }
-
-    return {start, end};
-};
-
-/**
  * Computes the visible timeline range (state.timelineStart/timelineEnd) for the
- * single currently-selected day, from state.slots.
+ * single currently-selected day, from state.slots. Delegates to the shared
+ * DayUtils.computeDayTimelineBounds() (which also understands the instance's
+ * configured daystart/dayend display window -- user feedback, 2026-07-06).
  *
  * @param {Object} state The module state object
  */
@@ -329,7 +292,7 @@ const computeTimeline = (state) => {
     const fallbackKey = (state.selectedDay && state.selectedDay !== DayUtils.ALL_DAYS)
         ? state.selectedDay
         : DayUtils.dayKeyForTimestamp(Math.floor(Date.now() / 1000));
-    const bounds = computeTimelineBounds(state.slots, fallbackKey);
+    const bounds = DayUtils.computeDayTimelineBounds(state.slots, fallbackKey, state.daystart, state.dayend);
     state.timelineStart = bounds.start;
     state.timelineEnd = bounds.end;
 };
@@ -349,9 +312,12 @@ const fetchAndRenderAll = (state) => Repository.getGridData(state.cmid).then((da
     state.pxperhour = data.pxperhour;
     state.conferencestart = data.conferencestart;
     state.conferenceend = data.conferenceend;
+    state.daystart = data.daystart;
+    state.dayend = data.dayend;
     state.pendingnotifications = data.pendingnotifications;
     syncGapMinutesInput(state);
     syncPxPerHourInput(state);
+    syncDayBoundsInputs(state);
     syncSendNotificationsButton(state);
     applyDayFilter(state);
     // Skip in "All days" mode: renderAllDaysBody() (via renderGridBody() below) hides
@@ -383,9 +349,12 @@ const fetchAndRenderBody = (state) => Repository.getGridData(state.cmid).then((d
     state.pxperhour = data.pxperhour;
     state.conferencestart = data.conferencestart;
     state.conferenceend = data.conferenceend;
+    state.daystart = data.daystart;
+    state.dayend = data.dayend;
     state.pendingnotifications = data.pendingnotifications;
     syncGapMinutesInput(state);
     syncPxPerHourInput(state);
+    syncDayBoundsInputs(state);
     syncSendNotificationsButton(state);
     applyDayFilter(state);
     renderDaySelector(state);
@@ -420,6 +389,122 @@ const syncPxPerHourInput = (state) => {
     if (input && document.activeElement !== input) {
         input.value = state.pxperhour;
     }
+};
+
+/**
+ * Reflects state.daystart/state.dayend into the quick display-window control's two
+ * time inputs and its "Automatic" checkbox, without disturbing whichever one currently
+ * has focus -- mirrors syncGapMinutesInput()/syncPxPerHourInput(). The two time inputs
+ * are disabled whenever "Automatic" is checked (both state values are null).
+ *
+ * @param {Object} state The module state object
+ */
+const syncDayBoundsInputs = (state) => {
+    const automaticCheckbox = state.root.querySelector('.mod_confscheduler-daybounds-automatic');
+    const startInput = state.root.querySelector('.mod_confscheduler-daystart');
+    const endInput = state.root.querySelector('.mod_confscheduler-dayend');
+    if (!automaticCheckbox || !startInput || !endInput) {
+        return;
+    }
+
+    const isAutomatic = state.daystart === null || state.dayend === null;
+    if (document.activeElement !== automaticCheckbox) {
+        automaticCheckbox.checked = isAutomatic;
+    }
+    startInput.disabled = isAutomatic;
+    endInput.disabled = isAutomatic;
+
+    if (document.activeElement !== startInput) {
+        startInput.value = isAutomatic ? '' : minutesToTimeValue(state.daystart);
+    }
+    if (document.activeElement !== endInput) {
+        endInput.value = isAutomatic ? '' : minutesToTimeValue(state.dayend);
+    }
+};
+
+/**
+ * Converts minutes-since-midnight to an <input type="time"> value string (HH:MM).
+ *
+ * @param {Number} minutes
+ * @return {String}
+ */
+const minutesToTimeValue = (minutes) => {
+    const hours = Math.floor(minutes / 60);
+    const mins = minutes % 60;
+    return `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}`;
+};
+
+/**
+ * Converts an <input type="time"> value string (HH:MM) to minutes-since-midnight.
+ *
+ * @param {String} value
+ * @return {Number|null} null if $value is empty/unparseable
+ */
+const timeValueToMinutes = (value) => {
+    const match = (/^(\d{1,2}):(\d{2})$/).exec(value);
+    if (!match) {
+        return null;
+    }
+    const hours = parseInt(match[1], 10);
+    const mins = parseInt(match[2], 10);
+    if (hours < 0 || hours > 23 || mins < 0 || mins > 59) {
+        return null;
+    }
+    return (hours * 60) + mins;
+};
+
+/**
+ * Persists a change to the quick display-window control (user feedback, 2026-07-06):
+ * either the "Automatic" checkbox (clears both to null), or one of the two time inputs
+ * (only submitted once BOTH have a valid value -- an incomplete pair is left unsent
+ * until the second field is also filled in). Mirrors onGapMinutesChange()/
+ * onPxPerHourChange()'s optimistic-update-then-revert-on-failure shape.
+ *
+ * @param {Object} state The module state object
+ */
+const onDayBoundsChange = (state) => {
+    const automaticCheckbox = state.root.querySelector('.mod_confscheduler-daybounds-automatic');
+    const startInput = state.root.querySelector('.mod_confscheduler-daystart');
+    const endInput = state.root.querySelector('.mod_confscheduler-dayend');
+
+    // Always reflect the checkbox's own state into the two inputs' enabled/disabled
+    // state immediately -- a pure UI toggle, independent of whether there's yet a valid
+    // pair to submit below. Without this, unchecking "Automatic" while both fields are
+    // still empty would leave them stuck disabled forever, since the early return below
+    // would otherwise skip re-enabling them entirely.
+    startInput.disabled = automaticCheckbox.checked;
+    endInput.disabled = automaticCheckbox.checked;
+
+    const previousStart = state.daystart;
+    const previousEnd = state.dayend;
+
+    let newStart = null;
+    let newEnd = null;
+    if (!automaticCheckbox.checked) {
+        newStart = timeValueToMinutes(startInput.value);
+        newEnd = timeValueToMinutes(endInput.value);
+        if (newStart === null || newEnd === null || newEnd <= newStart) {
+            // Incomplete or invalid pair (e.g. only one field filled in so far, or end
+            // not after start) -- wait for a valid pair rather than submitting a value
+            // the server would reject anyway. The inputs stay enabled (set above), so
+            // the organiser can keep typing.
+            return;
+        }
+    }
+
+    state.daystart = newStart;
+    state.dayend = newEnd;
+    startInput.disabled = true;
+    endInput.disabled = true;
+    renderGridBody(state);
+    Promise.resolve(Repository.setDayBounds(state.cmid, newStart, newEnd)).catch((error) => {
+        state.daystart = previousStart;
+        state.dayend = previousEnd;
+        renderGridBody(state);
+        Notification.exception(error);
+    }).finally(() => {
+        syncDayBoundsInputs(state);
+    });
 };
 
 /**
@@ -629,7 +714,9 @@ const renderOutOfHoursBands = (state, columnsWrap, dayKey) => {
         state.timelineStart,
         state.timelineEnd,
         state.conferencestart,
-        state.conferenceend
+        state.conferenceend,
+        state.daystart,
+        state.dayend
     );
     bands.forEach((band) => {
         const bandEl = document.createElement('div');
@@ -792,7 +879,7 @@ const renderAllDaysBody = (state) => {
         wrapper.appendChild(headerRow);
 
         const daySlots = state.slotsByDay[dayKey] || [];
-        const bounds = computeTimelineBounds(daySlots, dayKey);
+        const bounds = DayUtils.computeDayTimelineBounds(daySlots, dayKey, state.daystart, state.dayend);
         state.timelineStart = bounds.start;
         state.timelineEnd = bounds.end;
 
@@ -1871,6 +1958,14 @@ const bindEvents = (state) => {
         const pxPerHourInput = event.target.closest('.mod_confscheduler-pxperhour');
         if (pxPerHourInput) {
             onPxPerHourChange(state, pxPerHourInput);
+            return;
+        }
+
+        const daybounds = event.target.closest(
+            '.mod_confscheduler-daybounds-automatic, .mod_confscheduler-daystart, .mod_confscheduler-dayend'
+        );
+        if (daybounds) {
+            onDayBoundsChange(state);
         }
     });
 
@@ -1944,6 +2039,8 @@ export const init = async(cmid, confschedulerid, programurl = null) => {
         pxperhour: DEFAULT_PX_PER_HOUR,
         conferencestart: null,
         conferenceend: null,
+        daystart: null,
+        dayend: null,
         pendingnotifications: 0,
         timelineStart: 0,
         timelineEnd: 0,

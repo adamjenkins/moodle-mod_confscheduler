@@ -138,6 +138,11 @@ export const dayBounds = (dayKey) => {
  * @return {{start: Number, end: Number}}
  */
 export const computeDayTimelineBounds = (slots, fallbackDayKey, daystartminutes, dayendminutes) => {
+    // No valid day key to anchor an empty day's axis to (e.g. a fresh instance with
+    // nothing scheduled yet and no day currently selected): fall back to today, matching
+    // both this function's former call sites' own pre-existing behaviour.
+    const anchorKey = fallbackDayKey || dayKeyForTimestamp(Math.floor(Date.now() / 1000));
+
     const times = [];
     slots.forEach((slot) => {
         times.push(slot.starttime);
@@ -148,7 +153,7 @@ export const computeDayTimelineBounds = (slots, fallbackDayKey, daystartminutes,
         && dayendminutes !== null && dayendminutes !== undefined;
 
     if (bothConfigured) {
-        const dayStartOfDay = dayBounds(fallbackDayKey).start;
+        const dayStartOfDay = dayBounds(anchorKey).start;
         const configuredStart = dayStartOfDay + (daystartminutes * 60);
         const configuredEnd = dayStartOfDay + (dayendminutes * 60);
 
@@ -164,7 +169,7 @@ export const computeDayTimelineBounds = (slots, fallbackDayKey, daystartminutes,
         start = Math.min(...times);
         end = Math.max(...times);
     } else {
-        start = dayBounds(fallbackDayKey).start + (8 * 3600);
+        start = dayBounds(anchorKey).start + (8 * 3600);
         end = start + (10 * 3600);
     }
 

@@ -227,6 +227,21 @@ export const setPxPerHour = (cmid, pxperhour) => Ajax.call([{
 }])[0];
 
 /**
+ * Sets a confscheduler instance's daily display-window bounds, in minutes since
+ * midnight. Backs the quick control at the top of the schedule grid in edit mode
+ * (user feedback, 2026-07-06). Pass null for both to clear back to "automatic".
+ *
+ * @param {Number} cmid
+ * @param {Number|null} daystart
+ * @param {Number|null} dayend
+ * @return {Promise}
+ */
+export const setDayBounds = (cmid, daystart, dayend) => Ajax.call([{
+    methodname: 'mod_confscheduler_set_day_bounds',
+    args: {cmid, daystart, dayend},
+}])[0];
+
+/**
  * Sends the schedule-change notification for every presentation slot with a
  * scheduling change pending since it was last notified (user request,
  * 2026-07-05). Backs the edit-mode "Send notifications" button.

@@ -102,49 +102,6 @@ const formatTime = (timestamp) => new Date(timestamp * 1000).toLocaleTimeString(
 const timeToY = (state, daystart, timestamp) => Math.max(0, (timestamp - daystart) / 60 * (state.pxperhour / 60));
 
 /**
- * Computes the visible vertical time range for one day's slots: the earliest/latest
- * of that day's slot start/end times, padded by 30 minutes at each end and rounded to
- * whole hours, with an 8-hour minimum span. Mirrors scheduler_grid.js's
- * computeTimelineBounds(), scoped to one day's slots instead of the whole instance's.
- *
- * @param {Object[]} dayslots Slots belonging to the day being rendered
- * @param {String} fallbackDayKey The day (YYYY-MM-DD) to default to (08:00-18:00
- *     local) when `dayslots` is empty -- the day being rendered, so an empty day's
- *     axis reflects ITS OWN date rather than always defaulting to "today" regardless
- *     of which day is shown.
- * @return {{start: Number, end: Number}}
- */
-const computeDayTimeRange = (dayslots, fallbackDayKey) => {
-    const times = [];
-    dayslots.forEach((slot) => {
-        times.push(slot.starttime);
-        times.push(slot.endtime);
-    });
-
-    let start;
-    let end;
-    if (times.length) {
-        start = Math.min(...times);
-        end = Math.max(...times);
-    } else {
-        // No slots and no valid day key to anchor an empty day's axis to (e.g. a
-        // fresh instance with no conference dates and nothing scheduled yet, or
-        // "All days" itself briefly having no selectable days): fall back to today.
-        const anchorKey = fallbackDayKey || DayUtils.dayKeyForTimestamp(Math.floor(Date.now() / 1000));
-        start = DayUtils.dayBounds(anchorKey).start + (8 * 3600);
-        end = start + (10 * 3600);
-    }
-
-    start = (Math.floor(start / 3600) * 3600) - 1800;
-    end = (Math.ceil(end / 3600) * 3600) + 1800;
-    if (end - start < 8 * 3600) {
-        end = start + (8 * 3600);
-    }
-
-    return {start, end};
-};
-
-/**
  * Reads the persisted "my timetable" toggle state for a confscheduler instance.
  *
  * @param {Number} cmid The confscheduler course-module id
@@ -446,7 +403,7 @@ const renderHeaders = (state) => {
  * @param {String} dayKey The day being rendered (YYYY-MM-DD)
  */
 const buildDayGridInto = (state, gridEl, slots, dayKey) => {
-    const range = computeDayTimeRange(slots, dayKey);
+    const range = DayUtils.computeDayTimelineBounds(slots, dayKey, state.daystart, state.dayend);
     state.dayStart = range.start;
 
     gridEl.innerHTML = '';
@@ -486,7 +443,15 @@ const buildDayGridInto = (state, gridEl, slots, dayKey) => {
 
     gridEl.appendChild(columnsWrap);
 
-    const bands = DayUtils.outOfHoursBands(dayKey, range.start, range.end, state.conferencestart, state.conferenceend);
+    const bands = DayUtils.outOfHoursBands(
+        dayKey,
+        range.start,
+        range.end,
+        state.conferencestart,
+        state.conferenceend,
+        state.daystart,
+        state.dayend
+    );
     bands.forEach((band) => {
         const bandEl = document.createElement('div');
         bandEl.className = 'mod_confscheduler-outofhours-band';
@@ -627,6 +592,8 @@ const fetchAndRenderAll = (state) => Repository.getGridData(state.cmid).then((da
     state.pxperhour = data.pxperhour;
     state.conferencestart = data.conferencestart;
     state.conferenceend = data.conferenceend;
+    state.daystart = data.daystart;
+    state.dayend = data.dayend;
     state.slotsByDay = DayUtils.groupSlotsByDay(data.slots);
     state.dayKeys = DayUtils.selectableDayKeys(state.conferencestart, state.conferenceend, data.slots);
     if (!state.selectedDay || (state.selectedDay !== DayUtils.ALL_DAYS && !state.dayKeys.includes(state.selectedDay))) {
@@ -781,6 +748,8 @@ export const init = async(cmid, confschedulerid, confprogramcmid, programurl, ca
         pxperhour: DEFAULT_PX_PER_HOUR,
         conferencestart: null,
         conferenceend: null,
+        daystart: null,
+        dayend: null,
         slotsByDay: {},
         dayKeys: [],
         selectedDay: null,

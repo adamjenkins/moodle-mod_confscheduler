@@ -76,6 +76,33 @@
                 step="1"
                 title="{{#str}} pxperhour_help, mod_confscheduler {{/str}}"
             >
+            <label class="mx-2 mb-0" for="mod_confscheduler-daybounds-automatic">
+                <input
+                    type="checkbox"
+                    id="mod_confscheduler-daybounds-automatic"
+                    class="mod_confscheduler-daybounds-automatic"
+                    checked
+                >
+                {{#str}} daybounds_automatic, mod_confscheduler {{/str}}
+            </label>
+            <label class="mx-2 mb-0" for="mod_confscheduler-daystart">{{#str}} daystart, mod_confscheduler {{/str}}</label>
+            <input
+                type="time"
+                id="mod_confscheduler-daystart"
+                class="mod_confscheduler-daystart form-control form-control-sm"
+                style="width: 6em;"
+                disabled
+                title="{{#str}} daystart_help, mod_confscheduler {{/str}}"
+            >
+            <label class="mx-2 mb-0" for="mod_confscheduler-dayend">{{#str}} dayend, mod_confscheduler {{/str}}</label>
+            <input
+                type="time"
+                id="mod_confscheduler-dayend"
+                class="mod_confscheduler-dayend form-control form-control-sm"
+                style="width: 6em;"
+                disabled
+                title="{{#str}} dayend_help, mod_confscheduler {{/str}}"
+            >
             {{/canmanage}}
             <label class="mx-2 mb-0" for="mod_confscheduler-day-select">{{#str}} day, mod_confscheduler {{/str}}</label>
             <select id="mod_confscheduler-day-select" class="mod_confscheduler-day-select form-control form-control-sm" hidden></select>
