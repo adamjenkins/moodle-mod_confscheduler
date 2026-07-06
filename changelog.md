@@ -2,6 +2,29 @@
 
 ## Unreleased
 
+- Track pill colour fix (2026-07-06): a track's configured colour
+  (`confsubmissions_track.colour`) never reached the schedule grid's track
+  pills, which always rendered in the fixed default blue.
+  `classes/local/grid_data.php`'s `$tracksbyid` previously kept only the
+  track's name, discarding colour; it now keeps the full track record, and
+  both the `slots` and `unscheduled` payload entries gain a `trackcolour`
+  field. `buildTrackPill()` (duplicated in `amd/src/scheduler_grid.js` and
+  `amd/src/scheduler_display.js` per this plugin's existing convention) now
+  applies that colour via an inline `background-color` plus
+  `ColourUtils.contrastTextColour()` for automatic black/white text contrast --
+  the same treatment already used for room headers and span blocks -- falling
+  back to the existing default when a track has no colour configured. A
+  second, real bug was caught only by live browser verification, not by the
+  new PHPUnit tests (which call `execute()` directly and never exercise
+  Moodle's return-value schema validation):
+  `classes/external/get_grid_data.php`'s `execute_returns()` never declared
+  the new `trackcolour` field, so the external API layer was silently
+  stripping it before it ever reached the browser; fixed by declaring it for
+  both structures. 121/121 PHPUnit passing (was 119, +2 new), phpcs clean, AMD
+  rebuilt via `grunt amd --force` and confirmed stable across two rebuilds,
+  independently re-verified live (both the coloured and uncoloured-track
+  cases, in both edit mode and read-only Display mode).
+
 - User request (2026-07-06): "Also make sure backup/restore/reset all works fine
   with all plugins." `FEATURE_BACKUP_MOODLE2` flipped to true; new
   `backup/moodle2/*.php` step classes cover every table, all unconditional
