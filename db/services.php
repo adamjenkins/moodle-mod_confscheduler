@@ -125,6 +125,13 @@ $functions = [
         'ajax'         => true,
         'capabilities' => 'mod/confscheduler:manageschedule',
     ],
+    'mod_confscheduler_set_day_bounds' => [
+        'classname'    => 'mod_confscheduler\external\set_day_bounds',
+        'description'  => 'Sets a confscheduler instance\'s daily display-window bounds, in minutes since midnight.',
+        'type'         => 'write',
+        'ajax'         => true,
+        'capabilities' => 'mod/confscheduler:manageschedule',
+    ],
     'mod_confscheduler_send_pending_notifications' => [
         'classname'    => 'mod_confscheduler\external\send_pending_notifications',
         'description'  => 'Sends the schedule-change notification for every presentation slot with a '

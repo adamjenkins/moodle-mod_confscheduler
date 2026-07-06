@@ -373,6 +373,41 @@ class api {
     }
 
     /**
+     * Sets a confscheduler instance's daily display-window bounds (minutes since
+     * midnight, e.g. 480 = 08:00), organiser-adjustable via a quick control at the top
+     * of the schedule grid in edit mode -- same pattern as set_gap_minutes()/
+     * set_pxperhour() above. Both null clears back to "automatic" (the previous,
+     * slot-derived axis computation) -- see grid_data::build()'s docblock and
+     * amd/src/day_utils.js's computeDayTimelineBounds() for how this is consumed.
+     *
+     * @param int $confschedulerid The confscheduler instance id
+     * @param int|null $daystart The new display-window start, minutes since midnight, or null for "automatic"
+     * @param int|null $dayend The new display-window end, minutes since midnight, or null for "automatic"
+     * @return void
+     * @throws \invalid_parameter_exception if exactly one of the two is null, either is
+     *     outside [0, 1439], or dayend is not strictly after daystart
+     */
+    public static function set_day_bounds(int $confschedulerid, ?int $daystart, ?int $dayend): void {
+        global $DB;
+
+        if (($daystart === null) !== ($dayend === null)) {
+            throw new \invalid_parameter_exception(get_string('error:invaliddaybounds', 'mod_confscheduler'));
+        }
+
+        if ($daystart !== null && $dayend !== null) {
+            if ($daystart < 0 || $daystart > 1439 || $dayend < 0 || $dayend > 1439) {
+                throw new \invalid_parameter_exception(get_string('error:invaliddaybounds', 'mod_confscheduler'));
+            }
+            if ($dayend <= $daystart) {
+                throw new \invalid_parameter_exception(get_string('error:invaliddaybounds', 'mod_confscheduler'));
+            }
+        }
+
+        $DB->set_field('confscheduler', 'daystart', $daystart, ['id' => $confschedulerid]);
+        $DB->set_field('confscheduler', 'dayend', $dayend, ['id' => $confschedulerid]);
+    }
+
+    /**
      * Validates that a submissionid may legitimately be scheduled by a given
      * confscheduler instance: it must (a) exist, (b) belong to the
      * mod_confsubmissions instance that the confprogram instance linked via
