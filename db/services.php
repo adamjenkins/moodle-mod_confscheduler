@@ -125,4 +125,12 @@ $functions = [
         'ajax'         => true,
         'capabilities' => 'mod/confscheduler:manageschedule',
     ],
+    'mod_confscheduler_send_pending_notifications' => [
+        'classname'    => 'mod_confscheduler\external\send_pending_notifications',
+        'description'  => 'Sends the schedule-change notification for every presentation slot with a '
+            . 'scheduling change pending since it was last notified.',
+        'type'         => 'write',
+        'ajax'         => true,
+        'capabilities' => 'mod/confscheduler:manageschedule',
+    ],
 ];

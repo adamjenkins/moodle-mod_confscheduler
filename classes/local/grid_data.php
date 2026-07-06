@@ -45,7 +45,7 @@ class grid_data {
      * @param \stdClass $confscheduler The confscheduler record
      * @param int $userid The current user id, used to resolve per-user favourited state
      * @return array{rooms: array, slots: array, unscheduled: array, gapminutes: int, pxperhour: int,
-     *     conferencestart: ?int, conferenceend: ?int}
+     *     conferencestart: ?int, conferenceend: ?int, pendingnotifications: int}
      *
      * Each 'unscheduled' entry also includes 'preferreddates' (int[], midnight
      * timestamps; empty means no preference recorded). Each 'slots' entry with a
@@ -59,7 +59,10 @@ class grid_data {
      * even when 0 or the room has no capacity set) and 'overbooked' (bool; true
      * only when the presentation's room has a capacity configured AND
      * favouritecount exceeds it -- same edit-mode-only highlighting convention as
-     * nonpreferredday, user request 2026-07-05).
+     * nonpreferredday, user request 2026-07-05). The top-level
+     * 'pendingnotifications' is the count of presentation slots with a scheduling
+     * change not yet notified (see \mod_confscheduler\api::count_pending_notifications()),
+     * driving the edit-mode "Send notifications" button (user request, 2026-07-05).
      */
     public static function build(\stdClass $confscheduler, int $userid): array {
         global $DB;
@@ -217,6 +220,10 @@ class grid_data {
             'pxperhour'       => (int) $confscheduler->pxperhour,
             'conferencestart' => $confscheduler->conferencestart !== null ? (int) $confscheduler->conferencestart : null,
             'conferenceend'   => $confscheduler->conferenceend !== null ? (int) $confscheduler->conferenceend : null,
+            // How many presentation slots have a scheduling change pending a
+            // notification (user request, 2026-07-05) -- drives the edit-mode "Send
+            // notifications" button's count, without itself sending anything.
+            'pendingnotifications' => \mod_confscheduler\api::count_pending_notifications($confschedulerid),
         ];
     }
 

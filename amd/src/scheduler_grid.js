@@ -333,8 +333,10 @@ const fetchAndRenderAll = (state) => Repository.getGridData(state.cmid).then((da
     state.pxperhour = data.pxperhour;
     state.conferencestart = data.conferencestart;
     state.conferenceend = data.conferenceend;
+    state.pendingnotifications = data.pendingnotifications;
     syncGapMinutesInput(state);
     syncPxPerHourInput(state);
+    syncSendNotificationsButton(state);
     applyDayFilter(state);
     // Skip in "All days" mode: renderAllDaysBody() (via renderGridBody() below) hides
     // the single-day header/grid entirely and builds its own per-day headers, so
@@ -365,8 +367,10 @@ const fetchAndRenderBody = (state) => Repository.getGridData(state.cmid).then((d
     state.pxperhour = data.pxperhour;
     state.conferencestart = data.conferencestart;
     state.conferenceend = data.conferenceend;
+    state.pendingnotifications = data.pendingnotifications;
     syncGapMinutesInput(state);
     syncPxPerHourInput(state);
+    syncSendNotificationsButton(state);
     applyDayFilter(state);
     renderDaySelector(state);
     renderGridBody(state);
@@ -400,6 +404,24 @@ const syncPxPerHourInput = (state) => {
     if (input && document.activeElement !== input) {
         input.value = state.pxperhour;
     }
+};
+
+/**
+ * Reflects state.pendingnotifications onto the "Send notifications" button: appends
+ * the pending count to its label and disables it when nothing is pending, so an
+ * organiser never sends a notification to a presentation with no scheduling change
+ * (user request, 2026-07-05 -- "Do not send notifications to presentations if the
+ * scheduling information has not changed"). Called after every grid data refetch.
+ *
+ * @param {Object} state The module state object
+ */
+const syncSendNotificationsButton = (state) => {
+    const button = state.root.querySelector('.mod_confscheduler-send-notifications');
+    if (!button) {
+        return;
+    }
+    button.textContent = `${state.strings.sendnotifications} (${state.pendingnotifications})`;
+    button.disabled = state.pendingnotifications === 0;
 };
 
 /**
@@ -1549,6 +1571,40 @@ const onDeleteRoomClick = (state, roomid) => {
 };
 
 /**
+ * Confirms (showing the current pending count) and sends the schedule-change
+ * notification for every presentation slot with a pending scheduling change,
+ * then shows a summary of how many were notified. A slot with nothing pending
+ * is never touched -- see \mod_confscheduler\api::send_pending_notifications().
+ *
+ * @param {Object} state The module state object
+ * @return {Promise}
+ */
+const onSendNotificationsClick = async(state) => {
+    if (state.pendingnotifications === 0) {
+        Notification.alert(state.strings.sendnotifications, state.strings.sendnotificationsnonepending);
+        return null;
+    }
+
+    const confirmmessage = await getString('confirmsendnotifications', 'mod_confscheduler', state.pendingnotifications);
+
+    Notification.confirm(
+        state.strings.sendnotifications,
+        confirmmessage,
+        state.strings.sendnotifications,
+        state.strings.cancel,
+        () => {
+            Repository.sendPendingNotifications(state.cmid).then(async(result) => {
+                const summary = await getString('sendnotificationssummary', 'mod_confscheduler', result.sent);
+                Notification.alert(state.strings.sendnotifications, summary);
+                return fetchAndRenderBody(state);
+            }).catch(Notification.exception);
+        }
+    );
+
+    return null;
+};
+
+/**
  * Toggles the favourite star on a scheduled presentation block, updating the star instantly
  * once the server confirms the new state (no page reload, no full grid re-render).
  *
@@ -1712,6 +1768,12 @@ const bindEvents = (state) => {
             return;
         }
 
+        const sendNotificationsBtn = event.target.closest('.mod_confscheduler-send-notifications');
+        if (sendNotificationsBtn) {
+            onSendNotificationsClick(state);
+            return;
+        }
+
         const fsBtn = event.target.closest('.mod_confscheduler-fullscreen-toggle');
         if (fsBtn) {
             toggleFullscreen(state);
@@ -1823,6 +1885,7 @@ export const init = async(cmid, confschedulerid, programurl = null) => {
         unschedule, favourite, editroom, deleteroom, confirmdeleteroom,
         cancel, movecolumn, addroom, addspanblock, editspanblock, autoschedulerrun,
         filterbytrack, alldays, blocknonpreferredday, blockoverbooked, roomcapacity,
+        sendnotifications, confirmsendnotifications, sendnotificationssummary, sendnotificationsnonepending,
     ] = await getStrings([
         {key: 'unschedule', component: 'mod_confscheduler'},
         {key: 'favourite', component: 'mod_confscheduler'},
@@ -1840,6 +1903,10 @@ export const init = async(cmid, confschedulerid, programurl = null) => {
         {key: 'blocknonpreferredday', component: 'mod_confscheduler'},
         {key: 'blockoverbooked', component: 'mod_confscheduler'},
         {key: 'roomcapacity', component: 'mod_confscheduler'},
+        {key: 'sendnotifications', component: 'mod_confscheduler'},
+        {key: 'confirmsendnotifications', component: 'mod_confscheduler'},
+        {key: 'sendnotificationssummary', component: 'mod_confscheduler'},
+        {key: 'sendnotificationsnonepending', component: 'mod_confscheduler'},
     ]);
 
     const state = {
@@ -1859,6 +1926,7 @@ export const init = async(cmid, confschedulerid, programurl = null) => {
         pxperhour: DEFAULT_PX_PER_HOUR,
         conferencestart: null,
         conferenceend: null,
+        pendingnotifications: 0,
         timelineStart: 0,
         timelineEnd: 0,
         columnsWrap: null,
@@ -1868,6 +1936,7 @@ export const init = async(cmid, confschedulerid, programurl = null) => {
             unschedule, favourite, editroom, deleteroom, confirmdeleteroom,
             cancel, movecolumn, addroom, addspanblock, editspanblock, autoschedulerrun,
             filterbytrack, alldays, blocknonpreferredday, blockoverbooked, roomcapacity,
+            sendnotifications, confirmsendnotifications, sendnotificationssummary, sendnotificationsnonepending,
         },
     };
 

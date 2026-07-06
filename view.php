@@ -109,6 +109,14 @@ if ($confscheduler->intro) {
     );
 }
 
+if (has_capability('mod/confscheduler:managenotifications', $context)) {
+    echo html_writer::link(
+        new moodle_url('/mod/confscheduler/notifications.php', ['id' => $cm->id]),
+        get_string('managenotifications', 'mod_confscheduler'),
+        ['class' => 'btn btn-outline-secondary btn-sm mb-2']
+    );
+}
+
 if ($editmode) {
     echo $OUTPUT->render_from_template('mod_confscheduler/grid', [
         'cmid'            => $cm->id,

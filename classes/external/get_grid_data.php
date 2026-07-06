@@ -155,6 +155,10 @@ class get_grid_data extends external_api {
                 VALUE_DEFAULT,
                 null
             ),
+            'pendingnotifications' => new external_value(
+                PARAM_INT,
+                'How many presentation slots have a scheduling change not yet notified'
+            ),
         ]);
     }
 }

@@ -151,5 +151,40 @@ function xmldb_confscheduler_upgrade($oldversion) {
         upgrade_mod_savepoint(true, 2026070508, 'confscheduler');
     }
 
+    if ($oldversion < 2026070608) {
+        // Manual "send notifications" button for schedule changes (user request,
+        // 2026-07-05): notifiedtime tracks, per presentation slot, when a
+        // schedule-change notification was last sent, compared against the
+        // existing timemodified to decide whether a slot has an un-notified change
+        // pending. confscheduler_notiftemplate is the organiser-editable template,
+        // same shape/conventions as mod_confprogram_notiftemplate.
+        $table = new xmldb_table('confscheduler_slot');
+        $field = new xmldb_field('notifiedtime', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0', 'timemodified');
+        if (!$dbman->field_exists($table, $field)) {
+            $dbman->add_field($table, $field);
+        }
+
+        $table = new xmldb_table('confscheduler_notiftemplate');
+        if (!$dbman->table_exists($table)) {
+            $table->add_field('id', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, XMLDB_SEQUENCE, null);
+            $table->add_field('confscheduler', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+            $table->add_field('notiftype', XMLDB_TYPE_CHAR, '20', null, XMLDB_NOTNULL, null, null);
+            $table->add_field('subject', XMLDB_TYPE_CHAR, '255', null, null, null, null);
+            $table->add_field('body', XMLDB_TYPE_TEXT, null, null, null, null, null);
+            $table->add_field('bodyformat', XMLDB_TYPE_INTEGER, '4', null, XMLDB_NOTNULL, null, '0');
+            $table->add_field('timecreated', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+            $table->add_field('timemodified', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+
+            $table->add_key('primary', XMLDB_KEY_PRIMARY, ['id']);
+            $table->add_key('confscheduler', XMLDB_KEY_FOREIGN, ['confscheduler'], 'confscheduler', ['id']);
+
+            $table->add_index('confschedulertype', XMLDB_INDEX_UNIQUE, ['confscheduler', 'notiftype']);
+
+            $dbman->create_table($table);
+        }
+
+        upgrade_mod_savepoint(true, 2026070608, 'confscheduler');
+    }
+
     return true;
 }

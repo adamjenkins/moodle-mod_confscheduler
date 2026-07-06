@@ -15,7 +15,11 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
- * Plugin version metadata for mod_confscheduler.
+ * Defines message providers (types of messages being sent) for mod_confscheduler.
+ *
+ * A single provider covers the manually-triggered schedule-change notification --
+ * see classes/local/notifier.php. Defaults the email output ON alongside the
+ * popup output, same as the sibling plugins' own providers.
  *
  * @package    mod_confscheduler
  * @copyright  2026 Adam Jenkins <adam@wisecat.net>
@@ -24,11 +28,11 @@
 
 defined('MOODLE_INTERNAL') || die();
 
-$plugin->component = 'mod_confscheduler';
-$plugin->version   = 2026070608; // The current module version (Date: YYYYMMDDXX).
-$plugin->requires  = 2026042000; // Moodle 5.2.
-$plugin->maturity  = MATURITY_ALPHA;
-$plugin->release   = '0.4.0';
-$plugin->dependencies = [
-    'mod_confprogram' => ANY_VERSION,
+$messageproviders = [
+    'scheduleupdated' => [
+        'defaults' => [
+            'popup' => MESSAGE_PERMITTED + MESSAGE_DEFAULT_ENABLED,
+            'email' => MESSAGE_PERMITTED + MESSAGE_DEFAULT_ENABLED,
+        ],
+    ],
 ];

@@ -225,3 +225,16 @@ export const setPxPerHour = (cmid, pxperhour) => Ajax.call([{
     methodname: 'mod_confscheduler_set_pxperhour',
     args: {cmid, pxperhour},
 }])[0];
+
+/**
+ * Sends the schedule-change notification for every presentation slot with a
+ * scheduling change pending since it was last notified (user request,
+ * 2026-07-05). Backs the edit-mode "Send notifications" button.
+ *
+ * @param {Number} cmid The confscheduler course-module id
+ * @return {Promise} Resolves to {sent: Number}
+ */
+export const sendPendingNotifications = (cmid) => Ajax.call([{
+    methodname: 'mod_confscheduler_send_pending_notifications',
+    args: {cmid},
+}])[0];

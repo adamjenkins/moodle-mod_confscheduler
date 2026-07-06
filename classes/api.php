@@ -808,6 +808,79 @@ class api {
     }
 
     /**
+     * The presentation slots (submissionid non-null) in a confscheduler instance
+     * whose scheduling information has changed since the last time a
+     * notification was sent for them -- i.e. notifiedtime is 0 (never sent) or
+     * older than timemodified. A span block (submissionid null) is never
+     * notifiable and so is never returned here.
+     *
+     * @param int $confschedulerid The confscheduler instance id
+     * @return \stdClass[] confscheduler_slot records, keyed by id
+     */
+    public static function get_pending_notification_slots(int $confschedulerid): array {
+        global $DB;
+
+        return $DB->get_records_select(
+            'confscheduler_slot',
+            'confscheduler = :confscheduler AND submissionid IS NOT NULL AND notifiedtime < timemodified',
+            ['confscheduler' => $confschedulerid]
+        );
+    }
+
+    /**
+     * How many presentation slots in a confscheduler instance currently have a
+     * pending (not-yet-notified) scheduling change -- used by the edit-mode
+     * grid to show a count on the "Send notifications" button without sending
+     * anything.
+     *
+     * @param int $confschedulerid The confscheduler instance id
+     * @return int
+     */
+    public static function count_pending_notifications(int $confschedulerid): int {
+        return count(self::get_pending_notification_slots($confschedulerid));
+    }
+
+    /**
+     * Sends (or re-sends) the schedule-change notification for every
+     * presentation slot in a confscheduler instance with a pending scheduling
+     * change (see get_pending_notification_slots()), and marks each as
+     * notified. A slot whose scheduling information has not changed since it
+     * was last notified is left untouched, per the explicit user request ("Do
+     * not send notifications to presentations if the scheduling information
+     * has not changed").
+     *
+     * @param int $confschedulerid The confscheduler instance id
+     * @return int How many slots were notified
+     */
+    public static function send_pending_notifications(int $confschedulerid): int {
+        global $DB;
+
+        $slots = self::get_pending_notification_slots($confschedulerid);
+        $now = time();
+
+        foreach ($slots as $slot) {
+            $roomnames = array_values($DB->get_records_sql(
+                "SELECT r.id, r.name
+                   FROM {confscheduler_room} r
+                   JOIN {confscheduler_slotroom} sr ON sr.roomid = r.id
+                  WHERE sr.slotid = :slotid
+               ORDER BY r.sortorder ASC",
+                ['slotid' => $slot->id]
+            ));
+            $roomnames = array_map(static fn (\stdClass $room): string => format_string($room->name), $roomnames);
+
+            \mod_confscheduler\local\notifier::notify_slot($confschedulerid, $slot, $roomnames);
+
+            $DB->update_record('confscheduler_slot', (object) [
+                'id'           => $slot->id,
+                'notifiedtime' => $now,
+            ]);
+        }
+
+        return count($slots);
+    }
+
+    /**
      * Runs the autoscheduler: places as many accepted-but-unscheduled
      * submissions as it can into the given time window, honouring SnapGap and
      * overlap via add_slot() for every placement it makes.

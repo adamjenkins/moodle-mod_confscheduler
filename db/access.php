@@ -80,4 +80,15 @@ $capabilities = [
             'manager'        => CAP_ALLOW,
         ],
     ],
+
+    // Edit the schedule-change notification email template.
+    'mod/confscheduler:managenotifications' => [
+        'riskbitmask'  => RISK_XSS,
+        'captype'      => 'write',
+        'contextlevel' => CONTEXT_MODULE,
+        'archetypes'   => [
+            'editingteacher' => CAP_ALLOW,
+            'manager'        => CAP_ALLOW,
+        ],
+    ],
 ];

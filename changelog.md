@@ -2,6 +2,27 @@
 
 ## Unreleased
 
+- User request (2026-07-05): "In confscheduler, also add a manually
+  triggered (with a button) way to send notifications when changes are made
+  to the scheduling information for a presentation. Do not send
+  notifications to presentations if the scheduling information has not
+  changed (need to track if a notification has been sent since last
+  scheduling change)." New "Send notifications" button in the edit-mode
+  toolbar, showing the live count of presentation slots with a pending
+  (not-yet-notified) scheduling change; disabled at zero. Sending is never
+  automatic: a slot is only notified once an organiser clicks the button,
+  and only if `confscheduler_slot.notifiedtime` is 0 or older than
+  `timemodified` -- an unchanged slot is silently skipped, matching the
+  explicit request. New `confscheduler_notiftemplate` table (organiser-
+  editable subject/body, same shape/conventions as `mod_confprogram`'s own
+  notification template: a built-in default until configured, plain
+  `[[name]]` placeholders, editable via a new notifications.php screen gated
+  by a new `mod/confscheduler:managenotifications` capability). New
+  `\mod_confscheduler\local\notifier`, `api::get_pending_notification_slots()`,
+  `api::count_pending_notifications()`, `api::send_pending_notifications()`,
+  and the `mod_confscheduler_send_pending_notifications` AJAX endpoint.
+  112/112 PHPUnit passing (was 106), phpcs/moodlecheck/eslint clean, EN/JA
+  lang parity verified (107/107 keys), AMD rebuilt and diff-verified stable.
 - User request (2026-07-05): "Room-capacity field on scheduler columns with
   overbooking warnings against favourite counts." Rooms now have an optional
   capacity (`confscheduler_room.capacity`, null means unlimited), editable in
