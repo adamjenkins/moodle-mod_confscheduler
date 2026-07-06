@@ -109,6 +109,75 @@ export const dayBounds = (dayKey) => {
 };
 
 /**
+ * Computes the vertical time range to render for one day, given the instance's
+ * configured daily display-window bounds (user feedback, 2026-07-06) and that day's
+ * own scheduled slots. This is the single shared implementation behind what were
+ * previously two near-identical copies: amd/src/scheduler_grid.js's
+ * computeTimelineBounds() and amd/src/scheduler_display.js's computeDayTimeRange().
+ *
+ * When daystartminutes/dayendminutes are BOTH set, the default axis for the day is
+ * exactly [daystart, dayend] -- no padding or hour-rounding, since an organiser's
+ * chosen times are already exact clock times. If a real scheduled slot falls outside
+ * that window, the axis quietly widens just enough to include it in full (never hides
+ * real data, matching this project's "never hide existing data" convention elsewhere,
+ * e.g. the day selector always including a day with an existing slot even outside the
+ * conference date range) -- see outOfHoursBands() below for how that widened sliver is
+ * visually greyed to show it's outside the normal window.
+ *
+ * When EITHER is null (the default before this feature is configured, or the
+ * "Automatic" checkbox), behaviour is completely unchanged from before this feature
+ * existed: the axis is derived purely from the day's own slots (padded 30 minutes,
+ * rounded to whole hours, 8-hour minimum), defaulting to 08:00-18:00 local when the day
+ * has no slots at all.
+ *
+ * @param {Object[]} slots Slots to derive the range from (each with starttime/endtime)
+ * @param {String} fallbackDayKey The day (YYYY-MM-DD) being rendered -- used both as the
+ *     "no slots" fallback anchor and as the day the daystart/dayend minutes are applied to
+ * @param {Number|null} daystartminutes Display-window start, minutes since midnight, or null/undefined for "automatic"
+ * @param {Number|null} dayendminutes Display-window end, minutes since midnight, or null/undefined for "automatic"
+ * @return {{start: Number, end: Number}}
+ */
+export const computeDayTimelineBounds = (slots, fallbackDayKey, daystartminutes, dayendminutes) => {
+    const times = [];
+    slots.forEach((slot) => {
+        times.push(slot.starttime);
+        times.push(slot.endtime);
+    });
+
+    const bothConfigured = daystartminutes !== null && daystartminutes !== undefined
+        && dayendminutes !== null && dayendminutes !== undefined;
+
+    if (bothConfigured) {
+        const dayStartOfDay = dayBounds(fallbackDayKey).start;
+        const configuredStart = dayStartOfDay + (daystartminutes * 60);
+        const configuredEnd = dayStartOfDay + (dayendminutes * 60);
+
+        return {
+            start: times.length ? Math.min(configuredStart, ...times) : configuredStart,
+            end: times.length ? Math.max(configuredEnd, ...times) : configuredEnd,
+        };
+    }
+
+    let start;
+    let end;
+    if (times.length) {
+        start = Math.min(...times);
+        end = Math.max(...times);
+    } else {
+        start = dayBounds(fallbackDayKey).start + (8 * 3600);
+        end = start + (10 * 3600);
+    }
+
+    start = (Math.floor(start / 3600) * 3600) - 1800;
+    end = (Math.ceil(end / 3600) * 3600) + 1800;
+    if (end - start < 8 * 3600) {
+        end = start + (8 * 3600);
+    }
+
+    return {start, end};
+};
+
+/**
  * Formats a day key as a short human-readable local date (e.g. "Mon, 1 Sep 2026")
  * for use as a day-selector option label.
  *
@@ -122,44 +191,82 @@ export const formatDayLabel = (dayKey) => {
 };
 
 /**
- * Returns the "greyed out" (out-of-conference-hours) vertical bands to render within a
- * single day-table's rendered timeline, given the instance's configured conference
- * start/end dates (user feedback, 2026-07-05) -- a top band (timelineStart -> where
- * the conference actually starts, only non-empty on the day conferencestart falls on)
- * and/or a bottom band (where the conference actually ends -> timelineEnd, only
- * non-empty on the day conferenceend falls on). A day entirely outside the conference
- * range (e.g. a legacy slot's day, before conference dates were set or after they were
- * narrowed) greys its ENTIRE rendered timeline. Returns [] (nothing greyed) when
- * either bound is unset, or the day is fully within the conference range.
+ * Returns the "greyed out" vertical bands to render within a single day-table's
+ * rendered timeline, combining two independent sources (user feedback, 2026-07-05 and
+ * 2026-07-06):
+ *
+ * 1. Out-of-conference-hours: given the instance's configured conference start/end
+ *    dates -- a top band (timelineStart -> where the conference actually starts, only
+ *    non-empty on the day conferencestart falls on) and/or a bottom band (where the
+ *    conference actually ends -> timelineEnd, only non-empty on the day conferenceend
+ *    falls on). A day entirely outside the conference range (e.g. a legacy slot's day,
+ *    before conference dates were set or after they were narrowed) greys its ENTIRE
+ *    rendered timeline, and skips source 2 below entirely -- there is nothing left to
+ *    usefully distinguish within an already-fully-greyed day.
+ * 2. Out-of-daystart/dayend-window: given the instance's configured daily display
+ *    window. Only produces a band when a real scheduled slot has pushed the rendered
+ *    timeline wider than the configured window itself (see computeDayTimelineBounds()) --
+ *    the common case (nothing outside the window) produces no band at all, since the
+ *    axis already IS the window in that case.
+ *
+ * These two sources are orthogonal (one is about which CALENDAR DAYS are valid, the
+ * other about TIME-OF-DAY within an already-valid day), so their bands are simply
+ * concatenated. Returns [] (nothing greyed) when all four bounds are unset, or the day
+ * is fully within both ranges.
  *
  * @param {String} dayKey The day this table is rendering (YYYY-MM-DD)
  * @param {Number} timelineStart This table's own rendered timeline start, unix timestamp
  * @param {Number} timelineEnd This table's own rendered timeline end, unix timestamp
  * @param {Number|null} conferencestart Unix timestamp, or null/0 if unset
  * @param {Number|null} conferenceend Unix timestamp, or null/0 if unset
- * @return {{start: Number, end: Number}[]} 0-2 bands, each within [timelineStart, timelineEnd]
+ * @param {Number|null} daystartminutes Display-window start, minutes since midnight, or null/undefined if unset
+ * @param {Number|null} dayendminutes Display-window end, minutes since midnight, or null/undefined if unset
+ * @return {{start: Number, end: Number}[]} 0 or more bands, each within [timelineStart, timelineEnd]
  */
-export const outOfHoursBands = (dayKey, timelineStart, timelineEnd, conferencestart, conferenceend) => {
-    if (!conferencestart || !conferenceend) {
-        return [];
-    }
-
-    const {start: dayStart, end: dayEnd} = dayBounds(dayKey);
-    const validStart = Math.max(dayStart, conferencestart);
-    const validEnd = Math.min(dayEnd, conferenceend);
-
-    if (validStart >= validEnd) {
-        // This day is entirely outside the conference range: grey the whole table.
-        return [{start: timelineStart, end: timelineEnd}];
-    }
-
+export const outOfHoursBands = (
+    dayKey,
+    timelineStart,
+    timelineEnd,
+    conferencestart,
+    conferenceend,
+    daystartminutes,
+    dayendminutes
+) => {
     const bands = [];
-    if (timelineStart < validStart) {
-        bands.push({start: timelineStart, end: Math.min(validStart, timelineEnd)});
+
+    if (conferencestart && conferenceend) {
+        const {start: dayStart, end: dayEnd} = dayBounds(dayKey);
+        const validStart = Math.max(dayStart, conferencestart);
+        const validEnd = Math.min(dayEnd, conferenceend);
+
+        if (validStart >= validEnd) {
+            // This day is entirely outside the conference range: grey the whole table.
+            return [{start: timelineStart, end: timelineEnd}];
+        }
+
+        if (timelineStart < validStart) {
+            bands.push({start: timelineStart, end: Math.min(validStart, timelineEnd)});
+        }
+        if (timelineEnd > validEnd) {
+            bands.push({start: Math.max(validEnd, timelineStart), end: timelineEnd});
+        }
     }
-    if (timelineEnd > validEnd) {
-        bands.push({start: Math.max(validEnd, timelineStart), end: timelineEnd});
+
+    const bothConfigured = daystartminutes !== null && daystartminutes !== undefined
+        && dayendminutes !== null && dayendminutes !== undefined;
+    if (bothConfigured) {
+        const dayStartOfDay = dayBounds(dayKey).start;
+        const configuredStart = dayStartOfDay + (daystartminutes * 60);
+        const configuredEnd = dayStartOfDay + (dayendminutes * 60);
+
+        if (timelineStart < configuredStart) {
+            bands.push({start: timelineStart, end: Math.min(configuredStart, timelineEnd)});
+        }
+        if (timelineEnd > configuredEnd) {
+            bands.push({start: Math.max(configuredEnd, timelineStart), end: timelineEnd});
+        }
     }
+
     return bands;
 };
 
