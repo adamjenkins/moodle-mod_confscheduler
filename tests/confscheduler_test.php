@@ -103,7 +103,7 @@ final class confscheduler_test extends advanced_testcase {
         require_once($CFG->dirroot . '/mod/confscheduler/lib.php');
 
         $this->assertTrue(confscheduler_supports(FEATURE_MOD_INTRO));
-        $this->assertFalse(confscheduler_supports(FEATURE_BACKUP_MOODLE2));
+        $this->assertTrue(confscheduler_supports(FEATURE_BACKUP_MOODLE2));
         $this->assertSame(MOD_PURPOSE_OTHER, confscheduler_supports(FEATURE_MOD_PURPOSE));
         $this->assertNull(confscheduler_supports('some_unknown_feature'));
     }
@@ -166,5 +166,43 @@ final class confscheduler_test extends advanced_testcase {
         $this->assertFalse($DB->record_exists('confscheduler_slot', ['confscheduler' => $confscheduler->id]));
         $this->assertFalse($DB->record_exists('confscheduler_slotroom', ['slotid' => $slotid]));
         $this->assertFalse($DB->record_exists('confscheduler_notiftemplate', ['confscheduler' => $confscheduler->id]));
+    }
+
+    /**
+     * confscheduler_reset_userdata() deletes every slot (and its room assignments) for
+     * instances in the given course, when reset_confscheduler_schedule is set, but
+     * leaves rooms untouched.
+     */
+    public function test_reset_userdata_removes_schedule_but_keeps_rooms(): void {
+        $this->resetAfterTest();
+        global $CFG, $DB;
+        require_once($CFG->dirroot . '/mod/confscheduler/lib.php');
+
+        [$course, $confprogramcm] = $this->create_course_with_confprogram();
+        $confscheduler = $this->getDataGenerator()->create_module('confscheduler', [
+            'course'          => $course->id,
+            'confprogramcmid' => $confprogramcm->id,
+        ]);
+
+        $roomid = api::add_room((int) $confscheduler->id, 'Main Hall');
+        $slotid = api::add_slot(
+            (int) $confscheduler->id,
+            [$roomid],
+            strtotime('2026-09-01 10:00:00'),
+            strtotime('2026-09-01 10:30:00'),
+            null,
+            'Lunch'
+        );
+
+        $status = confscheduler_reset_userdata((object) [
+            'courseid' => $course->id,
+            'reset_confscheduler_schedule' => 1,
+            'timeshift' => 0,
+        ]);
+
+        $this->assertNotEmpty($status);
+        $this->assertFalse($DB->record_exists('confscheduler_slot', ['id' => $slotid]));
+        $this->assertFalse($DB->record_exists('confscheduler_slotroom', ['slotid' => $slotid]));
+        $this->assertTrue($DB->record_exists('confscheduler_room', ['id' => $roomid]));
     }
 }

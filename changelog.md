@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+- User request (2026-07-06): "Also make sure backup/restore/reset all works fine
+  with all plugins." `FEATURE_BACKUP_MOODLE2` flipped to true; new
+  `backup/moodle2/*.php` step classes cover every table, all unconditional
+  (never gated on "include user info" -- no table here holds personal data of
+  its own; see README's "Architecture notes"). `confprogramcmid` and every
+  presentation slot's `submissionid` are resolved in `after_restore()`, since
+  restore order across activities in the same course backup is not guaranteed
+  until every activity's main structure step has completed. New
+  `confscheduler_reset_userdata()`/`_reset_course_form_definition()`/
+  `_defaults()`: course reset clears the schedule (every slot and its room
+  assignments) but keeps rooms as instance configuration. Verified with a real
+  `backup_controller`/`restore_controller` cycle spanning all three plugins in
+  the dependency chain (`tests/backup/restore_confscheduler_test.php`), not
+  just a unit test of the stepslib classes. 119/119 PHPUnit passing (was 117,
+  +2 new), phpcs/moodlecheck clean, EN/JA lang parity verified (111/111 keys).
 - moodle-reviewer findings (2026-07-06), three fixes:
   1. `lib.php`'s `confscheduler_delete_instance()` was never updated when
      `confscheduler_notiftemplate` was added (alongside the manual "Send

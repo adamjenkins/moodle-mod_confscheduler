@@ -115,6 +115,7 @@ $string['printcolourmode'] = 'Print colour mode';
 $string['privacy:metadata'] = 'The Conference Scheduler plugin does not store any personal data. Its tables hold only room/column configuration and scheduled time-block data (each of which reference a cross-plugin submission id or a plain text label, never a user), and the "my timetable" favourite state it toggles is stored entirely by the Conference Program plugin.';
 $string['pxperhour'] = 'Row height (pixels per hour)';
 $string['pxperhour_help'] = 'How tall one hour of scheduled time appears in the grid. Increase this if short presentations don\'t have enough room to show their title and speakers without overlapping other blocks; decrease it to fit a longer day on screen with less scrolling.';
+$string['removeschedule'] = 'Delete the schedule (all scheduled slots)';
 $string['roomcapacity'] = 'Capacity';
 $string['roomcapacity_help'] = 'Maximum attendee capacity for this room. When set, a scheduled presentation whose mod_confprogram favourite count exceeds this capacity is highlighted in the edit-mode grid as a possible overbooking. Leave blank for unlimited (never warn).';
 $string['roomcolour'] = 'Colour theme';

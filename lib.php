@@ -25,12 +25,6 @@
 /**
  * Returns the features this module supports.
  *
- * FEATURE_BACKUP_MOODLE2 is deliberately not claimed yet: no backup/restore
- * steps have been written for this plugin's tables, and this plugin also
- * depends on a course containing a mod_confprogram instance (referenced by
- * confprogramcmid), which complicates backup/restore further. Add the
- * backup/restore steplibs before flipping this to true.
- *
  * @param string $feature FEATURE_xx constant for requested feature
  * @return mixed True if module supports feature, false if not, null if doesn't know
  */
@@ -38,7 +32,7 @@ function confscheduler_supports($feature) {
     return match ($feature) {
         FEATURE_MOD_INTRO        => true,
         FEATURE_SHOW_DESCRIPTION => true,
-        FEATURE_BACKUP_MOODLE2   => false, // Not yet implemented; set true once backup/restore steps exist.
+        FEATURE_BACKUP_MOODLE2   => true,
         FEATURE_GRADE_HAS_GRADE  => false,
         FEATURE_MOD_PURPOSE      => MOD_PURPOSE_OTHER,
         default                  => null,
@@ -148,4 +142,85 @@ function confscheduler_delete_instance($id) {
     $DB->delete_records('confscheduler', ['id' => $id]);
 
     return true;
+}
+
+/**
+ * Adds the confscheduler-specific elements to the course reset form.
+ *
+ * @param MoodleQuickForm $mform The course reset form
+ * @return void
+ */
+function confscheduler_reset_course_form_definition(&$mform) {
+    $mform->addElement('header', 'confschedulerheader', get_string('modulenameplural', 'confscheduler'));
+    $mform->addElement('advcheckbox', 'reset_confscheduler_schedule', get_string('removeschedule', 'confscheduler'));
+}
+
+/**
+ * Course reset form defaults.
+ *
+ * @param stdClass $course The course object
+ * @return array
+ */
+function confscheduler_reset_course_form_defaults($course) {
+    return ['reset_confscheduler_schedule' => 1];
+}
+
+/**
+ * Clears the schedule (every slot and its room assignment(s)) for every confscheduler
+ * instance in a course, when a teacher resets the course for reuse. Rooms are instance
+ * CONFIGURATION (the venues themselves, likely reused for a new conference) and are
+ * deliberately left untouched, matching mod_confsubmissions's tracks/types/fields and
+ * mod_confprogram's Display-phase field settings -- only the schedule ITSELF, not the
+ * setup that produced it, is cleared.
+ *
+ * @param stdClass $data The data submitted from the reset course form
+ * @return array status array
+ */
+function confscheduler_reset_userdata($data) {
+    global $DB;
+
+    $componentstr = get_string('modulenameplural', 'confscheduler');
+    $status = [];
+
+    if (!empty($data->reset_confscheduler_schedule)) {
+        $confschedulerids = $DB->get_fieldset_select('confscheduler', 'id', 'course = ?', [$data->courseid]);
+
+        if ($confschedulerids) {
+            [$insql, $params] = $DB->get_in_or_equal($confschedulerids);
+            $slotids = $DB->get_fieldset_select('confscheduler_slot', 'id', "confscheduler $insql", $params);
+
+            if ($slotids) {
+                [$slotinsql, $slotparams] = $DB->get_in_or_equal($slotids);
+                $DB->delete_records_select('confscheduler_slotroom', "slotid $slotinsql", $slotparams);
+            }
+
+            $DB->delete_records_select('confscheduler_slot', "confscheduler $insql", $params);
+        }
+
+        $status[] = [
+            'component' => $componentstr,
+            'item' => get_string('removeschedule', 'confscheduler'),
+            'error' => false,
+        ];
+    }
+
+    if (!empty($data->timeshift)) {
+        // Any changes to the list of dates that needs to be rolled should be the same
+        // during course restore and course reset (see MDL-9367, and
+        // restore_confscheduler_activity_structure_step::process_confscheduler()'s
+        // identical apply_date_offset() treatment of the same two columns).
+        shift_course_mod_dates(
+            'confscheduler',
+            ['conferencestart', 'conferenceend'],
+            $data->timeshift,
+            $data->courseid
+        );
+        $status[] = [
+            'component' => $componentstr,
+            'item' => get_string('date'),
+            'error' => false,
+        ];
+    }
+
+    return $status;
 }
