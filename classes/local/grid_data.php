@@ -62,7 +62,10 @@ class grid_data {
      * nonpreferredday, user request 2026-07-05). The top-level
      * 'pendingnotifications' is the count of presentation slots with a scheduling
      * change not yet notified (see \mod_confscheduler\api::count_pending_notifications()),
-     * driving the edit-mode "Send notifications" button (user request, 2026-07-05).
+     * driving the edit-mode "Send notifications" button (user request, 2026-07-05). Each
+     * 'slots'/'unscheduled' entry with a track also includes 'trackcolour' (string|null,
+     * a 6-digit hex colour, or null when the track has none configured -- user request,
+     * 2026-07-06), for the client to theme the track pill with.
      */
     public static function build(\stdClass $confscheduler, int $userid): array {
         global $DB;
@@ -97,7 +100,7 @@ class grid_data {
 
         $tracksbyid = [];
         foreach (submissions_api::get_tracks($confsubmissionscm->id) as $track) {
-            $tracksbyid[(int) $track->id] = $track->name;
+            $tracksbyid[(int) $track->id] = $track;
         }
 
         $typedurationsbyid = [];
@@ -130,6 +133,7 @@ class grid_data {
                 'speakers'        => null,
                 'track'           => null,
                 'trackid'         => null,
+                'trackcolour'     => null,
                 'favourited'      => false,
                 'nonpreferredday' => false,
                 'favouritecount'  => 0,
@@ -144,9 +148,10 @@ class grid_data {
                     $entry['speakers'] = self::format_speakers((int) $submission->id);
                     $hastrack = !empty($submission->trackid) && isset($tracksbyid[(int) $submission->trackid]);
                     $entry['track'] = $hastrack
-                        ? format_string($tracksbyid[(int) $submission->trackid], true, ['escape' => false])
+                        ? format_string($tracksbyid[(int) $submission->trackid]->name, true, ['escape' => false])
                         : null;
                     $entry['trackid'] = $hastrack ? (int) $submission->trackid : null;
+                    $entry['trackcolour'] = $hastrack ? ($tracksbyid[(int) $submission->trackid]->colour ?: null) : null;
                     $entry['favourited'] = \mod_confprogram\api::is_favourited($userid, (int) $submission->id);
 
                     // Flagged for edit-mode-only highlighting (user feedback,
@@ -195,9 +200,10 @@ class grid_data {
                 'title'           => format_string($submission->title, true, ['escape' => false]),
                 'speakers'        => self::format_speakers((int) $submission->id),
                 'track'           => $hastrack
-                    ? format_string($tracksbyid[(int) $submission->trackid], true, ['escape' => false])
+                    ? format_string($tracksbyid[(int) $submission->trackid]->name, true, ['escape' => false])
                     : null,
                 'trackid'         => $hastrack ? (int) $submission->trackid : null,
+                'trackcolour'     => $hastrack ? ($tracksbyid[(int) $submission->trackid]->colour ?: null) : null,
                 // Falls back to api::DEFAULT_DURATION_MINUTES when this submission has no
                 // type (or the type was deleted after being chosen) -- see that constant's
                 // docblock. The client uses this only as the INITIAL duration of a newly

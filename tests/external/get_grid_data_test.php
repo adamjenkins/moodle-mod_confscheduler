@@ -20,6 +20,7 @@ namespace mod_confscheduler\external;
 
 use advanced_testcase;
 use mod_confscheduler\api;
+use mod_confsubmissions\api as submissions_api;
 use PHPUnit\Framework\Attributes\CoversClass;
 
 /**
@@ -253,5 +254,65 @@ final class get_grid_data_test extends advanced_testcase {
 
         $this->expectException(\required_capability_exception::class);
         get_grid_data::execute($cmid);
+    }
+
+    /**
+     * A scheduled slot's track colour is surfaced in the payload, for the
+     * client to theme the track pill with (user request, 2026-07-06).
+     */
+    public function test_slot_includes_trackcolour(): void {
+        global $DB;
+        $this->resetAfterTest();
+
+        [$course, $cmid, $confscheduler, , $submissionid] = $this->create_fixture();
+        $teacher = $this->getDataGenerator()->create_and_enrol($course, 'editingteacher');
+        $this->setUser($teacher);
+
+        $confsubmissionsid = $DB->get_field('confsubmissions_submission', 'confsubmissions', ['id' => $submissionid]);
+        $trackid = submissions_api::add_track((int) $confsubmissionsid, 'Data Science', '#3366cc');
+        $DB->set_field('confsubmissions_submission', 'trackid', $trackid, ['id' => $submissionid]);
+
+        $roomid = api::add_room((int) $confscheduler->id, 'Main Hall', null, null);
+        api::add_slot(
+            (int) $confscheduler->id,
+            [$roomid],
+            strtotime('2026-09-01 10:00:00'),
+            strtotime('2026-09-01 10:30:00'),
+            $submissionid
+        );
+
+        $result = get_grid_data::execute($cmid);
+
+        $this->assertSame('#3366cc', $result['slots'][0]['trackcolour']);
+    }
+
+    /**
+     * A track with no configured colour surfaces trackcolour as null, not an
+     * empty string or the string 'null'.
+     */
+    public function test_slot_trackcolour_null_when_track_has_no_colour(): void {
+        global $DB;
+        $this->resetAfterTest();
+
+        [$course, $cmid, $confscheduler, , $submissionid] = $this->create_fixture();
+        $teacher = $this->getDataGenerator()->create_and_enrol($course, 'editingteacher');
+        $this->setUser($teacher);
+
+        $confsubmissionsid = $DB->get_field('confsubmissions_submission', 'confsubmissions', ['id' => $submissionid]);
+        $trackid = submissions_api::add_track((int) $confsubmissionsid, 'Uncoloured Track');
+        $DB->set_field('confsubmissions_submission', 'trackid', $trackid, ['id' => $submissionid]);
+
+        $roomid = api::add_room((int) $confscheduler->id, 'Main Hall', null, null);
+        api::add_slot(
+            (int) $confscheduler->id,
+            [$roomid],
+            strtotime('2026-09-01 10:00:00'),
+            strtotime('2026-09-01 10:30:00'),
+            $submissionid
+        );
+
+        $result = get_grid_data::execute($cmid);
+
+        $this->assertNull($result['slots'][0]['trackcolour']);
     }
 }
