@@ -219,13 +219,14 @@
     box-sizing: border-box;
     position: relative;
     border-right: 1px solid rgba(0, 0, 0, 0.08);
-    background-image: repeating-linear-gradient(
-        to bottom,
-        rgba(0, 0, 0, 0.06) 0,
-        rgba(0, 0, 0, 0.06) 1px,
-        transparent 1px,
-        transparent 144px
-    );
+    background-image:
+        repeating-linear-gradient(
+            to bottom,
+            rgba(0, 0, 0, 0.06) 0,
+            rgba(0, 0, 0, 0.06) 1px,
+            transparent 1px,
+            transparent 144px
+        );
 }
 
 /* Pale tint of the room colour behind blocks, via a low-opacity overlay rather than a
@@ -256,13 +257,14 @@
     left: 0;
     right: 0;
     z-index: 0;
-    background: repeating-linear-gradient(
-        45deg,
-        rgba(0, 0, 0, 0.07),
-        rgba(0, 0, 0, 0.07) 8px,
-        rgba(0, 0, 0, 0.03) 8px,
-        rgba(0, 0, 0, 0.03) 16px
-    );
+    background:
+        repeating-linear-gradient(
+            45deg,
+            rgba(0, 0, 0, 0.07),
+            rgba(0, 0, 0, 0.07) 8px,
+            rgba(0, 0, 0, 0.03) 8px,
+            rgba(0, 0, 0, 0.03) 16px
+        );
 }
 
 .mod_confscheduler-block {
@@ -282,13 +284,14 @@
 .mod_confscheduler-block-span {
     text-align: center;
     font-weight: 600;
-    background-image: repeating-linear-gradient(
-        45deg,
-        rgba(0, 0, 0, 0.03),
-        rgba(0, 0, 0, 0.03) 8px,
-        transparent 8px,
-        transparent 16px
-    );
+    background-image:
+        repeating-linear-gradient(
+            45deg,
+            rgba(0, 0, 0, 0.03),
+            rgba(0, 0, 0, 0.03) 8px,
+            transparent 8px,
+            transparent 16px
+        );
 }
 
 .mod_confscheduler-block-dragging {
@@ -306,13 +309,14 @@
  */
 .mod_confscheduler-block-nonpreferred {
     border: 2px solid #b8860b;
-    background-image: repeating-linear-gradient(
-        135deg,
-        rgba(184, 134, 11, 0.12),
-        rgba(184, 134, 11, 0.12) 6px,
-        transparent 6px,
-        transparent 12px
-    );
+    background-image:
+        repeating-linear-gradient(
+            135deg,
+            rgba(184, 134, 11, 0.12),
+            rgba(184, 134, 11, 0.12) 6px,
+            transparent 6px,
+            transparent 12px
+        );
 }
 
 /*
@@ -325,13 +329,14 @@
  */
 .mod_confscheduler-block-overbooked {
     border: 2px solid #b02a37;
-    background-image: repeating-linear-gradient(
-        45deg,
-        rgba(176, 42, 55, 0.12),
-        rgba(176, 42, 55, 0.12) 6px,
-        transparent 6px,
-        transparent 12px
-    );
+    background-image:
+        repeating-linear-gradient(
+            45deg,
+            rgba(176, 42, 55, 0.12),
+            rgba(176, 42, 55, 0.12) 6px,
+            transparent 6px,
+            transparent 12px
+        );
 }
 
 .mod_confscheduler-room-capacity {
@@ -471,7 +476,7 @@
 
 .mod_confscheduler-track-pill {
     display: inline-block;
-    background: #3366cc;
+    background: #36c;
     color: #fff;
     border-radius: 10px;
     padding: 0 0.4rem;
@@ -623,6 +628,9 @@ a.mod_confscheduler-track-pill:focus {
  * already on screen, with no separate print-only colour logic needed.
  */
 .mod_confscheduler-bw .mod_confscheduler-room-header {
+    /* stylelint-disable-next-line declaration-no-important -- must beat the inline
+       style.backgroundColor amd/src/scheduler_grid.js and scheduler_display.js set
+       per room, which otherwise always wins on specificity. */
     background-color: #fff !important;
     color: #000;
     border: 1px solid #000;
@@ -633,13 +641,18 @@ a.mod_confscheduler-track-pill:focus {
 }
 
 .mod_confscheduler-bw .mod_confscheduler-block {
+    /* stylelint-disable-next-line declaration-no-important -- must beat the inline
+       style.backgroundColor the grid/display JS sets per slot/room colour. */
     background: #fff !important;
     color: #000;
 }
 
 .mod_confscheduler-bw .mod_confscheduler-track-pill {
+    /* stylelint-disable declaration-no-important -- both properties below must beat
+       inline style.backgroundColor/color the grid/display JS sets per track colour. */
     background: #fff !important;
     color: #000 !important;
+    /* stylelint-enable declaration-no-important */
     border: 1px solid #000;
 }
 
@@ -662,6 +675,8 @@ a.mod_confscheduler-track-pill:focus {
        aggregated theme CSS. Two classes gives this rule strictly higher specificity, so it
        wins regardless of load order. */
     .mod_confscheduler-toolbar.mod_confscheduler-print-toolbar {
+        /* stylelint-disable-next-line declaration-no-important -- must compete with
+           Bootstrap's own "display: flex !important" on .d-flex; see comment above. */
         display: none !important;
     }
 

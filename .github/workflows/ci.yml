@@ -103,6 +103,15 @@ jobs:
           sudo locale-gen en_AU.UTF-8
           echo "NVM_DIR=$HOME/.nvm" >> $GITHUB_ENV
 
+      - name: Add sibling plugin dependencies
+        # This plugin's tests create mod_confprogram and mod_confsubmissions
+        # course modules (to build a realistic accepted-submission fixture), so
+        # both must be present in the test site even though only this repo is
+        # checked out. See README.md's own "Requirements" section.
+        run: |
+          moodle-plugin-ci add-plugin adamjenkins/moodle-mod_confsubmissions
+          moodle-plugin-ci add-plugin adamjenkins/moodle-mod_confprogram
+
       - name: Install Moodle
         run: moodle-plugin-ci install --plugin ./plugin --db-host=127.0.0.1
         env:
