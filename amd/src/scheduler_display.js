@@ -48,10 +48,13 @@ import * as ColourUtils from 'mod_confscheduler/colour_utils';
  * Adds two Display-mode-only features on top of the shared grid rendering:
  * a "my timetable" toggle (client-side only, over the 'favourited' field the
  * grid payload already carries -- no new server endpoint) that persists its
- * on/off state in sessionStorage per confscheduler instance, and print
- * controls (colour/black-and-white, paper size, orientation) implemented
- * entirely via CSS (@media print / a dynamically-written @page rule); see
- * styles.css.
+ * on/off state in sessionStorage per confscheduler instance, and a colour/
+ * black-and-white toggle (applies live on screen, not just when printing --
+ * user feedback, 2026-07-06; see styles.css's .mod_confscheduler-bw rules).
+ * Paper size and orientation are deliberately NOT controlled by this plugin
+ * at all (same feedback): they're left entirely to the browser's own print
+ * dialog, which already offers better scaling (including A2) than this
+ * plugin's former forced @page rule ever did.
  *
  * Room/span-block colour contrast (Revision round 1, 2026-07-03): wherever a
  * room's or span block's chosen colour is used as a background, the shared
@@ -630,25 +633,6 @@ const onFavouriteClick = (state, favBtn) => {
     });
 };
 
-/**
- * Writes (or replaces) the dynamically-generated @page rule controlling print paper size
- * and orientation. @page is a top-level-only at-rule -- it cannot be scoped under a class
- * selector -- so the standard way to make it respond to a runtime UI choice is to
- * (re)write a dedicated <style> element's content, rather than pre-declaring every
- * combination as static CSS.
- *
- * @param {String} papersize 'A4', 'A3', or 'A2'
- * @param {String} orientation 'portrait' or 'landscape'
- */
-const applyPageSize = (papersize, orientation) => {
-    let styleEl = document.getElementById('mod_confscheduler-print-page-rule');
-    if (!styleEl) {
-        styleEl = document.createElement('style');
-        styleEl.id = 'mod_confscheduler-print-page-rule';
-        document.head.appendChild(styleEl);
-    }
-    styleEl.textContent = `@page { size: ${papersize} ${orientation}; }`;
-};
 
 /**
  * Binds all delegated event listeners for the Display-mode grid. Called once at init.
@@ -702,15 +686,6 @@ const bindEvents = (state) => {
         const bwRadio = event.target.closest('[name=mod_confscheduler_colourmode]');
         if (bwRadio) {
             state.root.classList.toggle('mod_confscheduler-bw', bwRadio.value === 'bw' && bwRadio.checked);
-            return;
-        }
-
-        const sizeSelect = event.target.closest('.mod_confscheduler-print-papersize');
-        const orientationRadio = event.target.closest('[name=mod_confscheduler_printorientation]');
-        if (sizeSelect || orientationRadio) {
-            const papersize = state.root.querySelector('.mod_confscheduler-print-papersize').value;
-            const orientation = state.root.querySelector('[name=mod_confscheduler_printorientation]:checked').value;
-            applyPageSize(papersize, orientation);
         }
     });
 };
@@ -762,12 +737,6 @@ export const init = async(cmid, confschedulerid, confprogramcmid, programurl, ca
     if (myTimetableBtn) {
         myTimetableBtn.setAttribute('aria-pressed', state.myTimetableActive ? 'true' : 'false');
         myTimetableBtn.classList.toggle('active', state.myTimetableActive);
-    }
-
-    const papersizeEl = root.querySelector('.mod_confscheduler-print-papersize');
-    const orientationEl = root.querySelector('[name=mod_confscheduler_printorientation]:checked');
-    if (papersizeEl && orientationEl) {
-        applyPageSize(papersizeEl.value, orientationEl.value);
     }
 
     bindEvents(state);
