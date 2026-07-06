@@ -138,5 +138,18 @@ function xmldb_confscheduler_upgrade($oldversion) {
         upgrade_mod_savepoint(true, 2026070408, 'confscheduler');
     }
 
+    if ($oldversion < 2026070508) {
+        // Room-capacity field + overbooking warnings (user request, 2026-07-05): a
+        // room's capacity is compared, edit-mode only, against a scheduled
+        // presentation's mod_confprogram favourite count.
+        $table = new xmldb_table('confscheduler_room');
+        $field = new xmldb_field('capacity', XMLDB_TYPE_INTEGER, '10', null, null, null, null, 'colour');
+        if (!$dbman->field_exists($table, $field)) {
+            $dbman->add_field($table, $field);
+        }
+
+        upgrade_mod_savepoint(true, 2026070508, 'confscheduler');
+    }
+
     return true;
 }

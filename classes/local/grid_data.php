@@ -53,7 +53,13 @@ class grid_data {
      * submission has a non-empty preferred-dates list AND this slot's own day is
      * not one of them -- user feedback, 2026-07-05) for the edit-mode grid to
      * highlight; the read-only Display-mode grid deliberately never reads this
-     * field, so it renders identically whether a block is flagged or not.
+     * field, so it renders identically whether a block is flagged or not. Each
+     * 'rooms' entry also includes 'capacity' (int|null; null means unlimited).
+     * Each 'slots' entry also includes 'favouritecount' (int, always computed,
+     * even when 0 or the room has no capacity set) and 'overbooked' (bool; true
+     * only when the presentation's room has a capacity configured AND
+     * favouritecount exceeds it -- same edit-mode-only highlighting convention as
+     * nonpreferredday, user request 2026-07-05).
      */
     public static function build(\stdClass $confscheduler, int $userid): array {
         global $DB;
@@ -78,7 +84,12 @@ class grid_data {
                 'name'      => $room->name,
                 'sortorder' => (int) $room->sortorder,
                 'colour'    => $room->colour,
+                'capacity'  => $room->capacity !== null ? (int) $room->capacity : null,
             ];
+        }
+        $capacitybyroomid = [];
+        foreach ($rooms as $room) {
+            $capacitybyroomid[(int) $room->id] = $room->capacity !== null ? (int) $room->capacity : null;
         }
 
         $tracksbyid = [];
@@ -118,6 +129,8 @@ class grid_data {
                 'trackid'         => null,
                 'favourited'      => false,
                 'nonpreferredday' => false,
+                'favouritecount'  => 0,
+                'overbooked'      => false,
             ];
 
             if ($slot->submissionid !== null) {
@@ -145,6 +158,20 @@ class grid_data {
                     if ($preferreddates) {
                         $day = usergetmidnight((int) $slot->starttime);
                         $entry['nonpreferredday'] = !in_array($day, $preferreddates, true);
+                    }
+
+                    // Room-capacity overbooking warning (user request, 2026-07-05),
+                    // edit-mode-only highlighting like nonpreferredday above. Only
+                    // meaningful for a presentation placed in exactly one room (a
+                    // column-spanning block has no submissionid and never reaches
+                    // this branch at all) with a capacity actually configured --
+                    // null capacity means unlimited, never a warning.
+                    $entry['favouritecount'] = \mod_confprogram\api::count_favourites((int) $submission->id);
+                    if (count($entry['roomids']) === 1) {
+                        $roomcapacity = $capacitybyroomid[$entry['roomids'][0]] ?? null;
+                        if ($roomcapacity !== null && $entry['favouritecount'] > $roomcapacity) {
+                            $entry['overbooked'] = true;
+                        }
                     }
                 }
             }

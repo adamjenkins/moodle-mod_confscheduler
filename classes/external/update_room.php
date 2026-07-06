@@ -40,10 +40,11 @@ class update_room extends external_api {
      */
     public static function execute_parameters(): external_function_parameters {
         return new external_function_parameters([
-            'cmid'   => new external_value(PARAM_INT, 'The confscheduler course-module id'),
-            'roomid' => new external_value(PARAM_INT, 'The confscheduler_room id to update'),
-            'name'   => new external_value(PARAM_TEXT, 'Room name'),
-            'colour' => new external_value(PARAM_TEXT, 'Hex colour (e.g. #3366cc), or null', VALUE_DEFAULT, null),
+            'cmid'     => new external_value(PARAM_INT, 'The confscheduler course-module id'),
+            'roomid'   => new external_value(PARAM_INT, 'The confscheduler_room id to update'),
+            'name'     => new external_value(PARAM_TEXT, 'Room name'),
+            'colour'   => new external_value(PARAM_TEXT, 'Hex colour (e.g. #3366cc), or null', VALUE_DEFAULT, null),
+            'capacity' => new external_value(PARAM_INT, 'Maximum attendee capacity, or null for unlimited', VALUE_DEFAULT, null),
         ]);
     }
 
@@ -54,14 +55,16 @@ class update_room extends external_api {
      * @param int $roomid The confscheduler_room id to update
      * @param string $name Room name
      * @param string|null $colour Hex colour, or null
+     * @param int|null $capacity Maximum attendee capacity, or null for unlimited
      * @return array{success: bool}
      */
-    public static function execute(int $cmid, int $roomid, string $name, ?string $colour = null): array {
+    public static function execute(int $cmid, int $roomid, string $name, ?string $colour = null, ?int $capacity = null): array {
         $params = self::validate_parameters(self::execute_parameters(), [
-            'cmid'   => $cmid,
-            'roomid' => $roomid,
-            'name'   => $name,
-            'colour' => $colour,
+            'cmid'     => $cmid,
+            'roomid'   => $roomid,
+            'name'     => $name,
+            'colour'   => $colour,
+            'capacity' => $capacity,
         ]);
 
         if (trim($params['name']) === '') {
@@ -71,7 +74,7 @@ class update_room extends external_api {
         [, , $confscheduler] = self::require_manage($params['cmid']);
         self::require_room_in_instance((int) $confscheduler->id, $params['roomid']);
 
-        api::update_room($params['roomid'], $params['name'], $params['colour']);
+        api::update_room($params['roomid'], $params['name'], $params['colour'], $params['capacity']);
 
         return ['success' => true];
     }

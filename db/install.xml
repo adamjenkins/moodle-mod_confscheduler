@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" ?>
-<XMLDB PATH="mod/confscheduler/db" VERSION="2026070408" COMMENT="XMLDB file for Moodle mod/confscheduler"
+<XMLDB PATH="mod/confscheduler/db" VERSION="2026070508" COMMENT="XMLDB file for Moodle mod/confscheduler"
     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
     xsi:noNamespaceSchemaLocation="../../../lib/xmldb/xmldb.xsd">
   <TABLES>
@@ -30,6 +30,7 @@
         <FIELD NAME="name" TYPE="char" LENGTH="255" NOTNULL="true" SEQUENCE="false" COMMENT="Room name, e.g. Main Hall"/>
         <FIELD NAME="sortorder" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" DEFAULT="0" COMMENT="Left-to-right column order in the grid"/>
         <FIELD NAME="colour" TYPE="char" LENGTH="7" NOTNULL="false" SEQUENCE="false" COMMENT="Hex colour (e.g. #3366cc) used to theme this room's column; null means no theme/default styling"/>
+        <FIELD NAME="capacity" TYPE="int" LENGTH="10" NOTNULL="false" SEQUENCE="false" COMMENT="Maximum attendee capacity for this room, used only to compute an edit-mode overbooking warning against a scheduled presentation's mod_confprogram favourite count; null means unlimited (never warn)"/>
       </FIELDS>
       <KEYS>
         <KEY NAME="primary" TYPE="primary" FIELDS="id"/>

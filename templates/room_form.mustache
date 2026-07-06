@@ -24,12 +24,14 @@
     * roomid int|null - the confscheduler_room id, when editing an existing room
     * name string - the current room name (empty when adding)
     * colour string|null - the current hex colour, or null
+    * capacity int|string - the current capacity, or '' for unlimited
 
     Example context (json):
     {
         "roomid": 3,
         "name": "Main Hall",
-        "colour": "#3366cc"
+        "colour": "#3366cc",
+        "capacity": 200
     }
 }}
 <form class="mod_confscheduler-room-form">
@@ -45,5 +47,9 @@
             <input type="checkbox" class="form-check-input" id="mod_confscheduler-room-nocolour" name="nocolour" {{^colour}}checked{{/colour}}>
             <label class="form-check-label" for="mod_confscheduler-room-nocolour">{{#str}} nocolour, mod_confscheduler {{/str}}</label>
         </div>
+    </div>
+    <div class="form-group">
+        <label for="mod_confscheduler-room-capacity">{{#str}} roomcapacity, mod_confscheduler {{/str}}</label>
+        <input type="number" class="form-control" id="mod_confscheduler-room-capacity" name="capacity" value="{{capacity}}" min="0" step="1">
     </div>
 </form>

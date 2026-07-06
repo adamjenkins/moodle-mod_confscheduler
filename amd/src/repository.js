@@ -118,25 +118,27 @@ export const updateSpanBlock = (cmid, slotid, label, roomids, starttime, endtime
  * @param {Number} cmid The confscheduler course-module id
  * @param {String} name Room name
  * @param {String|null} colour Hex colour, or null
+ * @param {Number|null} capacity Maximum attendee capacity, or null for unlimited
  * @return {Promise}
  */
-export const addRoom = (cmid, name, colour) => Ajax.call([{
+export const addRoom = (cmid, name, colour, capacity = null) => Ajax.call([{
     methodname: 'mod_confscheduler_add_room',
-    args: {cmid, name, colour},
+    args: {cmid, name, colour, capacity},
 }])[0];
 
 /**
- * Updates a room's name and/or colour.
+ * Updates a room's name, colour, and/or capacity.
  *
  * @param {Number} cmid The confscheduler course-module id
  * @param {Number} roomid The confscheduler_room id to update
  * @param {String} name Room name
  * @param {String|null} colour Hex colour, or null
+ * @param {Number|null} capacity Maximum attendee capacity, or null for unlimited
  * @return {Promise}
  */
-export const updateRoom = (cmid, roomid, name, colour) => Ajax.call([{
+export const updateRoom = (cmid, roomid, name, colour, capacity = null) => Ajax.call([{
     methodname: 'mod_confscheduler_update_room',
-    args: {cmid, roomid, name, colour},
+    args: {cmid, roomid, name, colour, capacity},
 }])[0];
 
 /**

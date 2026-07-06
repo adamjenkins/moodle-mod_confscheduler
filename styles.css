@@ -315,6 +315,31 @@
     );
 }
 
+/*
+ * Edit-mode-only highlight for a presentation whose single room has a configured
+ * capacity that its mod_confprogram favourite count exceeds (user request,
+ * 2026-07-05) -- a possible-overbooking warning, not a hard error (nothing stops
+ * scheduling here; the organiser decides whether to move it to a bigger room).
+ * Distinct colour from .mod_confscheduler-block-nonpreferred above so the two
+ * warnings are never visually confused with each other.
+ */
+.mod_confscheduler-block-overbooked {
+    border: 2px solid #b02a37;
+    background-image: repeating-linear-gradient(
+        45deg,
+        rgba(176, 42, 55, 0.12),
+        rgba(176, 42, 55, 0.12) 6px,
+        transparent 6px,
+        transparent 12px
+    );
+}
+
+.mod_confscheduler-room-capacity {
+    font-weight: normal;
+    font-size: 0.85em;
+    opacity: 0.85;
+}
+
 .mod_confscheduler-drag-proxy {
     opacity: 0.85;
 }

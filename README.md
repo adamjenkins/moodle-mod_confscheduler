@@ -15,6 +15,7 @@ Part of the [Conference Tools](https://github.com/adamjenkins/moodle-conference-
 - **Display mode** (Moodle's site-wide Edit mode off, or `mod/confscheduler:viewschedule` without `:manageschedule`): a read-only rendering of the same grid data. Blocks link to the presentation's `mod_confprogram` page (both a real `<a href>` fallback and, with JS, an in-place modal identical to `mod_confprogram`'s own). A "my timetable" toggle highlights favourited presentations and greys out the rest, persisted in `sessionStorage` per instance. The same day selector as edit mode pages a multi-day schedule. Printable in colour or black & white, at A4/A3/A2 in either orientation, via CSS only (no PDF generation).
 - Implements the `\mod_confscheduler\api::get_schedule_for_submission()` contract that `mod_confprogram`'s Display phase reads for time/room info, and calls `mod_confprogram`'s `api::add_favourite()`/`remove_favourite()` directly to keep favourites in sync both ways.
 - Organisers declare conference start/end dates in the activity's General settings section: `api::validate_placement()` rejects any placement outside that window server-side, the edit-mode grid greys out (and the client-side SnapGap nudge logic in `conference_bounds_utils.js` clamps drags away from) out-of-bounds hours, and the autoscheduler defaults its run window to these dates. Dark mode is currently disabled site-wide for this plugin (the CSS is kept, just inert) pending a possible future reintroduction.
+- Rooms have an optional capacity, shown in the column header when set. A scheduled presentation in a single room whose capacity is exceeded by its `mod_confprogram` favourite count is highlighted (edit mode only) as a possible overbooking -- informational, not a hard restriction.
 
 ## Architecture notes
 
@@ -272,6 +273,7 @@ Part of the [Conference Tools](https://github.com/adamjenkins/moodle-conference-
   favourite star: the remove/favourite/edit-span-block buttons now `float`
   instead of sitting `position: absolute` over a reserved blank line, so the
   title/label text wraps around them starting on that same first line.
+- **Room-capacity overbooking is an informational warning, not an enforced limit**: nothing stops an organiser from scheduling into a room whose capacity a presentation's favourite count already exceeds -- unlike SnapGap/overlap validation (`validate_placement()`, enforced server-side on every placement), a room may legitimately be worth overbooking (standing room, a bigger room being unavailable that slot), so this is deliberately advisory only, edit-mode-only highlighting (same convention as the existing "non-preferred day" highlight) rather than a hard rejection.
 
 ## Requirements
 

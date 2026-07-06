@@ -2,6 +2,27 @@
 
 ## Unreleased
 
+- User request (2026-07-05): "Room-capacity field on scheduler columns with
+  overbooking warnings against favourite counts." Rooms now have an optional
+  capacity (`confscheduler_room.capacity`, null means unlimited), editable in
+  the same add/edit room modal as name/colour and shown in the column header
+  ("Capacity: N") when set. A scheduled presentation placed in exactly one
+  room whose capacity is exceeded by its `mod_confprogram` favourite count is
+  highlighted in the edit-mode grid (a distinct red/crimson hatched border,
+  visually different from the existing amber "non-preferred day" highlight,
+  with a tooltip showing the exact favourites/capacity numbers) -- same
+  edit-mode-only convention as that existing highlight: the read-only
+  Display mode grid never reads this field, so a flagged block still renders
+  normally there. Not a hard error: nothing stops scheduling into an
+  over-capacity room, it's the organiser's call whether to move it to a
+  bigger room. New `mod_confprogram\api::count_favourites()` (not
+  instance-scoped, matching `is_favourited()`'s own existing signature/known
+  limitation). 106/106 PHPUnit passing, phpcs/moodlecheck/eslint clean, EN/JA
+  lang parity verified (92/92 keys), AMD rebuilt and diff-verified stable,
+  live-verified via Playwright: set a room's capacity to 1 through the real
+  edit-room modal, seeded a presentation favourited by 3 people in that room,
+  confirmed the overbooked highlight and capacity label both render
+  correctly.
 - User feedback (2026-07-05): "In the autoscheduler the date format is
   dd-mm-yyyy but it needs to be yyyy-mm-dd" (clarified: actually mm-dd-yyyy).
   Root cause: the "Run autoscheduler" and "Add/edit span block" modals used a

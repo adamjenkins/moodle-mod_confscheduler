@@ -40,9 +40,10 @@ class add_room extends external_api {
      */
     public static function execute_parameters(): external_function_parameters {
         return new external_function_parameters([
-            'cmid'   => new external_value(PARAM_INT, 'The confscheduler course-module id'),
-            'name'   => new external_value(PARAM_TEXT, 'Room name'),
-            'colour' => new external_value(PARAM_TEXT, 'Hex colour (e.g. #3366cc), or null', VALUE_DEFAULT, null),
+            'cmid'     => new external_value(PARAM_INT, 'The confscheduler course-module id'),
+            'name'     => new external_value(PARAM_TEXT, 'Room name'),
+            'colour'   => new external_value(PARAM_TEXT, 'Hex colour (e.g. #3366cc), or null', VALUE_DEFAULT, null),
+            'capacity' => new external_value(PARAM_INT, 'Maximum attendee capacity, or null for unlimited', VALUE_DEFAULT, null),
         ]);
     }
 
@@ -52,13 +53,15 @@ class add_room extends external_api {
      * @param int $cmid The confscheduler course-module id
      * @param string $name Room name
      * @param string|null $colour Hex colour, or null
+     * @param int|null $capacity Maximum attendee capacity, or null for unlimited
      * @return array{roomid: int}
      */
-    public static function execute(int $cmid, string $name, ?string $colour = null): array {
+    public static function execute(int $cmid, string $name, ?string $colour = null, ?int $capacity = null): array {
         $params = self::validate_parameters(self::execute_parameters(), [
-            'cmid'   => $cmid,
-            'name'   => $name,
-            'colour' => $colour,
+            'cmid'     => $cmid,
+            'name'     => $name,
+            'colour'   => $colour,
+            'capacity' => $capacity,
         ]);
 
         if (trim($params['name']) === '') {
@@ -67,7 +70,7 @@ class add_room extends external_api {
 
         [, , $confscheduler] = self::require_manage($params['cmid']);
 
-        $roomid = api::add_room((int) $confscheduler->id, $params['name'], null, $params['colour']);
+        $roomid = api::add_room((int) $confscheduler->id, $params['name'], null, $params['colour'], $params['capacity']);
 
         return ['roomid' => $roomid];
     }

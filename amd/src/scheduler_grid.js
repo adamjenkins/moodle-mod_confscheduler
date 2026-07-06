@@ -510,6 +510,13 @@ const buildRoomHeaderRow = (state, draggable) => {
         name.textContent = room.name;
         header.appendChild(name);
 
+        if (room.capacity !== null && room.capacity !== undefined) {
+            const capacity = document.createElement('span');
+            capacity.className = 'mod_confscheduler-room-capacity';
+            capacity.textContent = ` (${state.strings.roomcapacity}: ${room.capacity})`;
+            header.appendChild(capacity);
+        }
+
         const actions = document.createElement('span');
         actions.className = 'mod_confscheduler-room-header-actions';
 
@@ -800,6 +807,17 @@ const renderBlock = (state, columnsWrap, slot) => {
         // field at all, so a flagged block still displays normally there.
         block.classList.add('mod_confscheduler-block-nonpreferred');
         block.title = state.strings.blocknonpreferredday;
+    }
+    if (slot.overbooked) {
+        // Edit-mode-only highlight (user request, 2026-07-05): flagged server-side
+        // (see \mod_confscheduler\local\grid_data::build()'s docblock) whenever this
+        // presentation's single room has a capacity configured and its
+        // mod_confprogram favourite count exceeds it. Same
+        // never-shown-in-Display-mode convention as nonpreferredday above.
+        block.classList.add('mod_confscheduler-block-overbooked');
+        const room = state.rooms.find((candidate) => candidate.id === slot.roomids[0]);
+        const capacity = room ? room.capacity : null;
+        block.title = `${state.strings.blockoverbooked} ${slot.favouritecount}/${capacity}`;
     }
     block.dataset.slotid = slot.id;
     block.dataset.roomids = JSON.stringify(slot.roomids);
@@ -1312,6 +1330,7 @@ const openRoomModal = async(state, roomid) => {
         roomid: roomid || '',
         name: room ? room.name : '',
         colour: room ? room.colour : null,
+        capacity: room && room.capacity !== null && room.capacity !== undefined ? room.capacity : '',
     });
 
     const modal = await ModalSaveCancel.create({
@@ -1328,14 +1347,16 @@ const openRoomModal = async(state, roomid) => {
         const name = form.querySelector('[name=name]').value.trim();
         const nocolour = form.querySelector('[name=nocolour]').checked;
         const colour = nocolour ? null : form.querySelector('[name=colour]').value;
+        const capacityValue = form.querySelector('[name=capacity]').value.trim();
+        const capacity = capacityValue === '' ? null : Number(capacityValue);
 
         if (name === '') {
             return;
         }
 
         const promise = roomid
-            ? Repository.updateRoom(state.cmid, roomid, name, colour)
-            : Repository.addRoom(state.cmid, name, colour);
+            ? Repository.updateRoom(state.cmid, roomid, name, colour, capacity)
+            : Repository.addRoom(state.cmid, name, colour, capacity);
 
         promise.then(() => {
             modal.destroy();
@@ -1801,7 +1822,7 @@ export const init = async(cmid, confschedulerid, programurl = null) => {
     const [
         unschedule, favourite, editroom, deleteroom, confirmdeleteroom,
         cancel, movecolumn, addroom, addspanblock, editspanblock, autoschedulerrun,
-        filterbytrack, alldays, blocknonpreferredday,
+        filterbytrack, alldays, blocknonpreferredday, blockoverbooked, roomcapacity,
     ] = await getStrings([
         {key: 'unschedule', component: 'mod_confscheduler'},
         {key: 'favourite', component: 'mod_confscheduler'},
@@ -1817,6 +1838,8 @@ export const init = async(cmid, confschedulerid, programurl = null) => {
         {key: 'filterbytrack', component: 'mod_confscheduler'},
         {key: 'alldays', component: 'mod_confscheduler'},
         {key: 'blocknonpreferredday', component: 'mod_confscheduler'},
+        {key: 'blockoverbooked', component: 'mod_confscheduler'},
+        {key: 'roomcapacity', component: 'mod_confscheduler'},
     ]);
 
     const state = {
@@ -1844,7 +1867,7 @@ export const init = async(cmid, confschedulerid, programurl = null) => {
         strings: {
             unschedule, favourite, editroom, deleteroom, confirmdeleteroom,
             cancel, movecolumn, addroom, addspanblock, editspanblock, autoschedulerrun,
-            filterbytrack, alldays, blocknonpreferredday,
+            filterbytrack, alldays, blocknonpreferredday, blockoverbooked, roomcapacity,
         },
     };
 

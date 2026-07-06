@@ -86,6 +86,12 @@ class get_grid_data extends external_api {
                     'name'      => new external_value(PARAM_TEXT, 'Room name'),
                     'sortorder' => new external_value(PARAM_INT, 'Column order'),
                     'colour'    => new external_value(PARAM_TEXT, 'Hex colour, or null', VALUE_DEFAULT, null),
+                    'capacity'  => new external_value(
+                        PARAM_INT,
+                        'Maximum attendee capacity, or null for unlimited',
+                        VALUE_DEFAULT,
+                        null
+                    ),
                 ])
             ),
             'slots' => new external_multiple_structure(
@@ -106,6 +112,15 @@ class get_grid_data extends external_api {
                         PARAM_BOOL,
                         'Whether this slot\'s day is not one of the submission\'s recorded preferred days ' .
                             '(always false for a span-block, or when no preference was recorded)'
+                    ),
+                    'favouritecount' => new external_value(
+                        PARAM_INT,
+                        'Number of users who have favourited this presentation (always 0 for a span-block)'
+                    ),
+                    'overbooked' => new external_value(
+                        PARAM_BOOL,
+                        'Whether favouritecount exceeds this slot\'s (single) room\'s configured capacity ' .
+                            '(always false for a span-block, a multi-room slot, or an unlimited-capacity room)'
                     ),
                 ])
             ),

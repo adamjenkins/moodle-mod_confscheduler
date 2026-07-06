@@ -178,7 +178,7 @@ final class api_test extends advanced_testcase {
         [$confscheduler] = $this->create_full_fixture();
         $roomid = api::add_room((int) $confscheduler->id, 'Main Hall');
 
-        api::update_room($roomid, 'Renamed Hall', '#00ff00');
+        api::update_room($roomid, 'Renamed Hall', '#00ff00', null);
 
         global $DB;
         $room = $DB->get_record('confscheduler_room', ['id' => $roomid]);
@@ -186,7 +186,34 @@ final class api_test extends advanced_testcase {
         $this->assertSame('#00ff00', $room->colour);
 
         $this->expectException(\invalid_parameter_exception::class);
-        api::update_room($roomid, 'Renamed Hall', 'nope');
+        api::update_room($roomid, 'Renamed Hall', 'nope', null);
+    }
+
+    /**
+     * add_room()/update_room() accept and persist a capacity, and reject a negative
+     * one (null means unlimited and is always valid).
+     */
+    public function test_room_capacity_persisted_and_validated(): void {
+        $this->resetAfterTest();
+        global $DB;
+
+        [$confscheduler] = $this->create_full_fixture();
+        $roomid = api::add_room((int) $confscheduler->id, 'Main Hall', null, null, 50);
+
+        $room = $DB->get_record('confscheduler_room', ['id' => $roomid]);
+        $this->assertSame(50, (int) $room->capacity);
+
+        api::update_room($roomid, 'Main Hall', null, 75);
+        $room = $DB->get_record('confscheduler_room', ['id' => $roomid]);
+        $this->assertSame(75, (int) $room->capacity);
+
+        // Null is always valid (unlimited).
+        api::update_room($roomid, 'Main Hall', null, null);
+        $room = $DB->get_record('confscheduler_room', ['id' => $roomid]);
+        $this->assertNull($room->capacity);
+
+        $this->expectException(\invalid_parameter_exception::class);
+        api::add_room((int) $confscheduler->id, 'Bad Room', null, null, -1);
     }
 
     /**

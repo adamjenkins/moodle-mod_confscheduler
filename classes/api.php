@@ -178,19 +178,42 @@ class api {
     }
 
     /**
+     * Validates a room capacity value (null means unlimited, so always valid; a
+     * negative capacity is meaningless and rejected -- same convention as
+     * mod_confcheckin's confcheckin_tickettype.capacity).
+     *
+     * @param int|null $capacity
+     * @return void
+     * @throws \invalid_parameter_exception if $capacity is negative
+     */
+    protected static function validate_capacity(?int $capacity): void {
+        if ($capacity !== null && $capacity < 0) {
+            throw new \invalid_parameter_exception(get_string('error:invalidcapacity', 'mod_confscheduler'));
+        }
+    }
+
+    /**
      * Creates a room (column) in a confscheduler instance.
      *
      * @param int $confschedulerid The confscheduler instance id
      * @param string $name The room name
      * @param int|null $sortorder The column order; null to append at the end (max existing + 1)
      * @param string|null $colour A hex colour (e.g. #3366cc), or null for no theme
+     * @param int|null $capacity Maximum attendee capacity, or null for unlimited (never overbooking-warn)
      * @return int The confscheduler_room id
-     * @throws \invalid_parameter_exception if $colour is set and not a valid hex colour
+     * @throws \invalid_parameter_exception if $colour is set and not a valid hex colour, or $capacity is negative
      */
-    public static function add_room(int $confschedulerid, string $name, ?int $sortorder = null, ?string $colour = null): int {
+    public static function add_room(
+        int $confschedulerid,
+        string $name,
+        ?int $sortorder = null,
+        ?string $colour = null,
+        ?int $capacity = null
+    ): int {
         global $DB;
 
         self::validate_colour($colour);
+        self::validate_capacity($capacity);
 
         if ($sortorder === null) {
             $max = $DB->get_field_sql(
@@ -205,29 +228,33 @@ class api {
             'name'          => $name,
             'sortorder'     => $sortorder,
             'colour'        => $colour,
+            'capacity'      => $capacity,
         ]);
     }
 
     /**
-     * Updates a room's name and/or colour theme.
+     * Updates a room's name, colour theme, and/or capacity.
      *
      * @param int $roomid The confscheduler_room id
      * @param string $name The new room name
      * @param string|null $colour A hex colour (e.g. #3366cc), or null to clear the theme
+     * @param int|null $capacity Maximum attendee capacity, or null for unlimited
      * @return void
-     * @throws \invalid_parameter_exception if $colour is set and not a valid hex colour
+     * @throws \invalid_parameter_exception if $colour is set and not a valid hex colour, or $capacity is negative
      */
-    public static function update_room(int $roomid, string $name, ?string $colour): void {
+    public static function update_room(int $roomid, string $name, ?string $colour, ?int $capacity): void {
         global $DB;
 
         self::validate_colour($colour);
+        self::validate_capacity($capacity);
 
         $room = $DB->get_record('confscheduler_room', ['id' => $roomid], '*', MUST_EXIST);
 
         $DB->update_record('confscheduler_room', (object) [
-            'id'     => $room->id,
-            'name'   => $name,
-            'colour' => $colour,
+            'id'       => $room->id,
+            'name'     => $name,
+            'colour'   => $colour,
+            'capacity' => $capacity,
         ]);
     }
 
