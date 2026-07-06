@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+- moodle-reviewer findings (2026-07-06), three fixes:
+  1. `lib.php`'s `confscheduler_delete_instance()` was never updated when
+     `confscheduler_notiftemplate` was added (alongside the manual "Send
+     notifications" feature) -- every deleted instance left an orphaned
+     template row behind forever, with no other cleanup path. Fixed by adding
+     it to the existing cascade delete; `tests/confscheduler_test.php`'s
+     existing `test_delete_instance_cascades()` extended to cover it.
+  2. `classes/local/notifier.php`'s `notify_slot()` interpolated a recipient's
+     `fullname()` value unescaped into an HTML-format notification body (same
+     gap found and fixed in the sibling `mod_confsubmissions`/`mod_confprogram`
+     notifiers in the same pass) -- fixed with `format_string()`, matching the
+     escaping already applied to `submissiontitle`/`coursename`.
+  3. `export.php`'s `Content-Disposition` filename was unquoted; since the
+     filename is derived from the activity's own name (which can contain
+     spaces/commas, unlike core's fixed-string calendar export filename), this
+     is the more interoperable, RFC 6266-correct form. Quoted it.
+  117/117 PHPUnit passing, phpcs/moodlecheck clean.
 - Original request: "ICS/calendar export of a user's 'my timetable'." New
   "Export my timetable (.ics)" link in Display mode's toolbar, next to the
   existing "my timetable" toggle -- downloads the current user's own

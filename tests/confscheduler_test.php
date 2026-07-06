@@ -110,7 +110,11 @@ final class confscheduler_test extends advanced_testcase {
 
     /**
      * confscheduler_delete_instance() cascades confscheduler_slotroom ->
-     * confscheduler_slot -> confscheduler_room, and removes the instance itself.
+     * confscheduler_slot -> confscheduler_room, deletes any
+     * confscheduler_notiftemplate row (moodle-reviewer finding, 2026-07-06:
+     * this table was added alongside the manual "Send notifications" feature
+     * but the delete cascade was never updated for it, leaving an orphaned row
+     * behind forever), and removes the instance itself.
      */
     public function test_delete_instance_cascades(): void {
         global $CFG, $DB;
@@ -142,7 +146,18 @@ final class confscheduler_test extends advanced_testcase {
         ]);
         $DB->insert_record('confscheduler_slotroom', (object) ['slotid' => $slotid, 'roomid' => $roomid]);
 
+        $DB->insert_record('confscheduler_notiftemplate', (object) [
+            'confscheduler' => $confscheduler->id,
+            'notiftype'     => 'scheduled',
+            'subject'       => 'Custom subject',
+            'body'          => 'Custom body',
+            'bodyformat'    => FORMAT_HTML,
+            'timecreated'   => $now,
+            'timemodified'  => $now,
+        ]);
+
         $this->assertTrue($DB->record_exists('confscheduler_slotroom', ['slotid' => $slotid]));
+        $this->assertTrue($DB->record_exists('confscheduler_notiftemplate', ['confscheduler' => $confscheduler->id]));
 
         confscheduler_delete_instance($confscheduler->id);
 
@@ -150,5 +165,6 @@ final class confscheduler_test extends advanced_testcase {
         $this->assertFalse($DB->record_exists('confscheduler_room', ['confscheduler' => $confscheduler->id]));
         $this->assertFalse($DB->record_exists('confscheduler_slot', ['confscheduler' => $confscheduler->id]));
         $this->assertFalse($DB->record_exists('confscheduler_slotroom', ['slotid' => $slotid]));
+        $this->assertFalse($DB->record_exists('confscheduler_notiftemplate', ['confscheduler' => $confscheduler->id]));
     }
 }

@@ -53,7 +53,7 @@ header('Last-Modified: ' . gmdate('D, d M Y H:i:s') . ' GMT');
 header('Cache-Control: private, must-revalidate, pre-check=0, post-check=0, max-age=0');
 header('Expires: ' . gmdate('D, d M Y H:i:s', 0) . ' GMT');
 header('Pragma: no-cache');
-header('Content-Disposition: attachment; filename=' . $filename);
+header('Content-Disposition: attachment; filename="' . $filename . '"');
 header('Content-Length: ' . strlen($serialized));
 header('Content-Type: text/calendar; charset=utf-8');
 

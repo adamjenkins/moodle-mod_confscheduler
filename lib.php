@@ -114,7 +114,11 @@ function confscheduler_normalise_conference_dates(stdClass $data): void {
  *
  * Cascades confscheduler_slotroom -> confscheduler_slot -> confscheduler_room,
  * since confscheduler_slotroom rows reference both a slot and a room and must
- * be removed before either of those tables' rows are deleted.
+ * be removed before either of those tables' rows are deleted. Also deletes
+ * confscheduler_notiftemplate rows (added alongside the manual "Send
+ * notifications" feature) -- otherwise every deleted instance leaves an
+ * orphaned template row behind with no other cleanup path (moodle-reviewer
+ * finding, 2026-07-06).
  *
  * @param int $id The instance id
  * @return bool
@@ -139,6 +143,7 @@ function confscheduler_delete_instance($id) {
 
     $DB->delete_records('confscheduler_slot', ['confscheduler' => $id]);
     $DB->delete_records('confscheduler_room', ['confscheduler' => $id]);
+    $DB->delete_records('confscheduler_notiftemplate', ['confscheduler' => $id]);
 
     $DB->delete_records('confscheduler', ['id' => $id]);
 
