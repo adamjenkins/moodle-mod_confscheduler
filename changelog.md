@@ -2,6 +2,53 @@
 
 ## Unreleased
 
+- Day-bounds display window + print/colour cleanup (2026-07-06): three
+  related changes to the schedule grid, all from the same user request.
+  1. **New "day start"/"day end" quick control** in the edit-mode toolbar
+     (an "Automatic" checkbox + two time inputs, following the exact
+     gapminutes/pxperhour pattern): new nullable `confscheduler.daystart`/
+     `.dayend` columns (minutes since midnight), a new
+     `api::set_day_bounds()` + its AJAX endpoint, and a new shared
+     `amd/src/day_utils.js::computeDayTimelineBounds()` that replaces two
+     near-duplicate per-file functions previously in `scheduler_grid.js` and
+     `scheduler_display.js`. When configured, a day's axis defaults to
+     exactly the configured window; if a real scheduled slot falls outside
+     it, the axis quietly widens to show it in full, with the out-of-window
+     portion greyed the same way the existing out-of-conference-hours bands
+     already are (`outOfHoursBands()` extended, not replaced). Deliberately
+     display-only -- dragging or auto-scheduling before/after the window is
+     not rejected server-side.
+  2. **Black & white is now a live on-screen toggle**, not print-only: the
+     colour-stripping CSS moved out of `@media print`
+     (`.mod_confscheduler-print-bw` renamed `.mod_confscheduler-bw`, and the
+     printcolour/printbw/printcolourmode strings renamed colour/
+     blackandwhite/colourmode) so it applies immediately; print now just
+     reflects whatever's already on screen.
+  3. **Paper-size and orientation print controls removed entirely**: per
+     direct user feedback, browsers already override/ignore forced
+     orientation in practice, and the browser's own print dialog already
+     offers better paper-size scaling (including A2) than this plugin's
+     forced `@page` rule ever did. The A4/A3/A2 `<select>`, the portrait/
+     landscape `<fieldset>`, `applyPageSize()`, and the now-unused
+     papersize/orientation/portrait/landscape lang strings were all removed.
+  - Two real bugs caught only by live Playwright verification, not by
+    PHPUnit or phpcs: (a) `db/services.php`'s new AJAX endpoint needed its
+    own version bump, independent of the schema change, to actually get
+    synced into Moodle's `external_functions` table -- without it, every
+    call failed with "Can't find data record in table external_functions";
+    (b) a lang string (`daystart_help`) contained a literal double-quote
+    character that broke the `title="..."` HTML attribute it was
+    interpolated into, corrupting the rendered element into a pile of bogus
+    boolean attributes -- fixed by rewording the string. Also a real UX bug
+    caught and fixed live: unchecking "Automatic" while both time fields
+    were still empty left them stuck disabled forever, because the
+    early-return path for an incomplete pair skipped re-enabling them --
+    fixed by always syncing the disabled state immediately.
+  - 130/130 PHPUnit passing (was 121, +9 new), phpcs clean, AMD rebuilt via
+    `grunt amd --force` and confirmed stable across repeated rebuilds,
+    independently re-verified live in both edit mode and read-only Display
+    mode (including the "All days" view).
+
 - Track pill colour fix (2026-07-06): a track's configured colour
   (`confsubmissions_track.colour`) never reached the schedule grid's track
   pills, which always rendered in the fixed default blue.
