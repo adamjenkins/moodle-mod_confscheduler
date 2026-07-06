@@ -633,7 +633,6 @@ const onFavouriteClick = (state, favBtn) => {
     });
 };
 
-
 /**
  * Binds all delegated event listeners for the Display-mode grid. Called once at init.
  *
