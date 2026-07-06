@@ -41,6 +41,11 @@ class notiftemplate_form extends \moodleform {
         $mform = $this->_form;
         $context = $this->_customdata['context'];
 
+        // Instance-level master switch (user request, 2026-07-06), saved to the
+        // confscheduler table itself -- see notifications.php.
+        $mform->addElement('advcheckbox', 'notificationsenabled', get_string('notificationsenabled', 'mod_confscheduler'));
+        $mform->addHelpButton('notificationsenabled', 'notificationsenabled', 'mod_confscheduler');
+
         $mform->addElement('text', 'subject', get_string('notifsubject', 'mod_confscheduler'), ['size' => 64]);
         $mform->setType('subject', PARAM_TEXT);
         $mform->addHelpButton('subject', 'notifsubject', 'mod_confscheduler');

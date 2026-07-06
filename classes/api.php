@@ -849,14 +849,21 @@ class api {
      * not send notifications to presentations if the scheduling information
      * has not changed").
      *
+     * If this instance's notificationsenabled master switch (user request,
+     * 2026-07-06) is off, notifier::notify_slot() sends nothing and returns
+     * false for every slot -- notifiedtime is deliberately left untouched in
+     * that case, so nothing is silently marked "notified" without actually
+     * being sent; a later re-enable still delivers it.
+     *
      * @param int $confschedulerid The confscheduler instance id
-     * @return int How many slots were notified
+     * @return int How many slots were actually notified
      */
     public static function send_pending_notifications(int $confschedulerid): int {
         global $DB;
 
         $slots = self::get_pending_notification_slots($confschedulerid);
         $now = time();
+        $sent = 0;
 
         foreach ($slots as $slot) {
             $roomnames = array_values($DB->get_records_sql(
@@ -869,15 +876,16 @@ class api {
             ));
             $roomnames = array_map(static fn (\stdClass $room): string => format_string($room->name), $roomnames);
 
-            \mod_confscheduler\local\notifier::notify_slot($confschedulerid, $slot, $roomnames);
-
-            $DB->update_record('confscheduler_slot', (object) [
-                'id'           => $slot->id,
-                'notifiedtime' => $now,
-            ]);
+            if (\mod_confscheduler\local\notifier::notify_slot($confschedulerid, $slot, $roomnames)) {
+                $DB->update_record('confscheduler_slot', (object) [
+                    'id'           => $slot->id,
+                    'notifiedtime' => $now,
+                ]);
+                $sent++;
+            }
         }
 
-        return count($slots);
+        return $sent;
     }
 
     /**

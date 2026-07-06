@@ -186,5 +186,20 @@ function xmldb_confscheduler_upgrade($oldversion) {
         upgrade_mod_savepoint(true, 2026070608, 'confscheduler');
     }
 
+    if ($oldversion < 2026070609) {
+        // Notifications master switch (user request, 2026-07-06): a single
+        // instance-level on/off toggle that overrides the schedule-change
+        // notification template. Defaults to 1 (enabled) so existing instances
+        // keep sending exactly as they do today until an organiser explicitly
+        // turns it off.
+        $table = new xmldb_table('confscheduler');
+        $field = new xmldb_field('notificationsenabled', XMLDB_TYPE_INTEGER, '1', null, XMLDB_NOTNULL, null, '1', 'pxperhour');
+        if (!$dbman->field_exists($table, $field)) {
+            $dbman->add_field($table, $field);
+        }
+
+        upgrade_mod_savepoint(true, 2026070609, 'confscheduler');
+    }
+
     return true;
 }

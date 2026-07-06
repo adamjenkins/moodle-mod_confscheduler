@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" ?>
-<XMLDB PATH="mod/confscheduler/db" VERSION="2026070608" COMMENT="XMLDB file for Moodle mod/confscheduler"
+<XMLDB PATH="mod/confscheduler/db" VERSION="2026070609" COMMENT="XMLDB file for Moodle mod/confscheduler"
     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
     xsi:noNamespaceSchemaLocation="../../../lib/xmldb/xmldb.xsd">
   <TABLES>
@@ -15,6 +15,7 @@
         <FIELD NAME="conferenceend" TYPE="int" LENGTH="10" NOTNULL="false" SEQUENCE="false" COMMENT="Organiser-set conference end date/time, unix timestamp; null if not set. See conferencestart's comment"/>
         <FIELD NAME="gapminutes" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" DEFAULT="0" COMMENT="GapSnap: minimum gap, in minutes, enforced between presentations in the same room while dragging"/>
         <FIELD NAME="pxperhour" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" DEFAULT="144" COMMENT="Row height: vertical pixels per hour of scheduled time in the grid/display timeline, organiser-adjustable in edit mode"/>
+        <FIELD NAME="notificationsenabled" TYPE="int" LENGTH="1" NOTNULL="true" SEQUENCE="false" DEFAULT="1" COMMENT="Master switch (user request, 2026-07-06): when 0, this instance's notifier never sends the schedule-change notification, regardless of the template configured or how many slots have a pending change. Defaults to 1 (enabled) so existing instances keep their current behaviour"/>
         <FIELD NAME="timecreated" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" DEFAULT="0"/>
         <FIELD NAME="timemodified" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" DEFAULT="0"/>
       </FIELDS>

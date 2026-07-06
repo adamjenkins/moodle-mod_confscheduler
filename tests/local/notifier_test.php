@@ -243,6 +243,47 @@ final class notifier_test extends advanced_testcase {
     }
 
     /**
+     * When an instance's notificationsenabled master switch (user request,
+     * 2026-07-06) is off, send_pending_notifications() sends nothing and leaves
+     * every slot pending (notifiedtime untouched) -- re-enabling and calling it
+     * again then delivers them, since nothing was silently marked "notified"
+     * while disabled.
+     */
+    public function test_master_switch_disables_sending_and_leaves_slots_pending(): void {
+        $this->resetAfterTest();
+        global $DB;
+
+        [$confscheduler, $confprogram, $confsubmissions] = $this->create_fixture();
+        $DB->set_field('confscheduler', 'notificationsenabled', 0, ['id' => $confscheduler->id]);
+
+        $speaker = $this->getDataGenerator()->create_user();
+        $submissionid = $this->create_accepted_submission_with_speaker($confsubmissions, $confprogram, $speaker);
+        $roomid = api::add_room((int) $confscheduler->id, 'Main Hall');
+
+        $slotid = api::add_slot(
+            (int) $confscheduler->id,
+            [$roomid],
+            strtotime('2026-09-01 10:00:00'),
+            strtotime('2026-09-01 10:30:00'),
+            $submissionid
+        );
+
+        $sink = $this->redirectMessages();
+        $sent = api::send_pending_notifications((int) $confscheduler->id);
+
+        $this->assertSame(0, $sent);
+        $this->assertCount(0, $sink->get_messages_by_component_and_type('mod_confscheduler', 'scheduleupdated'));
+        $this->assertSame(0, (int) $DB->get_field('confscheduler_slot', 'notifiedtime', ['id' => $slotid]));
+        $this->assertSame(1, api::count_pending_notifications((int) $confscheduler->id));
+
+        $DB->set_field('confscheduler', 'notificationsenabled', 1, ['id' => $confscheduler->id]);
+        $sent = api::send_pending_notifications((int) $confscheduler->id);
+
+        $this->assertSame(1, $sent);
+        $this->assertCount(1, $sink->get_messages_by_component_and_type('mod_confscheduler', 'scheduleupdated'));
+    }
+
+    /**
      * A column-spanning block (no submissionid) is never notifiable and never
      * counted as pending, regardless of how many times it changes.
      */

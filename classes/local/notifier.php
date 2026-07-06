@@ -107,19 +107,23 @@ class notifier {
      * @param int $confschedulerid The confscheduler instance id
      * @param \stdClass $slot The confscheduler_slot record (submissionid must be non-null)
      * @param string[] $roomnames The name(s) of every room this slot occupies
-     * @return void
+     * @return bool True if a send was attempted (the instance's master switch is on);
+     *         false if it was skipped (no confscheduler/submission record, or
+     *         notificationsenabled is off). The caller, api::send_pending_notifications(),
+     *         only marks a slot's notifiedtime when this returns true -- otherwise it stays
+     *         pending, so a later re-enable still delivers it.
      */
-    public static function notify_slot(int $confschedulerid, \stdClass $slot, array $roomnames): void {
+    public static function notify_slot(int $confschedulerid, \stdClass $slot, array $roomnames): bool {
         global $DB;
 
         $confscheduler = $DB->get_record('confscheduler', ['id' => $confschedulerid]);
-        if (!$confscheduler) {
-            return;
+        if (!$confscheduler || !$confscheduler->notificationsenabled) {
+            return false;
         }
 
         $submission = submissions_api::get_submission((int) $slot->submissionid);
         if (!$submission) {
-            return;
+            return false;
         }
 
         $template = self::get_template($confschedulerid);
@@ -152,6 +156,8 @@ class notifier {
                 (int) $confscheduler->course
             );
         }
+
+        return true;
     }
 
     /**
