@@ -201,5 +201,25 @@ function xmldb_confscheduler_upgrade($oldversion) {
         upgrade_mod_savepoint(true, 2026070609, 'confscheduler');
     }
 
+    if ($oldversion < 2026070613) {
+        // Day start/end display-window quick control (user request, 2026-07-06):
+        // both null means fully automatic (derive the axis from scheduled slots, as
+        // before this feature existed) -- zero behaviour change for existing
+        // instances until an organiser explicitly configures a daily display window.
+        $table = new xmldb_table('confscheduler');
+
+        $field = new xmldb_field('daystart', XMLDB_TYPE_INTEGER, '10', null, null, null, null, 'notificationsenabled');
+        if (!$dbman->field_exists($table, $field)) {
+            $dbman->add_field($table, $field);
+        }
+
+        $field = new xmldb_field('dayend', XMLDB_TYPE_INTEGER, '10', null, null, null, null, 'daystart');
+        if (!$dbman->field_exists($table, $field)) {
+            $dbman->add_field($table, $field);
+        }
+
+        upgrade_mod_savepoint(true, 2026070613, 'confscheduler');
+    }
+
     return true;
 }
