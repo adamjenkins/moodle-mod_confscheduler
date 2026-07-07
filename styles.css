@@ -345,14 +345,35 @@
  * the block's own text (title/speakers/room+time, and, since text-decoration paints
  * through descendant inline content, the track pill's text too) -- see
  * amd/src/scheduler_display.js's renderBlock()/bindEvents() for the matching class/
- * click-notice logic. Never applied in edit mode (amd/src/scheduler_grid.js never reads
- * the underlying 'withdrawn' flag), the same "edit mode keeps plain styling" convention
- * .mod_confscheduler-block-nonpreferred above already documents.
+ * click-notice logic. A muted look is appropriate here: this is the read-only view
+ * everyone sees, not a call to action. See .mod_confscheduler-block-withdrawn-edit
+ * below for edit mode's own, much louder, treatment of the same 'withdrawn' flag.
  */
 .mod_confscheduler-block-withdrawn {
     background: #e9ecef;
     border-color: rgba(0, 0, 0, 0.15);
     color: #6c757d;
+    text-decoration: line-through;
+}
+
+/*
+ * Edit-mode indication (user request, 2026-07-07 follow-up: "with edit mode on, there
+ * is no indication that the block belongs to a withdrawn presentation") that an
+ * already-scheduled block's presentation has since been withdrawn. Deliberately its own
+ * class, not a reuse of .mod_confscheduler-block-withdrawn above -- see
+ * amd/src/scheduler_grid.js's renderBlock() -- and deliberately a harder "danger" red
+ * (Bootstrap's own danger palette) than .mod_confscheduler-block-overbooked's softer
+ * warning red just above: this isn't a placement-quality concern an organiser might
+ * choose to leave as-is, it's telling them the presentation itself no longer exists and
+ * the slot should be freed. A solid tinted background (not overbooked's light stripes)
+ * plus a strikethrough across the block's own text (same technique
+ * .mod_confscheduler-block-withdrawn above uses) makes it unmistakable even at a glance
+ * over a busy grid.
+ */
+.mod_confscheduler-block-withdrawn-edit {
+    border: 2px solid #dc3545;
+    background: rgba(220, 53, 69, 0.18);
+    color: #58151c;
     text-decoration: line-through;
 }
 

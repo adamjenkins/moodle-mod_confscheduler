@@ -1014,6 +1014,18 @@ const renderBlock = (state, columnsWrap, slot) => {
         const capacity = room ? room.capacity : null;
         block.title = `${state.strings.blockoverbooked} ${slot.favouritecount}/${capacity}`;
     }
+    if (slot.withdrawn) {
+        // Edit-mode indication (user request, 2026-07-07 follow-up) that this already-
+        // scheduled block's presentation has since been withdrawn -- a distinct, more
+        // severe "danger" red styling from the two soft warnings above (this isn't a
+        // placement quality concern, the presentation itself no longer exists), and
+        // deliberately its own class rather than reusing amd/src/scheduler_display.js's
+        // .mod_confscheduler-block-withdrawn (that one is styled as a muted grey/
+        // strikethrough, appropriate for the read-only public view; edit mode wants it
+        // to stand out instead, since an organiser needs to notice and free the slot).
+        block.classList.add('mod_confscheduler-block-withdrawn-edit');
+        block.title = state.strings.blockwithdrawn;
+    }
     block.dataset.slotid = slot.id;
     block.dataset.roomids = JSON.stringify(slot.roomids);
     block.dataset.starttime = slot.starttime;
@@ -2071,7 +2083,7 @@ export const init = async(cmid, confschedulerid, programurl = null) => {
     const [
         unschedule, favourite, editroom, deleteroom, confirmdeleteroom,
         cancel, movecolumn, addroom, addspanblock, editspanblock, autoschedulerrun,
-        filterbytrack, alldays, blocknonpreferredday, blockoverbooked, roomcapacity,
+        filterbytrack, alldays, blocknonpreferredday, blockoverbooked, blockwithdrawn, roomcapacity,
         sendnotifications, confirmsendnotifications, sendnotificationssummary, sendnotificationsnonepending,
         dayboundsscope,
     ] = await getStrings([
@@ -2090,6 +2102,7 @@ export const init = async(cmid, confschedulerid, programurl = null) => {
         {key: 'alldays', component: 'mod_confscheduler'},
         {key: 'blocknonpreferredday', component: 'mod_confscheduler'},
         {key: 'blockoverbooked', component: 'mod_confscheduler'},
+        {key: 'blockwithdrawn', component: 'mod_confscheduler'},
         {key: 'roomcapacity', component: 'mod_confscheduler'},
         {key: 'sendnotifications', component: 'mod_confscheduler'},
         {key: 'confirmsendnotifications', component: 'mod_confscheduler'},
@@ -2127,7 +2140,7 @@ export const init = async(cmid, confschedulerid, programurl = null) => {
         strings: {
             unschedule, favourite, editroom, deleteroom, confirmdeleteroom,
             cancel, movecolumn, addroom, addspanblock, editspanblock, autoschedulerrun,
-            filterbytrack, alldays, blocknonpreferredday, blockoverbooked, roomcapacity,
+            filterbytrack, alldays, blocknonpreferredday, blockoverbooked, blockwithdrawn, roomcapacity,
             sendnotifications, confirmsendnotifications, sendnotificationssummary, sendnotificationsnonepending,
             dayboundsscope,
         },
