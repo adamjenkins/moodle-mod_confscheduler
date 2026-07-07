@@ -29,6 +29,8 @@ namespace mod_confscheduler\privacy;
  *   table, which is that plugin's privacy responsibility, not personal data owned
  *   here) or a label for a span-block (e.g. "Lunch Break").
  * - confscheduler_slotroom: a junction of slotid/roomid only.
+ * - confscheduler_daybounds: a per-conference-day display-window override (a day key
+ *   and two times-of-day), instance configuration with no personal data.
  *
  * None of these rows carry a userid, or any other column identifying an individual.
  * The "my timetable" favourite state (mod/confscheduler:favourite) is written

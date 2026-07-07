@@ -406,7 +406,8 @@ const renderHeaders = (state) => {
  * @param {String} dayKey The day being rendered (YYYY-MM-DD)
  */
 const buildDayGridInto = (state, gridEl, slots, dayKey) => {
-    const range = DayUtils.computeDayTimelineBounds(slots, dayKey, state.daystart, state.dayend);
+    const eff = DayUtils.boundsForDay(dayKey, state.daystart, state.dayend, state.daybounds);
+    const range = DayUtils.computeDayTimelineBounds(slots, dayKey, eff.daystart, eff.dayend);
     state.dayStart = range.start;
 
     gridEl.innerHTML = '';
@@ -452,8 +453,8 @@ const buildDayGridInto = (state, gridEl, slots, dayKey) => {
         range.end,
         state.conferencestart,
         state.conferenceend,
-        state.daystart,
-        state.dayend
+        eff.daystart,
+        eff.dayend
     );
     bands.forEach((band) => {
         const bandEl = document.createElement('div');
@@ -597,6 +598,10 @@ const fetchAndRenderAll = (state) => Repository.getGridData(state.cmid).then((da
     state.conferenceend = data.conferenceend;
     state.daystart = data.daystart;
     state.dayend = data.dayend;
+    state.daybounds = {};
+    (data.daybounds || []).forEach((entry) => {
+        state.daybounds[entry.day] = {daystart: entry.daystart, dayend: entry.dayend};
+    });
     state.slotsByDay = DayUtils.groupSlotsByDay(data.slots);
     state.dayKeys = DayUtils.selectableDayKeys(state.conferencestart, state.conferenceend, data.slots);
     if (!state.selectedDay || (state.selectedDay !== DayUtils.ALL_DAYS && !state.dayKeys.includes(state.selectedDay))) {
@@ -724,6 +729,7 @@ export const init = async(cmid, confschedulerid, confprogramcmid, programurl, ca
         conferenceend: null,
         daystart: null,
         dayend: null,
+        daybounds: {},
         slotsByDay: {},
         dayKeys: [],
         selectedDay: null,

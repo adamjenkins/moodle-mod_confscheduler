@@ -62,6 +62,11 @@ class backup_confscheduler_activity_structure_step extends backup_activity_struc
             'notiftype', 'subject', 'body', 'bodyformat', 'timecreated', 'timemodified',
         ]);
 
+        $daybounds = new backup_nested_element('daybounds');
+        $daybound = new backup_nested_element('daybound', ['id'], [
+            'day', 'daystart', 'dayend',
+        ]);
+
         $slots = new backup_nested_element('slots');
         $slot = new backup_nested_element('slot', ['id'], [
             'submissionid', 'label', 'colour', 'starttime', 'endtime', 'timecreated',
@@ -80,6 +85,9 @@ class backup_confscheduler_activity_structure_step extends backup_activity_struc
         $confscheduler->add_child($notiftemplates);
         $notiftemplates->add_child($notiftemplate);
 
+        $confscheduler->add_child($daybounds);
+        $daybounds->add_child($daybound);
+
         $confscheduler->add_child($slots);
         $slots->add_child($slot);
 
@@ -90,6 +98,7 @@ class backup_confscheduler_activity_structure_step extends backup_activity_struc
         $confscheduler->set_source_table('confscheduler', ['id' => backup::VAR_ACTIVITYID]);
         $room->set_source_table('confscheduler_room', ['confscheduler' => backup::VAR_PARENTID], 'sortorder ASC');
         $notiftemplate->set_source_table('confscheduler_notiftemplate', ['confscheduler' => backup::VAR_PARENTID]);
+        $daybound->set_source_table('confscheduler_daybounds', ['confscheduler' => backup::VAR_PARENTID], 'day ASC');
         $slot->set_source_table('confscheduler_slot', ['confscheduler' => backup::VAR_PARENTID], 'starttime ASC');
         // Roomid is a cross-reference to a room ELSEWHERE in this same activity's own
         // structure (a room a slot occupies) -- restore remaps it via the

@@ -221,5 +221,26 @@ function xmldb_confscheduler_upgrade($oldversion) {
         upgrade_mod_savepoint(true, 2026070613, 'confscheduler');
     }
 
+    if ($oldversion < 2026070700) {
+        // Per-day display-window overrides (user request, 2026-07-07): the daily display
+        // window ("Day start"/"Day end") is now settable per conference day, since these
+        // often differ day to day. A day without a row here inherits the instance-level
+        // daystart/dayend, which keeps existing instances behaving exactly as before.
+        $table = new xmldb_table('confscheduler_daybounds');
+        if (!$dbman->table_exists($table)) {
+            $table->add_field('id', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, XMLDB_SEQUENCE, null);
+            $table->add_field('confscheduler', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+            $table->add_field('day', XMLDB_TYPE_CHAR, '10', null, XMLDB_NOTNULL, null, null);
+            $table->add_field('daystart', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, null);
+            $table->add_field('dayend', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, null);
+            $table->add_key('primary', XMLDB_KEY_PRIMARY, ['id']);
+            $table->add_key('confscheduler', XMLDB_KEY_FOREIGN, ['confscheduler'], 'confscheduler', ['id']);
+            $table->add_index('confschedulerday', XMLDB_INDEX_UNIQUE, ['confscheduler', 'day']);
+            $dbman->create_table($table);
+        }
+
+        upgrade_mod_savepoint(true, 2026070700, 'confscheduler');
+    }
+
     return true;
 }

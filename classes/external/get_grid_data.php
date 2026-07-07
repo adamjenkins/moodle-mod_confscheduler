@@ -169,6 +169,14 @@ class get_grid_data extends external_api {
                 VALUE_DEFAULT,
                 null
             ),
+            'daybounds' => new external_multiple_structure(
+                new external_single_structure([
+                    'day'      => new external_value(PARAM_RAW_TRIMMED, 'The conference day this override applies to (Y-m-d)'),
+                    'daystart' => new external_value(PARAM_INT, 'Override start for this day, minutes since midnight'),
+                    'dayend'   => new external_value(PARAM_INT, 'Override end for this day, minutes since midnight'),
+                ]),
+                'Per-day display-window overrides; a day not listed here uses the daystart/dayend default'
+            ),
             'pendingnotifications' => new external_value(
                 PARAM_INT,
                 'How many presentation slots have a scheduling change not yet notified'

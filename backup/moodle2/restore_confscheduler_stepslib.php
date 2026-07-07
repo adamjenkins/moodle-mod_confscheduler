@@ -51,6 +51,10 @@ class restore_confscheduler_activity_structure_step extends restore_activity_str
             'confscheduler_notiftemplate',
             '/activity/confscheduler/notiftemplates/notiftemplate'
         );
+        $paths[] = new restore_path_element(
+            'confscheduler_daybounds',
+            '/activity/confscheduler/daybounds/daybound'
+        );
         $paths[] = new restore_path_element('confscheduler_slot', '/activity/confscheduler/slots/slot');
         $paths[] = new restore_path_element(
             'confscheduler_slotroom',
@@ -116,6 +120,24 @@ class restore_confscheduler_activity_structure_step extends restore_activity_str
         $data->confscheduler = $this->get_new_parentid('confscheduler');
 
         $DB->insert_record('confscheduler_notiftemplate', $data);
+    }
+
+    /**
+     * Restores a per-day display-window override. The 'day' is a Y-m-d key, not a
+     * timestamp, so it is not date-offset -- an overridden window applies to the same
+     * calendar-day label regardless of when the course is restored (see this feature's
+     * install.xml table comment for why the day is stored as a key, not a timestamp).
+     *
+     * @param array|stdClass $data The parsed daybound element
+     * @return void
+     */
+    protected function process_confscheduler_daybounds($data) {
+        global $DB;
+
+        $data = (object) $data;
+        $data->confscheduler = $this->get_new_parentid('confscheduler');
+
+        $DB->insert_record('confscheduler_daybounds', $data);
     }
 
     /**

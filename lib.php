@@ -138,6 +138,7 @@ function confscheduler_delete_instance($id) {
     $DB->delete_records('confscheduler_slot', ['confscheduler' => $id]);
     $DB->delete_records('confscheduler_room', ['confscheduler' => $id]);
     $DB->delete_records('confscheduler_notiftemplate', ['confscheduler' => $id]);
+    $DB->delete_records('confscheduler_daybounds', ['confscheduler' => $id]);
 
     $DB->delete_records('confscheduler', ['id' => $id]);
 

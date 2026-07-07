@@ -58,27 +58,37 @@ class set_day_bounds extends external_api {
                 null,
                 NULL_ALLOWED
             ),
+            'day'      => new external_value(
+                PARAM_RAW_TRIMMED,
+                'The conference day (Y-m-d) to set an override for; empty/null for the instance default',
+                VALUE_DEFAULT,
+                null,
+                NULL_ALLOWED
+            ),
         ]);
     }
 
     /**
-     * Sets the instance's display-window bounds.
+     * Sets the instance's default display-window bounds, or a single day's override.
      *
      * @param int $cmid The confscheduler course-module id
-     * @param int|null $daystart Display-window start, minutes since midnight, or null for "automatic"
-     * @param int|null $dayend Display-window end, minutes since midnight, or null for "automatic"
+     * @param int|null $daystart Display-window start, minutes since midnight, or null for "automatic"/clear
+     * @param int|null $dayend Display-window end, minutes since midnight, or null for "automatic"/clear
+     * @param string|null $day The conference day (Y-m-d) to override, or null/empty for the instance default
      * @return array{success: bool}
      */
-    public static function execute(int $cmid, ?int $daystart, ?int $dayend): array {
+    public static function execute(int $cmid, ?int $daystart, ?int $dayend, ?string $day = null): array {
         $params = self::validate_parameters(self::execute_parameters(), [
             'cmid'     => $cmid,
             'daystart' => $daystart,
             'dayend'   => $dayend,
+            'day'      => $day,
         ]);
 
         [, , $confscheduler] = self::require_manage($params['cmid']);
 
-        api::set_day_bounds((int) $confscheduler->id, $params['daystart'], $params['dayend']);
+        $day = ($params['day'] === null || $params['day'] === '') ? null : $params['day'];
+        api::set_day_bounds((int) $confscheduler->id, $params['daystart'], $params['dayend'], $day);
 
         return ['success' => true];
     }

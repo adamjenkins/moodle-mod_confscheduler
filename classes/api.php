@@ -373,21 +373,30 @@ class api {
     }
 
     /**
-     * Sets a confscheduler instance's daily display-window bounds (minutes since
-     * midnight, e.g. 480 = 08:00), organiser-adjustable via a quick control at the top
-     * of the schedule grid in edit mode -- same pattern as set_gap_minutes()/
-     * set_pxperhour() above. Both null clears back to "automatic" (the previous,
-     * slot-derived axis computation) -- see grid_data::build()'s docblock and
-     * amd/src/day_utils.js's computeDayTimelineBounds() for how this is consumed.
+     * Sets a daily display-window bound (minutes since midnight, e.g. 480 = 08:00),
+     * organiser-adjustable via a quick control at the top of the schedule grid in edit
+     * mode -- same pattern as set_gap_minutes()/set_pxperhour() above.
+     *
+     * The window can be set at two scopes (user request, 2026-07-07 -- these often differ
+     * from one conference day to the next):
+     * - $day === null sets the INSTANCE DEFAULT, applied to every day without its own
+     *   override. Both bounds null clears the default back to "automatic" (the previous,
+     *   slot-derived axis computation).
+     * - $day given (a 'Y-m-d' day key) sets a PER-DAY OVERRIDE for that day. Both bounds
+     *   null deletes the override, so the day falls back to the instance default.
+     *
+     * See grid_data::build()'s docblock and amd/src/day_utils.js's
+     * computeDayTimelineBounds()/boundsForDay() for how this is consumed.
      *
      * @param int $confschedulerid The confscheduler instance id
-     * @param int|null $daystart The new display-window start, minutes since midnight, or null for "automatic"
-     * @param int|null $dayend The new display-window end, minutes since midnight, or null for "automatic"
+     * @param int|null $daystart The new display-window start, minutes since midnight, or null for "automatic"/clear
+     * @param int|null $dayend The new display-window end, minutes since midnight, or null for "automatic"/clear
+     * @param string|null $day The conference day (Y-m-d) to set an override for, or null for the instance default
      * @return void
-     * @throws \invalid_parameter_exception if exactly one of the two is null, either is
-     *     outside [0, 1439], or dayend is not strictly after daystart
+     * @throws \invalid_parameter_exception if exactly one of the two bounds is null, either is
+     *     outside [0, 1439], dayend is not strictly after daystart, or $day is not a valid Y-m-d key
      */
-    public static function set_day_bounds(int $confschedulerid, ?int $daystart, ?int $dayend): void {
+    public static function set_day_bounds(int $confschedulerid, ?int $daystart, ?int $dayend, ?string $day = null): void {
         global $DB;
 
         if (($daystart === null) !== ($dayend === null)) {
@@ -403,8 +412,61 @@ class api {
             }
         }
 
-        $DB->set_field('confscheduler', 'daystart', $daystart, ['id' => $confschedulerid]);
-        $DB->set_field('confscheduler', 'dayend', $dayend, ['id' => $confschedulerid]);
+        if ($day === null) {
+            // Instance default.
+            $DB->set_field('confscheduler', 'daystart', $daystart, ['id' => $confschedulerid]);
+            $DB->set_field('confscheduler', 'dayend', $dayend, ['id' => $confschedulerid]);
+            return;
+        }
+
+        // Per-day override. The day key is stored (and round-tripped with the client)
+        // verbatim, so validate its shape rather than trying to interpret it as a
+        // timezone-dependent timestamp.
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $day)) {
+            throw new \invalid_parameter_exception(get_string('error:invaliddaybounds', 'mod_confscheduler'));
+        }
+
+        if ($daystart === null) {
+            // Clearing an override: the day reverts to the instance default.
+            $DB->delete_records('confscheduler_daybounds', ['confscheduler' => $confschedulerid, 'day' => $day]);
+            return;
+        }
+
+        $existing = $DB->get_record('confscheduler_daybounds', ['confscheduler' => $confschedulerid, 'day' => $day]);
+        if ($existing) {
+            $DB->update_record('confscheduler_daybounds', (object) [
+                'id'       => $existing->id,
+                'daystart' => $daystart,
+                'dayend'   => $dayend,
+            ]);
+        } else {
+            $DB->insert_record('confscheduler_daybounds', (object) [
+                'confscheduler' => $confschedulerid,
+                'day'           => $day,
+                'daystart'      => $daystart,
+                'dayend'        => $dayend,
+            ]);
+        }
+    }
+
+    /**
+     * Returns a confscheduler instance's per-day display-window overrides (see
+     * set_day_bounds()), keyed by 'Y-m-d' day key. A day absent from this map inherits
+     * the instance-level daystart/dayend default. Consumed by grid_data::build() to build
+     * the grid payload's per-day 'daybounds' list.
+     *
+     * @param int $confschedulerid The confscheduler instance id
+     * @return array<string, array{daystart: int, dayend: int}> Overrides keyed by day
+     */
+    public static function get_day_bounds(int $confschedulerid): array {
+        global $DB;
+
+        $result = [];
+        $rows = $DB->get_records('confscheduler_daybounds', ['confscheduler' => $confschedulerid], 'day ASC');
+        foreach ($rows as $row) {
+            $result[$row->day] = ['daystart' => (int) $row->daystart, 'dayend' => (int) $row->dayend];
+        }
+        return $result;
     }
 
     /**

@@ -292,9 +292,26 @@ const computeTimeline = (state) => {
     const fallbackKey = (state.selectedDay && state.selectedDay !== DayUtils.ALL_DAYS)
         ? state.selectedDay
         : DayUtils.dayKeyForTimestamp(Math.floor(Date.now() / 1000));
-    const bounds = DayUtils.computeDayTimelineBounds(state.slots, fallbackKey, state.daystart, state.dayend);
+    const eff = DayUtils.boundsForDay(fallbackKey, state.daystart, state.dayend, state.daybounds);
+    const bounds = DayUtils.computeDayTimelineBounds(state.slots, fallbackKey, eff.daystart, eff.dayend);
     state.timelineStart = bounds.start;
     state.timelineEnd = bounds.end;
+};
+
+/**
+ * Converts the grid payload's flat daybounds list (each {day, daystart, dayend}) into a
+ * lookup keyed by day key, for DayUtils.boundsForDay() (user request, 2026-07-07 -- the
+ * daily display window is settable per conference day).
+ *
+ * @param {Object[]} list The payload's daybounds array (may be undefined on a stale cache)
+ * @return {Object.<String, {daystart: Number, dayend: Number}>}
+ */
+const dayBoundsMap = (list) => {
+    const map = {};
+    (list || []).forEach((entry) => {
+        map[entry.day] = {daystart: entry.daystart, dayend: entry.dayend};
+    });
+    return map;
 };
 
 /**
@@ -314,6 +331,7 @@ const fetchAndRenderAll = (state) => Repository.getGridData(state.cmid).then((da
     state.conferenceend = data.conferenceend;
     state.daystart = data.daystart;
     state.dayend = data.dayend;
+    state.daybounds = dayBoundsMap(data.daybounds);
     state.pendingnotifications = data.pendingnotifications;
     syncGapMinutesInput(state);
     syncPxPerHourInput(state);
@@ -351,6 +369,7 @@ const fetchAndRenderBody = (state) => Repository.getGridData(state.cmid).then((d
     state.conferenceend = data.conferenceend;
     state.daystart = data.daystart;
     state.dayend = data.dayend;
+    state.daybounds = dayBoundsMap(data.daybounds);
     state.pendingnotifications = data.pendingnotifications;
     syncGapMinutesInput(state);
     syncPxPerHourInput(state);
@@ -392,10 +411,33 @@ const syncPxPerHourInput = (state) => {
 };
 
 /**
- * Reflects state.daystart/state.dayend into the quick display-window control's two
- * time inputs and its "Automatic" checkbox, without disturbing whichever one currently
- * has focus -- mirrors syncGapMinutesInput()/syncPxPerHourInput(). The two time inputs
- * are disabled whenever "Automatic" is checked (both state values are null).
+ * The display-window value the quick control currently edits, which depends on the day
+ * selector (user request, 2026-07-07 -- the control is scoped to the selected day):
+ * - "All days" selected: the INSTANCE DEFAULT (state.daystart/dayend). Automatic there
+ *   means "derive each day's axis from its slots".
+ * - a specific day selected: that day's OVERRIDE (state.daybounds[day]), or null/null
+ *   when the day has none. Automatic there means "no override -- inherit the default".
+ *
+ * @param {Object} state The module state object
+ * @return {{day: (String|null), daystart: (Number|null), dayend: (Number|null)}}
+ */
+const currentDayBoundsScope = (state) => {
+    if (!state.selectedDay || state.selectedDay === DayUtils.ALL_DAYS) {
+        return {day: null, daystart: state.daystart, dayend: state.dayend};
+    }
+    const override = state.daybounds[state.selectedDay];
+    return {
+        day: state.selectedDay,
+        daystart: override ? override.daystart : null,
+        dayend: override ? override.dayend : null,
+    };
+};
+
+/**
+ * Reflects the currently-scoped display window (see currentDayBoundsScope()) into the
+ * quick control's two time inputs, its "Automatic" checkbox, and its scope label, without
+ * disturbing whichever one currently has focus -- mirrors syncGapMinutesInput()/
+ * syncPxPerHourInput(). The two time inputs are disabled whenever "Automatic" is checked.
  *
  * @param {Object} state The module state object
  */
@@ -407,7 +449,15 @@ const syncDayBoundsInputs = (state) => {
         return;
     }
 
-    const isAutomatic = state.daystart === null || state.dayend === null;
+    const scope = currentDayBoundsScope(state);
+
+    const scopeLabel = state.root.querySelector('.mod_confscheduler-daybounds-scope');
+    if (scopeLabel) {
+        const target = scope.day === null ? state.strings.alldays : DayUtils.formatDayLabel(scope.day);
+        scopeLabel.textContent = `${state.strings.dayboundsscope}: ${target}`;
+    }
+
+    const isAutomatic = scope.daystart === null || scope.dayend === null;
     if (document.activeElement !== automaticCheckbox) {
         automaticCheckbox.checked = isAutomatic;
     }
@@ -415,10 +465,10 @@ const syncDayBoundsInputs = (state) => {
     endInput.disabled = isAutomatic;
 
     if (document.activeElement !== startInput) {
-        startInput.value = isAutomatic ? '' : minutesToTimeValue(state.daystart);
+        startInput.value = isAutomatic ? '' : minutesToTimeValue(scope.daystart);
     }
     if (document.activeElement !== endInput) {
-        endInput.value = isAutomatic ? '' : minutesToTimeValue(state.dayend);
+        endInput.value = isAutomatic ? '' : minutesToTimeValue(scope.dayend);
     }
 };
 
@@ -475,8 +525,12 @@ const onDayBoundsChange = (state) => {
     startInput.disabled = automaticCheckbox.checked;
     endInput.disabled = automaticCheckbox.checked;
 
-    const previousStart = state.daystart;
-    const previousEnd = state.dayend;
+    // Which scope this change targets: the instance default ("All days"), or the
+    // currently-selected day's override.
+    const scopeDay = (state.selectedDay && state.selectedDay !== DayUtils.ALL_DAYS) ? state.selectedDay : null;
+    const previousDefaultStart = state.daystart;
+    const previousDefaultEnd = state.dayend;
+    const previousOverride = scopeDay !== null ? state.daybounds[scopeDay] : undefined;
 
     let newStart = null;
     let newEnd = null;
@@ -492,14 +546,28 @@ const onDayBoundsChange = (state) => {
         }
     }
 
-    state.daystart = newStart;
-    state.dayend = newEnd;
+    // Optimistically update the targeted scope, then revert it on failure.
+    if (scopeDay === null) {
+        state.daystart = newStart;
+        state.dayend = newEnd;
+    } else if (newStart === null) {
+        delete state.daybounds[scopeDay];
+    } else {
+        state.daybounds[scopeDay] = {daystart: newStart, dayend: newEnd};
+    }
+
     startInput.disabled = true;
     endInput.disabled = true;
     renderGridBody(state);
-    Promise.resolve(Repository.setDayBounds(state.cmid, newStart, newEnd)).catch((error) => {
-        state.daystart = previousStart;
-        state.dayend = previousEnd;
+    Promise.resolve(Repository.setDayBounds(state.cmid, newStart, newEnd, scopeDay)).catch((error) => {
+        if (scopeDay === null) {
+            state.daystart = previousDefaultStart;
+            state.dayend = previousDefaultEnd;
+        } else if (previousOverride === undefined) {
+            delete state.daybounds[scopeDay];
+        } else {
+            state.daybounds[scopeDay] = previousOverride;
+        }
         renderGridBody(state);
         Notification.exception(error);
     }).finally(() => {
@@ -709,14 +777,15 @@ const renderHeaders = (state) => {
  * @param {String} dayKey The day being rendered (YYYY-MM-DD)
  */
 const renderOutOfHoursBands = (state, columnsWrap, dayKey) => {
+    const eff = DayUtils.boundsForDay(dayKey, state.daystart, state.dayend, state.daybounds);
     const bands = DayUtils.outOfHoursBands(
         dayKey,
         state.timelineStart,
         state.timelineEnd,
         state.conferencestart,
         state.conferenceend,
-        state.daystart,
-        state.dayend
+        eff.daystart,
+        eff.dayend
     );
     bands.forEach((band) => {
         const bandEl = document.createElement('div');
@@ -879,7 +948,8 @@ const renderAllDaysBody = (state) => {
         wrapper.appendChild(headerRow);
 
         const daySlots = state.slotsByDay[dayKey] || [];
-        const bounds = DayUtils.computeDayTimelineBounds(daySlots, dayKey, state.daystart, state.dayend);
+        const eff = DayUtils.boundsForDay(dayKey, state.daystart, state.dayend, state.daybounds);
+        const bounds = DayUtils.computeDayTimelineBounds(daySlots, dayKey, eff.daystart, eff.dayend);
         state.timelineStart = bounds.start;
         state.timelineEnd = bounds.end;
 
@@ -1941,6 +2011,10 @@ const bindEvents = (state) => {
             state.selectedDay = daySelect.value;
             applyDayFilter(state);
             renderGridBody(state);
+            // The display-window quick control is scoped to the selected day (user
+            // request, 2026-07-07), so re-sync it to show that day's window whenever the
+            // day changes.
+            syncDayBoundsInputs(state);
             // Dims/undims the unscheduled panel depending on the newly-selected day
             // (inert while "All days" is showing, see renderUnscheduledPanel()'s
             // docblock) -- its list content is unaffected by which day is selected,
@@ -1999,6 +2073,7 @@ export const init = async(cmid, confschedulerid, programurl = null) => {
         cancel, movecolumn, addroom, addspanblock, editspanblock, autoschedulerrun,
         filterbytrack, alldays, blocknonpreferredday, blockoverbooked, roomcapacity,
         sendnotifications, confirmsendnotifications, sendnotificationssummary, sendnotificationsnonepending,
+        dayboundsscope,
     ] = await getStrings([
         {key: 'unschedule', component: 'mod_confscheduler'},
         {key: 'favourite', component: 'mod_confscheduler'},
@@ -2020,6 +2095,7 @@ export const init = async(cmid, confschedulerid, programurl = null) => {
         {key: 'confirmsendnotifications', component: 'mod_confscheduler'},
         {key: 'sendnotificationssummary', component: 'mod_confscheduler'},
         {key: 'sendnotificationsnonepending', component: 'mod_confscheduler'},
+        {key: 'dayboundsscope', component: 'mod_confscheduler'},
     ]);
 
     const state = {
@@ -2041,6 +2117,7 @@ export const init = async(cmid, confschedulerid, programurl = null) => {
         conferenceend: null,
         daystart: null,
         dayend: null,
+        daybounds: {},
         pendingnotifications: 0,
         timelineStart: 0,
         timelineEnd: 0,
@@ -2052,6 +2129,7 @@ export const init = async(cmid, confschedulerid, programurl = null) => {
             cancel, movecolumn, addroom, addspanblock, editspanblock, autoschedulerrun,
             filterbytrack, alldays, blocknonpreferredday, blockoverbooked, roomcapacity,
             sendnotifications, confirmsendnotifications, sendnotificationssummary, sendnotificationsnonepending,
+            dayboundsscope,
         },
     };
 

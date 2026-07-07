@@ -95,5 +95,21 @@
         <INDEX NAME="confschedulertype" UNIQUE="true" FIELDS="confscheduler, notiftype"/>
       </INDEXES>
     </TABLE>
+    <TABLE NAME="confscheduler_daybounds" COMMENT="Per-conference-day override of the daily display-window start/end. A day without a row here inherits the instance-level confscheduler.daystart/dayend default. Keyed by a Y-m-d day key (the same day identity the grid's client-side code uses) rather than a timestamp, to avoid the browser-vs-server timezone ambiguity documented in amd/src/day_utils.js">
+      <FIELDS>
+        <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="confscheduler" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" DEFAULT="0" COMMENT="Foreign key to confscheduler table"/>
+        <FIELD NAME="day" TYPE="char" LENGTH="10" NOTNULL="true" SEQUENCE="false" COMMENT="The conference day this window applies to, as a Y-m-d day key (e.g. 2026-07-10)"/>
+        <FIELD NAME="daystart" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" COMMENT="Display-window start for this day, minutes since midnight (e.g. 480 = 08:00)"/>
+        <FIELD NAME="dayend" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" COMMENT="Display-window end for this day, minutes since midnight; always strictly greater than daystart"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+        <KEY NAME="confscheduler" TYPE="foreign" FIELDS="confscheduler" REFTABLE="confscheduler" REFFIELDS="id"/>
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="confschedulerday" UNIQUE="true" FIELDS="confscheduler, day"/>
+      </INDEXES>
+    </TABLE>
   </TABLES>
 </XMLDB>

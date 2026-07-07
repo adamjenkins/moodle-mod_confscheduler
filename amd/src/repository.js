@@ -227,18 +227,23 @@ export const setPxPerHour = (cmid, pxperhour) => Ajax.call([{
 }])[0];
 
 /**
- * Sets a confscheduler instance's daily display-window bounds, in minutes since
- * midnight. Backs the quick control at the top of the schedule grid in edit mode
- * (user feedback, 2026-07-06). Pass null for both to clear back to "automatic".
+ * Sets a daily display-window bound, in minutes since midnight. Backs the quick control
+ * at the top of the schedule grid in edit mode. Pass null for both bounds to clear.
+ *
+ * With no day (or null), sets the instance-level default. With a day key (YYYY-MM-DD),
+ * sets that single day's override -- both bounds null then deletes the override so the
+ * day falls back to the default (user request, 2026-07-07: the window is settable per
+ * conference day).
  *
  * @param {Number} cmid
  * @param {Number|null} daystart
  * @param {Number|null} dayend
+ * @param {String|null} [day] The conference day (YYYY-MM-DD) to override, or null for the default
  * @return {Promise}
  */
-export const setDayBounds = (cmid, daystart, dayend) => Ajax.call([{
+export const setDayBounds = (cmid, daystart, dayend, day = null) => Ajax.call([{
     methodname: 'mod_confscheduler_set_day_bounds',
-    args: {cmid, daystart, dayend},
+    args: {cmid, daystart, dayend, day},
 }])[0];
 
 /**

@@ -156,6 +156,74 @@ final class set_day_bounds_test extends advanced_testcase {
     }
 
     /**
+     * A per-day override (a day key given) is stored in confscheduler_daybounds and
+     * leaves the instance-level default untouched (user request, 2026-07-07).
+     */
+    public function test_sets_per_day_override(): void {
+        $this->resetAfterTest();
+        global $DB;
+
+        [$course, $cmid, $confscheduler] = $this->create_fixture();
+        $teacher = $this->getDataGenerator()->create_and_enrol($course, 'editingteacher');
+        $this->setUser($teacher);
+
+        // A default plus a different window for one specific day.
+        set_day_bounds::execute($cmid, 540, 1020);
+        $result = set_day_bounds::execute($cmid, 480, 1140, '2026-07-10');
+        $this->assertTrue($result['success']);
+
+        // The default is unchanged.
+        $this->assertEquals(540, $DB->get_field('confscheduler', 'daystart', ['id' => $confscheduler->id]));
+        $this->assertEquals(1020, $DB->get_field('confscheduler', 'dayend', ['id' => $confscheduler->id]));
+
+        // The override exists for exactly that day.
+        $overrides = api::get_day_bounds((int) $confscheduler->id);
+        $this->assertSame(['2026-07-10' => ['daystart' => 480, 'dayend' => 1140]], $overrides);
+
+        // Updating the same day upserts (no duplicate row).
+        set_day_bounds::execute($cmid, 500, 1000, '2026-07-10');
+        $this->assertSame(['2026-07-10' => ['daystart' => 500, 'dayend' => 1000]], api::get_day_bounds((int) $confscheduler->id));
+        $this->assertEquals(1, $DB->count_records('confscheduler_daybounds', ['confscheduler' => $confscheduler->id]));
+    }
+
+    /**
+     * Clearing an override (both bounds null with a day given) deletes just that day's
+     * row and leaves the instance default and other days' overrides intact.
+     */
+    public function test_clears_per_day_override(): void {
+        $this->resetAfterTest();
+        global $DB;
+
+        [$course, $cmid, $confscheduler] = $this->create_fixture();
+        $teacher = $this->getDataGenerator()->create_and_enrol($course, 'editingteacher');
+        $this->setUser($teacher);
+
+        set_day_bounds::execute($cmid, 540, 1020);
+        set_day_bounds::execute($cmid, 480, 1140, '2026-07-10');
+        set_day_bounds::execute($cmid, 600, 900, '2026-07-11');
+
+        set_day_bounds::execute($cmid, null, null, '2026-07-10');
+
+        $this->assertSame(['2026-07-11' => ['daystart' => 600, 'dayend' => 900]], api::get_day_bounds((int) $confscheduler->id));
+        // The default survives.
+        $this->assertEquals(540, $DB->get_field('confscheduler', 'daystart', ['id' => $confscheduler->id]));
+    }
+
+    /**
+     * A malformed day key (not Y-m-d) is rejected.
+     */
+    public function test_rejects_invalid_day_key(): void {
+        $this->resetAfterTest();
+
+        [$course, $cmid] = $this->create_fixture();
+        $teacher = $this->getDataGenerator()->create_and_enrol($course, 'editingteacher');
+        $this->setUser($teacher);
+
+        $this->expectException(\invalid_parameter_exception::class);
+        set_day_bounds::execute($cmid, 480, 1080, 'not-a-date');
+    }
+
+    /**
      * A plain student (no manageschedule) cannot call this endpoint.
      */
     public function test_requires_manageschedule_capability(): void {

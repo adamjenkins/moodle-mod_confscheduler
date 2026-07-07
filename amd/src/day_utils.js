@@ -183,6 +183,28 @@ export const computeDayTimelineBounds = (slots, fallbackDayKey, daystartminutes,
 };
 
 /**
+ * Resolves the effective daily display-window minutes for one day: that day's own
+ * override if one exists, otherwise the instance-level default (user request,
+ * 2026-07-07 -- the window is now settable per conference day, since these often differ
+ * from one day to the next). Either returned value may be null, meaning "automatic" (an
+ * unset default, or a default the day inherits) -- computeDayTimelineBounds() and
+ * outOfHoursBands() already treat a null pair as "derive the axis from the day's slots".
+ *
+ * @param {String} dayKey The day (YYYY-MM-DD) whose effective window is wanted
+ * @param {Number|null} defaultStart Instance default start, minutes since midnight, or null
+ * @param {Number|null} defaultEnd Instance default end, minutes since midnight, or null
+ * @param {Object.<String, {daystart: Number, dayend: Number}>} perDay Overrides keyed by day key
+ * @return {{daystart: Number|null, dayend: Number|null}}
+ */
+export const boundsForDay = (dayKey, defaultStart, defaultEnd, perDay) => {
+    const override = perDay && perDay[dayKey];
+    if (override) {
+        return {daystart: override.daystart, dayend: override.dayend};
+    }
+    return {daystart: defaultStart, dayend: defaultEnd};
+};
+
+/**
  * Formats a day key as a short human-readable local date (e.g. "Mon, 1 Sep 2026")
  * for use as a day-selector option label.
  *
