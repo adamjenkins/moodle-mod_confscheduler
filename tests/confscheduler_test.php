@@ -104,7 +104,7 @@ final class confscheduler_test extends advanced_testcase {
 
         $this->assertTrue(confscheduler_supports(FEATURE_MOD_INTRO));
         $this->assertTrue(confscheduler_supports(FEATURE_BACKUP_MOODLE2));
-        $this->assertSame(MOD_PURPOSE_OTHER, confscheduler_supports(FEATURE_MOD_PURPOSE));
+        $this->assertSame(MOD_PURPOSE_COLLABORATION, confscheduler_supports(FEATURE_MOD_PURPOSE));
         $this->assertNull(confscheduler_supports('some_unknown_feature'));
     }
 
