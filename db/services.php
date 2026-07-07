@@ -132,6 +132,14 @@ $functions = [
         'ajax'         => true,
         'capabilities' => 'mod/confscheduler:manageschedule',
     ],
+    'mod_confscheduler_set_last_viewed_day' => [
+        'classname'    => 'mod_confscheduler\external\set_last_viewed_day',
+        'description'  => 'Records the current user\'s last-viewed Display-mode day, if the instance has '
+            . 'rememberlastday enabled.',
+        'type'         => 'write',
+        'ajax'         => true,
+        'capabilities' => 'mod/confscheduler:viewschedule',
+    ],
     'mod_confscheduler_send_pending_notifications' => [
         'classname'    => 'mod_confscheduler\external\send_pending_notifications',
         'description'  => 'Sends the schedule-change notification for every presentation slot with a '

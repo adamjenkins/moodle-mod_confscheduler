@@ -49,6 +49,7 @@ class backup_confscheduler_activity_structure_step extends backup_activity_struc
         $confscheduler = new backup_nested_element('confscheduler', ['id'], [
             'name', 'intro', 'introformat', 'confprogramcmid', 'conferencestart',
             'conferenceend', 'gapminutes', 'pxperhour', 'notificationsenabled',
+            'daystart', 'dayend', 'defaultdateview', 'rememberlastday',
             'timecreated', 'timemodified',
         ]);
 

@@ -51,6 +51,7 @@
 require_once('../../config.php');
 require_once($CFG->dirroot . '/mod/confscheduler/lib.php');
 
+use mod_confscheduler\api;
 use mod_confscheduler\local\display_link;
 
 $id = required_param('id', PARAM_INT);
@@ -140,12 +141,27 @@ if ($editmode) {
         'exporturl'       => (new moodle_url('/mod/confscheduler/export.php', ['id' => $cm->id]))->out(false),
     ]);
 
+    // Which day the day selector starts on (user request, 2026-07-07): a guest has no
+    // persisted state to remember (same reasoning as $canfavourite above), so
+    // rememberlastday never applies to them regardless of the instance setting. A
+    // remembered day, when present, takes precedence over defaultdateview -- see
+    // scheduler_display.js's init() docblock.
+    $initialday = null;
+    if ($confscheduler->rememberlastday && !isguestuser()) {
+        $initialday = api::get_last_viewed_day((int) $confscheduler->id, (int) $USER->id);
+    }
+    if ($initialday === null && $confscheduler->defaultdateview === 'all') {
+        $initialday = 'all';
+    }
+
     $PAGE->requires->js_call_amd('mod_confscheduler/scheduler_display', 'init', [
         $cm->id,
         (int) $confscheduler->id,
         (int) $confscheduler->confprogramcmid,
         $programurl->out(false),
         $canfavourite,
+        $initialday,
+        (bool) $confscheduler->rememberlastday && !isguestuser(),
     ]);
 }
 

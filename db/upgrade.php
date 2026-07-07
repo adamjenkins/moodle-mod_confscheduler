@@ -242,5 +242,38 @@ function xmldb_confscheduler_upgrade($oldversion) {
         upgrade_mod_savepoint(true, 2026070700, 'confscheduler');
     }
 
+    if ($oldversion < 2026070702) {
+        // Default date view + "remember last viewed day" (user request, 2026-07-07):
+        // defaultdateview controls which day a first-time/no-preference viewer's
+        // Display-mode day selector starts on ('closest', the previous behaviour, or
+        // 'all'); rememberlastday is a master switch for a per-user last-viewed-day
+        // preference (see classes/api.php::get_last_viewed_day()/set_last_viewed_day())
+        // taking precedence over defaultdateview when set. Both default to the
+        // previous behaviour (closest day, no remembering) so existing instances are
+        // unaffected until an organiser opts in.
+        $table = new xmldb_table('confscheduler');
+
+        $field = new xmldb_field('defaultdateview', XMLDB_TYPE_CHAR, '10', null, XMLDB_NOTNULL, null, 'closest', 'dayend');
+        if (!$dbman->field_exists($table, $field)) {
+            $dbman->add_field($table, $field);
+        }
+
+        $field = new xmldb_field(
+            'rememberlastday',
+            XMLDB_TYPE_INTEGER,
+            '1',
+            null,
+            XMLDB_NOTNULL,
+            null,
+            '0',
+            'defaultdateview'
+        );
+        if (!$dbman->field_exists($table, $field)) {
+            $dbman->add_field($table, $field);
+        }
+
+        upgrade_mod_savepoint(true, 2026070702, 'confscheduler');
+    }
+
     return true;
 }

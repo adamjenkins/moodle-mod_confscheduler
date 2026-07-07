@@ -1202,4 +1202,37 @@ final class api_test extends advanced_testcase {
         $this->expectException(\invalid_parameter_exception::class);
         api::set_pxperhour((int) $confscheduler->id, api::MIN_PX_PER_HOUR - 1);
     }
+
+    /**
+     * get_last_viewed_day()/set_last_viewed_day() round-trip a per-user, per-instance
+     * day preference (user request, 2026-07-07), returning null when never set, and
+     * are scoped per confscheduler instance -- two different instances (or two
+     * different users on the same instance) never see each other's value.
+     */
+    public function test_get_and_set_last_viewed_day(): void {
+        $this->resetAfterTest();
+
+        $confschedulerid1 = $this->create_confscheduler();
+        $confschedulerid2 = $this->create_confscheduler();
+        $user1 = $this->getDataGenerator()->create_user();
+        $user2 = $this->getDataGenerator()->create_user();
+
+        $this->assertNull(api::get_last_viewed_day($confschedulerid1, (int) $user1->id));
+
+        api::set_last_viewed_day($confschedulerid1, (int) $user1->id, '2026-08-15');
+        $this->assertSame('2026-08-15', api::get_last_viewed_day($confschedulerid1, (int) $user1->id));
+
+        // A different user on the same instance is unaffected.
+        $this->assertNull(api::get_last_viewed_day($confschedulerid1, (int) $user2->id));
+
+        // The same user on a DIFFERENT instance is also unaffected.
+        $this->assertNull(api::get_last_viewed_day($confschedulerid2, (int) $user1->id));
+
+        // 'all' is a valid value too (the All days view).
+        api::set_last_viewed_day($confschedulerid1, (int) $user1->id, 'all');
+        $this->assertSame('all', api::get_last_viewed_day($confschedulerid1, (int) $user1->id));
+
+        $this->expectException(\invalid_parameter_exception::class);
+        api::set_last_viewed_day($confschedulerid1, (int) $user1->id, 'not-a-day');
+    }
 }

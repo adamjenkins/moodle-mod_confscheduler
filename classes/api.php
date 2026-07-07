@@ -470,6 +470,62 @@ class api {
     }
 
     /**
+     * Returns a user's last-viewed day for a confscheduler instance (user request,
+     * 2026-07-07), or null if they have never viewed it (or the instance's
+     * rememberlastday switch is off -- callers are responsible for checking that
+     * switch themselves before deciding whether to honour this, the same division
+     * of responsibility as every other raw-data-layer method in this class; see this
+     * class's own docblock).
+     *
+     * Stored via Moodle's user preferences API rather than a new table: this is
+     * genuinely per-user, per-instance state with no need to be queried in bulk
+     * (unlike e.g. favourites), which is exactly what that API is for.
+     *
+     * @param int $confschedulerid The confscheduler instance id
+     * @param int $userid The user id
+     * @return string|null A day key ('Y-m-d') or DayUtils.ALL_DAYS's server-side
+     *         equivalent ('all'), or null if never set
+     */
+    public static function get_last_viewed_day(int $confschedulerid, int $userid): ?string {
+        $value = get_user_preferences(self::last_viewed_day_preference_name($confschedulerid), null, $userid);
+        return $value === null || $value === '' ? null : $value;
+    }
+
+    /**
+     * Sets a user's last-viewed day for a confscheduler instance -- see
+     * get_last_viewed_day()'s docblock. Called from the mod_confscheduler_set_last_
+     * viewed_day AJAX endpoint every time the Display-mode day selector changes,
+     * but ONLY when the instance's rememberlastday switch is on (the AJAX endpoint's
+     * responsibility to check, same division of responsibility as elsewhere in this
+     * class).
+     *
+     * @param int $confschedulerid The confscheduler instance id
+     * @param int $userid The user id
+     * @param string $day A day key ('Y-m-d') or 'all'
+     * @return void
+     * @throws \invalid_parameter_exception if $day is not a 'Y-m-d' key or 'all'
+     */
+    public static function set_last_viewed_day(int $confschedulerid, int $userid, string $day): void {
+        if ($day !== 'all' && !preg_match('/^\d{4}-\d{2}-\d{2}$/', $day)) {
+            throw new \invalid_parameter_exception(get_string('error:invaliddayvalue', 'mod_confscheduler'));
+        }
+
+        set_user_preference(self::last_viewed_day_preference_name($confschedulerid), $day, $userid);
+    }
+
+    /**
+     * The user-preference name backing get_last_viewed_day()/set_last_viewed_day(),
+     * scoped per confscheduler instance since Moodle's user preferences are a flat
+     * per-user namespace with no built-in per-activity scoping.
+     *
+     * @param int $confschedulerid The confscheduler instance id
+     * @return string
+     */
+    private static function last_viewed_day_preference_name(int $confschedulerid): string {
+        return 'mod_confscheduler_lastday_' . $confschedulerid;
+    }
+
+    /**
      * Validates that a submissionid may legitimately be scheduled by a given
      * confscheduler instance: it must (a) exist, (b) belong to the
      * mod_confsubmissions instance that the confprogram instance linked via

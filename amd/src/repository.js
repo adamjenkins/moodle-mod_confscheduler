@@ -258,3 +258,17 @@ export const sendPendingNotifications = (cmid) => Ajax.call([{
     methodname: 'mod_confscheduler_send_pending_notifications',
     args: {cmid},
 }])[0];
+
+/**
+ * Records the current user's last-viewed Display-mode day (user request,
+ * 2026-07-07). A no-op server-side unless the instance has rememberlastday
+ * enabled -- see that endpoint's own docblock.
+ *
+ * @param {Number} cmid The confscheduler course-module id
+ * @param {String} day A day key (YYYY-MM-DD) or 'all'
+ * @return {Promise}
+ */
+export const setLastViewedDay = (cmid, day) => Ajax.call([{
+    methodname: 'mod_confscheduler_set_last_viewed_day',
+    args: {cmid, day},
+}])[0];

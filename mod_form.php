@@ -144,6 +144,21 @@ class mod_confscheduler_mod_form extends moodleform_mod {
             );
         }
 
+        // Display-mode day-selector defaults (user request, 2026-07-07). Both default
+        // to the previous, only behaviour: closest day, no remembering.
+        $mform->addElement('header', 'displaysettings', get_string('displaysettings', 'mod_confscheduler'));
+
+        $mform->addElement('select', 'defaultdateview', get_string('defaultdateview', 'mod_confscheduler'), [
+            'closest' => get_string('dateview_closest', 'mod_confscheduler'),
+            'all'     => get_string('dateview_all', 'mod_confscheduler'),
+        ]);
+        $mform->setDefault('defaultdateview', 'closest');
+        $mform->addHelpButton('defaultdateview', 'defaultdateview', 'mod_confscheduler');
+
+        $mform->addElement('advcheckbox', 'rememberlastday', get_string('rememberlastday', 'mod_confscheduler'));
+        $mform->setDefault('rememberlastday', 0);
+        $mform->addHelpButton('rememberlastday', 'rememberlastday', 'mod_confscheduler');
+
         // Standard module elements (visibility, groups, etc.).
         $this->standard_coursemodule_elements();
 

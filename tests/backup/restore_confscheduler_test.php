@@ -63,7 +63,10 @@ final class restore_confscheduler_test extends \restore_date_testcase {
         $confscheduler = $this->getDataGenerator()->create_module('confscheduler', [
             'course'          => $course->id,
             'confprogramcmid' => $confprogramcm->id,
+            'defaultdateview' => 'all',
+            'rememberlastday' => 1,
         ]);
+        \mod_confscheduler\api::set_day_bounds((int) $confscheduler->id, 480, 1080);
 
         $speaker = $this->getDataGenerator()->create_user();
         $decider = $this->getDataGenerator()->create_user();
@@ -112,6 +115,16 @@ final class restore_confscheduler_test extends \restore_date_testcase {
 
         // The critical cross-activity checks.
         $this->assertSame((int) $newconfprogramcm->id, (int) $newconfscheduler->confprogramcmid);
+
+        // Plain scalar settings fields (defaultdateview/rememberlastday, added
+        // 2026-07-07, and daystart/dayend -- a pre-existing gap in the backup field
+        // list fixed alongside, since both belong to this same "instance settings"
+        // group) must all survive the round-trip untouched, same as any other
+        // instance-level setting.
+        $this->assertSame('all', $newconfscheduler->defaultdateview);
+        $this->assertSame(1, (int) $newconfscheduler->rememberlastday);
+        $this->assertSame(480, (int) $newconfscheduler->daystart);
+        $this->assertSame(1080, (int) $newconfscheduler->dayend);
 
         $newroom = $DB->get_record('confscheduler_room', ['confscheduler' => $newconfscheduler->id], '*', MUST_EXIST);
         $this->assertSame('Main Hall', $newroom->name);

@@ -611,7 +611,22 @@ const fetchAndRenderAll = (state) => Repository.getGridData(state.cmid).then((da
     state.slotsByDay = DayUtils.groupSlotsByDay(data.slots);
     state.dayKeys = DayUtils.selectableDayKeys(state.conferencestart, state.conferenceend, data.slots);
     if (!state.selectedDay || (state.selectedDay !== DayUtils.ALL_DAYS && !state.dayKeys.includes(state.selectedDay))) {
-        state.selectedDay = DayUtils.defaultDayKey(state.dayKeys);
+        // Only the very first successful load honours initialSelectedDay (the
+        // organiser's "Default day view" setting, or -- taking precedence, per
+        // rememberlastday -- this user's own remembered day, both resolved in
+        // init() below). A LATER re-fetch landing here means the previously
+        // selected day stopped existing (e.g. its last slot was unscheduled) --
+        // that should fall back to "closest", not silently jump back to the
+        // original default/remembered day out from under the viewer.
+        if (
+            !state.hasLoadedOnce && state.initialSelectedDay !== null &&
+            (state.initialSelectedDay === DayUtils.ALL_DAYS || state.dayKeys.includes(state.initialSelectedDay))
+        ) {
+            state.selectedDay = state.initialSelectedDay;
+        } else {
+            state.selectedDay = DayUtils.defaultDayKey(state.dayKeys);
+        }
+        state.hasLoadedOnce = true;
     }
     if (state.selectedDay !== DayUtils.ALL_DAYS) {
         renderHeaders(state);
@@ -698,6 +713,12 @@ const bindEvents = (state) => {
         if (daySelect) {
             state.selectedDay = daySelect.value;
             renderGridBody(state);
+            if (state.rememberlastday) {
+                // Fire-and-forget, same as writeMyTimetableState() above: this is a
+                // best-effort convenience, not something a failure should ever surface
+                // to the viewer or block the (already-applied) UI update on.
+                Repository.setLastViewedDay(state.cmid, state.selectedDay).catch(Notification.exception);
+            }
             return;
         }
 
@@ -716,9 +737,16 @@ const bindEvents = (state) => {
  * @param {Number} confprogramcmid The linked mod_confprogram course-module id
  * @param {String} programurl The URL of the linked mod_confprogram activity's view page
  * @param {Boolean} canfavourite Whether the current user may toggle favourites
+ * @param {String|null} initialday The day (or 'all') to select on first load (user request,
+ *        2026-07-07), already resolved server-side (rememberlastday's remembered day, if any and
+ *        enabled, else defaultdateview mapped to 'all'/null) -- null means "closest day", the
+ *        previous, only behaviour.
+ * @param {Boolean} rememberlastday Whether to report every day-selector change back to the server
+ *        via Repository.setLastViewedDay() (the instance's rememberlastday switch)
  * @return {Promise}
  */
-export const init = async(cmid, confschedulerid, confprogramcmid, programurl, canfavourite) => {
+export const init = async(cmid, confschedulerid, confprogramcmid, programurl, canfavourite,
+        initialday, rememberlastday) => {
     const root = document.getElementById('mod_confscheduler-display-root');
     if (!root) {
         return;
@@ -749,6 +777,9 @@ export const init = async(cmid, confschedulerid, confprogramcmid, programurl, ca
         slotsByDay: {},
         dayKeys: [],
         selectedDay: null,
+        initialSelectedDay: initialday,
+        hasLoadedOnce: false,
+        rememberlastday,
         dayStart: 0,
         myTimetableActive: readMyTimetableState(cmid),
         strings: {favourite, filterbytrack, alldays, presentationwithdrawn, blockwithdrawn},
