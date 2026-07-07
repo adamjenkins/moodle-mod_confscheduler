@@ -66,7 +66,13 @@ class grid_data {
      * driving the edit-mode "Send notifications" button (user request, 2026-07-05). Each
      * 'slots'/'unscheduled' entry with a track also includes 'trackcolour' (string|null,
      * a 6-digit hex colour, or null when the track has none configured -- user request,
-     * 2026-07-06), for the client to theme the track pill with.
+     * 2026-07-06), for the client to theme the track pill with. Each 'slots' entry with
+     * a submissionid also includes 'withdrawn' (bool; true when
+     * mod_confsubmissions's own confsubmissions_submission.status for it is 'withdrawn'
+     * -- user request, 2026-07-07, so the read-only Display-mode grid can grey out and
+     * strike through an already-scheduled block whose presentation was since withdrawn,
+     * instead of clicking through to a submission detail modal for a cancelled talk;
+     * always false for a span-block, matching every other submission-only field above).
      */
     public static function build(\stdClass $confscheduler, int $userid): array {
         global $DB;
@@ -139,6 +145,7 @@ class grid_data {
                 'nonpreferredday' => false,
                 'favouritecount'  => 0,
                 'overbooked'      => false,
+                'withdrawn'       => false,
             ];
 
             if ($slot->submissionid !== null) {
@@ -147,6 +154,7 @@ class grid_data {
                 if ($submission) {
                     $entry['title'] = format_string($submission->title, true, ['escape' => false]);
                     $entry['speakers'] = self::format_speakers((int) $submission->id);
+                    $entry['withdrawn'] = $submission->status === 'withdrawn';
                     $hastrack = !empty($submission->trackid) && isset($tracksbyid[(int) $submission->trackid]);
                     $entry['track'] = $hastrack
                         ? format_string($tracksbyid[(int) $submission->trackid]->name, true, ['escape' => false])

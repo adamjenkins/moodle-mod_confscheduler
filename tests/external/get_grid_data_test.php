@@ -370,4 +370,44 @@ final class get_grid_data_test extends advanced_testcase {
         $this->assertSame(480, $clean['daystart']);
         $this->assertSame(1080, $clean['dayend']);
     }
+
+    /**
+     * A scheduled slot's 'withdrawn' flag tracks mod_confsubmissions's own
+     * confsubmissions_submission.status directly: false while the submission is
+     * still 'accepted', true once the submitter withdraws it (user request,
+     * 2026-07-07, so the read-only Display-mode grid can grey out/strike through an
+     * already-scheduled block instead of clicking through to a normal submission
+     * detail modal for a cancelled talk). Also run through clean_returnvalue(), per
+     * the exact lesson this file's own trackcolour/daybounds tests already learned
+     * the hard way: an undeclared field in execute_returns() is silently stripped
+     * in transit even though execute() alone would keep passing.
+     */
+    public function test_slot_flags_withdrawn_submission(): void {
+        global $DB;
+        $this->resetAfterTest();
+
+        [$course, $cmid, $confscheduler, , $submissionid] = $this->create_fixture();
+        $teacher = $this->getDataGenerator()->create_and_enrol($course, 'editingteacher');
+        $this->setUser($teacher);
+
+        $roomid = api::add_room((int) $confscheduler->id, 'Main Hall');
+        api::add_slot(
+            (int) $confscheduler->id,
+            [$roomid],
+            strtotime('2026-09-01 10:00:00'),
+            strtotime('2026-09-01 10:30:00'),
+            $submissionid
+        );
+
+        $result = get_grid_data::execute($cmid);
+        $this->assertFalse($result['slots'][0]['withdrawn']);
+
+        $DB->set_field('confsubmissions_submission', 'status', 'withdrawn', ['id' => $submissionid]);
+
+        $result = get_grid_data::execute($cmid);
+        $this->assertTrue($result['slots'][0]['withdrawn']);
+
+        $clean = \core_external\external_api::clean_returnvalue(get_grid_data::execute_returns(), $result);
+        $this->assertTrue($clean['slots'][0]['withdrawn']);
+    }
 }

@@ -339,6 +339,23 @@
         );
 }
 
+/*
+ * Display-mode-only styling for a scheduled block whose presentation has since been
+ * withdrawn (user request, 2026-07-07): greyed out, with a strikethrough across all of
+ * the block's own text (title/speakers/room+time, and, since text-decoration paints
+ * through descendant inline content, the track pill's text too) -- see
+ * amd/src/scheduler_display.js's renderBlock()/bindEvents() for the matching class/
+ * click-notice logic. Never applied in edit mode (amd/src/scheduler_grid.js never reads
+ * the underlying 'withdrawn' flag), the same "edit mode keeps plain styling" convention
+ * .mod_confscheduler-block-nonpreferred above already documents.
+ */
+.mod_confscheduler-block-withdrawn {
+    background: #e9ecef;
+    border-color: rgba(0, 0, 0, 0.15);
+    color: #6c757d;
+    text-decoration: line-through;
+}
+
 .mod_confscheduler-room-capacity {
     font-weight: normal;
     font-size: 0.85em;

@@ -123,6 +123,10 @@ class get_grid_data extends external_api {
                         'Whether favouritecount exceeds this slot\'s (single) room\'s configured capacity ' .
                             '(always false for a span-block, a multi-room slot, or an unlimited-capacity room)'
                     ),
+                    'withdrawn' => new external_value(
+                        PARAM_BOOL,
+                        'Whether the scheduled presentation\'s submission has been withdrawn (always false for a span-block)'
+                    ),
                 ])
             ),
             'unscheduled' => new external_multiple_structure(

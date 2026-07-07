@@ -230,10 +230,12 @@ const renderBlock = (state, columnsWrap, slot) => {
 
     const block = document.createElement('div');
     block.className = 'mod_confscheduler-block mod_confscheduler-block-readonly'
-        + (isSpanBlock ? ' mod_confscheduler-block-span' : '');
+        + (isSpanBlock ? ' mod_confscheduler-block-span' : '')
+        + (slot.withdrawn ? ' mod_confscheduler-block-withdrawn' : '');
     block.dataset.slotid = slot.id;
     block.dataset.submissionid = slot.submissionid !== null ? slot.submissionid : '';
     block.dataset.favourited = slot.favourited ? '1' : '0';
+    block.dataset.withdrawn = slot.withdrawn ? '1' : '0';
     // Percentages of columnsWrap's own width, not pixels -- see
     // scheduler_grid.js's identical treatment (renderBlock()'s docblock there)
     // for why: stays correctly aligned to its room column(s) regardless of how
@@ -261,7 +263,11 @@ const renderBlock = (state, columnsWrap, slot) => {
         label.textContent = slot.label || '';
         block.appendChild(label);
     } else {
-        if (state.canfavourite) {
+        // A withdrawn presentation is not favouritable (there is nothing left to attend),
+        // so neither the interactive star nor the readonly one renders for it -- the block
+        // only ever shows its withdrawn styling/click notice below, regardless of any
+        // favourited state a user may have set before it was withdrawn.
+        if (state.canfavourite && !slot.withdrawn) {
             const favBtn = document.createElement('button');
             favBtn.type = 'button';
             favBtn.className = 'mod_confscheduler-block-fav';
@@ -270,7 +276,7 @@ const renderBlock = (state, columnsWrap, slot) => {
             favBtn.setAttribute('aria-label', state.strings.favourite);
             favBtn.innerHTML = slot.favourited ? '&#9733;' : '&#9734;';
             block.appendChild(favBtn);
-        } else if (slot.favourited) {
+        } else if (slot.favourited && !slot.withdrawn) {
             // Not this user's to toggle (not logged in with mod/confscheduler:favourite,
             // e.g. a guest) but the favourited state itself is still shown, per spec. A
             // visually-hidden text label (not aria-hidden) keeps this state available to
@@ -656,6 +662,14 @@ const bindEvents = (state) => {
         if (link) {
             event.preventDefault();
             const block = link.closest('.mod_confscheduler-block');
+            if (block.dataset.withdrawn === '1') {
+                // The presentation this block once represented has been withdrawn since it
+                // was scheduled -- show a plain notice instead of the usual submission detail
+                // modal (which mod_confprogram's own endpoint would otherwise still happily
+                // return, since a withdrawal never touches the accept decision it checks).
+                Notification.alert(state.strings.presentationwithdrawn, state.strings.blockwithdrawn);
+                return;
+            }
             const submissionid = Number(block.dataset.submissionid);
             if (submissionid) {
                 openProgramDetail(state.confprogramcmid, submissionid);
@@ -710,10 +724,12 @@ export const init = async(cmid, confschedulerid, confprogramcmid, programurl, ca
         return;
     }
 
-    const [favourite, filterbytrack, alldays] = await Promise.all([
+    const [favourite, filterbytrack, alldays, presentationwithdrawn, blockwithdrawn] = await Promise.all([
         getString('favourite', 'mod_confscheduler'),
         getString('filterbytrack', 'mod_confscheduler'),
         getString('alldays', 'mod_confscheduler'),
+        getString('presentationwithdrawn', 'mod_confscheduler'),
+        getString('blockwithdrawn', 'mod_confscheduler'),
     ]);
 
     const state = {
@@ -735,7 +751,7 @@ export const init = async(cmid, confschedulerid, confprogramcmid, programurl, ca
         selectedDay: null,
         dayStart: 0,
         myTimetableActive: readMyTimetableState(cmid),
-        strings: {favourite, filterbytrack, alldays},
+        strings: {favourite, filterbytrack, alldays, presentationwithdrawn, blockwithdrawn},
     };
 
     const myTimetableBtn = root.querySelector('.mod_confscheduler-mytimetable-toggle');
