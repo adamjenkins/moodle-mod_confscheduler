@@ -34,7 +34,7 @@ function confscheduler_supports($feature) {
         FEATURE_SHOW_DESCRIPTION => true,
         FEATURE_BACKUP_MOODLE2   => true,
         FEATURE_GRADE_HAS_GRADE  => false,
-        FEATURE_MOD_PURPOSE      => MOD_PURPOSE_OTHER,
+        FEATURE_MOD_PURPOSE      => MOD_PURPOSE_COLLABORATION,
         default                  => null,
     };
 }
