@@ -215,8 +215,9 @@ const buildTrackPill = (programUrl, trackid, trackname, trackcolour, filterbytra
  * @param {Object} state The module state object
  * @param {HTMLElement} columnsWrap The .mod_confscheduler-columns container
  * @param {Object} slot A slot entry as returned by mod_confscheduler_get_grid_data
+ * @param {Object[]} slots All of this day's slots (used to find a container's children)
  */
-const renderBlock = (state, columnsWrap, slot) => {
+const renderBlock = (state, columnsWrap, slot, slots) => {
     const indices = slot.roomids
         .map((id) => state.rooms.findIndex((room) => room.id === id))
         .filter((index) => index >= 0);
@@ -262,6 +263,15 @@ const renderBlock = (state, columnsWrap, slot) => {
         label.className = 'mod_confscheduler-block-label';
         label.textContent = slot.label || '';
         block.appendChild(label);
+
+        if (slot.iscontainer) {
+            const childHolder = document.createElement('div');
+            childHolder.className = 'mod_confscheduler-container-children';
+            const children = slots.filter((candidate) => candidate.parentslotid === slot.id);
+            childHolder.style.gridTemplateColumns = `repeat(${Math.max(children.length, 1)}, 1fr)`;
+            children.forEach((child) => renderContainerChild(state, childHolder, child));
+            block.appendChild(childHolder);
+        }
     } else {
         // A withdrawn presentation is not favouritable (there is nothing left to attend),
         // so neither the interactive star nor the readonly one renders for it -- the block
@@ -321,7 +331,7 @@ const renderBlock = (state, columnsWrap, slot) => {
         block.appendChild(footer);
     }
 
-    const roomNames = slot.roomids
+    const roomNames = slot.roomnameoverride || slot.roomids
         .map((id) => (state.rooms.find((room) => room.id === id) || {}).name)
         .filter(Boolean)
         .join(', ');
@@ -331,6 +341,70 @@ const renderBlock = (state, columnsWrap, slot) => {
     block.appendChild(roomTime);
 
     columnsWrap.appendChild(block);
+};
+
+/**
+ * Renders one compact, read-only child block inside a container's
+ * child-holder. Deliberately shows only a favourite star (if
+ * state.canfavourite), title, and speakers -- no room or time, permanently,
+ * same rationale as scheduler_grid.js's identical-purpose renderContainerChild()
+ * (user request, 2026-07-08): the container's own roomtime line already shows
+ * that information once for the whole group. Wrapped in the same
+ * .mod_confscheduler-block-link click-through-to-detail-modal anchor a normal
+ * presentation block already uses in this file, so a container child is
+ * clickable exactly like a normally-scheduled presentation (the detail modal
+ * it opens is unaffected by this and still shows the child's real room/time).
+ *
+ * @param {Object} state The module state object
+ * @param {HTMLElement} holder The .mod_confscheduler-container-children element to append into
+ * @param {Object} slot The child slot entry (from state.slots)
+ */
+const renderContainerChild = (state, holder, slot) => {
+    const child = document.createElement('div');
+    child.className = 'mod_confscheduler-block mod_confscheduler-block-child'
+        + (slot.withdrawn ? ' mod_confscheduler-block-withdrawn' : '');
+    child.dataset.slotid = slot.id;
+    child.dataset.submissionid = slot.submissionid !== null ? slot.submissionid : '';
+    child.dataset.favourited = slot.favourited ? '1' : '0';
+    child.dataset.withdrawn = slot.withdrawn ? '1' : '0';
+
+    if (state.canfavourite && !slot.withdrawn) {
+        const favBtn = document.createElement('button');
+        favBtn.type = 'button';
+        favBtn.className = 'mod_confscheduler-block-fav';
+        favBtn.dataset.favourited = slot.favourited ? '1' : '0';
+        favBtn.setAttribute('aria-pressed', slot.favourited ? 'true' : 'false');
+        favBtn.setAttribute('aria-label', state.strings.favourite);
+        favBtn.innerHTML = slot.favourited ? '&#9733;' : '&#9734;';
+        child.appendChild(favBtn);
+    } else if (slot.favourited && !slot.withdrawn) {
+        const favIcon = document.createElement('span');
+        favIcon.className = 'mod_confscheduler-block-fav mod_confscheduler-block-fav-readonly';
+        favIcon.innerHTML = '&#9733;';
+        const favIconLabel = document.createElement('span');
+        favIconLabel.className = 'sr-only';
+        favIconLabel.textContent = state.strings.favourite;
+        favIcon.appendChild(favIconLabel);
+        child.appendChild(favIcon);
+    }
+
+    const link = document.createElement('a');
+    link.className = 'mod_confscheduler-block-link';
+    link.href = state.programUrl;
+
+    const title = document.createElement('div');
+    title.className = 'mod_confscheduler-block-title';
+    title.textContent = slot.title || '';
+    link.appendChild(title);
+
+    const speakers = document.createElement('div');
+    speakers.className = 'mod_confscheduler-block-speakers';
+    speakers.textContent = slot.speakers || '';
+    link.appendChild(speakers);
+
+    child.appendChild(link);
+
+    holder.appendChild(child);
 };
 
 /**
@@ -480,7 +554,7 @@ const buildDayGridInto = (state, gridEl, slots, dayKey) => {
         columnsWrap.appendChild(bandEl);
     });
 
-    slots.forEach((slot) => renderBlock(state, columnsWrap, slot));
+    slots.filter((slot) => !slot.parentslotid).forEach((slot) => renderBlock(state, columnsWrap, slot, slots));
 };
 
 /**
