@@ -155,6 +155,51 @@ final class get_grid_data_test extends advanced_testcase {
     }
 
     /**
+     * The grid payload exposes iscontainer/parentslotid/roomnameoverride for a
+     * container and its child, with the child's roomids/roomnameoverride
+     * resolved from the parent (user request, 2026-07-08 -- poster/keynote
+     * container blocks).
+     */
+    public function test_grid_data_exposes_container_fields(): void {
+        $this->resetAfterTest();
+
+        [$course, $cmid, $confscheduler, , $submissionid] = $this->create_fixture();
+        $teacher = $this->getDataGenerator()->create_and_enrol($course, 'editingteacher');
+        $this->setUser($teacher);
+
+        $room1 = api::add_room((int) $confscheduler->id, 'Main Hall');
+        $room2 = api::add_room((int) $confscheduler->id, 'Room B');
+
+        $containerid = api::add_slot(
+            (int) $confscheduler->id,
+            [$room1, $room2],
+            strtotime('2026-09-01 09:00:00'),
+            strtotime('2026-09-01 11:00:00'),
+            null,
+            'Poster Session',
+            null,
+            true,
+            'Exhibit Hall'
+        );
+        $childid = api::add_presentation_to_container((int) $confscheduler->id, $containerid, $submissionid);
+
+        $result = get_grid_data::execute($cmid);
+        $byid = [];
+        foreach ($result['slots'] as $entry) {
+            $byid[$entry['id']] = $entry;
+        }
+
+        $this->assertTrue($byid[$containerid]['iscontainer']);
+        $this->assertNull($byid[$containerid]['parentslotid']);
+        $this->assertSame('Exhibit Hall', $byid[$containerid]['roomnameoverride']);
+
+        $this->assertFalse($byid[$childid]['iscontainer']);
+        $this->assertSame($containerid, $byid[$childid]['parentslotid']);
+        $this->assertSame('Exhibit Hall', $byid[$childid]['roomnameoverride']);
+        $this->assertSame([$room1, $room2], $byid[$childid]['roomids']);
+    }
+
+    /**
      * A scheduled presentation's 'nonpreferredday' flag (user feedback,
      * 2026-07-05, consumed by the edit-mode grid to highlight the block) is true
      * only when the submission has a non-empty preferred-dates list AND the slot's

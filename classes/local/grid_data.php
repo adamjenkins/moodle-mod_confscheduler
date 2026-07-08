@@ -73,6 +73,13 @@ class grid_data {
      * strike through an already-scheduled block whose presentation was since withdrawn,
      * instead of clicking through to a submission detail modal for a cancelled talk;
      * always false for a span-block, matching every other submission-only field above).
+     * Each 'slots' entry also includes 'iscontainer' (bool; true only for a container span
+     * block -- always false for a presentation slot, even one nested inside a container),
+     * 'parentslotid' (int|null; set only on a presentation slot nested in a container, to
+     * that container's id) and 'roomnameoverride' (string|null; resolved from the PARENT
+     * for a nested presentation, since a child's own row always has this null by
+     * construction -- see api::add_presentation_to_container()) (user request, 2026-07-08,
+     * poster/keynote container span blocks).
      */
     public static function build(\stdClass $confscheduler, int $userid): array {
         global $DB;
@@ -125,27 +132,39 @@ class grid_data {
             }
         }
 
+        $slotsbyid = [];
+        foreach ($slots as $slot) {
+            $slotsbyid[(int) $slot->id] = $slot;
+        }
+
         $scheduledsubmissionids = [];
         $slotsout = [];
         foreach ($slots as $slot) {
+            $parentslotid = !empty($slot->parentslotid) ? (int) $slot->parentslotid : null;
+            $parentslot = $parentslotid !== null ? ($slotsbyid[$parentslotid] ?? null) : null;
+            $effectiveslotid = $parentslot ? (int) $parentslot->id : (int) $slot->id;
+
             $entry = [
-                'id'              => (int) $slot->id,
-                'roomids'         => $slotroomsbyslot[(int) $slot->id] ?? [],
-                'starttime'       => (int) $slot->starttime,
-                'endtime'         => (int) $slot->endtime,
-                'label'           => $slot->label,
-                'colour'          => $slot->submissionid === null ? ($slot->colour ?? null) : null,
-                'submissionid'    => $slot->submissionid !== null ? (int) $slot->submissionid : null,
-                'title'           => null,
-                'speakers'        => null,
-                'track'           => null,
-                'trackid'         => null,
-                'trackcolour'     => null,
-                'favourited'      => false,
-                'nonpreferredday' => false,
-                'favouritecount'  => 0,
-                'overbooked'      => false,
-                'withdrawn'       => false,
+                'id'               => (int) $slot->id,
+                'roomids'          => $slotroomsbyslot[$effectiveslotid] ?? [],
+                'starttime'        => (int) $slot->starttime,
+                'endtime'          => (int) $slot->endtime,
+                'label'            => $slot->label,
+                'colour'           => $slot->submissionid === null ? ($slot->colour ?? null) : null,
+                'submissionid'     => $slot->submissionid !== null ? (int) $slot->submissionid : null,
+                'iscontainer'      => $slot->submissionid === null ? (bool) $slot->iscontainer : false,
+                'parentslotid'     => $parentslotid,
+                'roomnameoverride' => $parentslot ? $parentslot->roomnameoverride : $slot->roomnameoverride,
+                'title'            => null,
+                'speakers'         => null,
+                'track'            => null,
+                'trackid'          => null,
+                'trackcolour'      => null,
+                'favourited'       => false,
+                'nonpreferredday'  => false,
+                'favouritecount'   => 0,
+                'overbooked'       => false,
+                'withdrawn'        => false,
             ];
 
             if ($slot->submissionid !== null) {
