@@ -180,6 +180,59 @@ final class ics_export_test extends advanced_testcase {
     }
 
     /**
+     * A favourited presentation's exported LOCATION prefers roomnameoverride
+     * when its container has one set, over the joined real room names.
+     */
+    public function test_build_prefers_roomnameoverride_for_location(): void {
+        global $DB;
+
+        $this->resetAfterTest();
+
+        [$confscheduler, $confprogram, $confsubmissions] = $this->create_fixture();
+        $speaker = $this->getDataGenerator()->create_user();
+        $attendee = $this->getDataGenerator()->create_user();
+
+        $submissionid = $this->create_accepted_submission($confsubmissions, $confprogram, $speaker, 'Talk in Container');
+
+        $roomid = api::add_room((int) $confscheduler->id, 'Main Hall');
+
+        // Create a container span block with roomnameoverride set to 'Exhibit Hall'.
+        $containerid = api::add_slot(
+            (int) $confscheduler->id,
+            [$roomid],
+            strtotime('2026-09-01 10:00:00'),
+            strtotime('2026-09-01 10:30:00'),
+            null,
+            'Poster Session',
+            null,
+            true,
+            'Exhibit Hall'
+        );
+
+        // Insert the presentation slot as a child inside the container.
+        $now = time();
+        $DB->insert_record('confscheduler_slot', (object) [
+            'confscheduler' => $confscheduler->id,
+            'submissionid'  => $submissionid,
+            'parentslotid'  => $containerid,
+            'starttime'     => strtotime('2026-09-01 10:00:00'),
+            'endtime'       => strtotime('2026-09-01 10:30:00'),
+            'timecreated'   => $now,
+            'timemodified'  => $now,
+        ]);
+
+        // Mark the presentation as favourited by the attendee.
+        \mod_confprogram\api::add_favourite((int) $confprogram->id, $submissionid, (int) $attendee->id);
+
+        $ics = ics_export::build($confscheduler, (int) $attendee->id);
+
+        $this->assertStringContainsString('BEGIN:VCALENDAR', $ics);
+        $this->assertStringContainsString('SUMMARY:Talk in Container', $ics);
+        $this->assertStringContainsString('LOCATION:Exhibit Hall', $ics);
+        $this->assertStringNotContainsString('LOCATION:Main Hall', $ics);
+    }
+
+    /**
      * filename() produces a clean, instance-name-based .ics filename.
      */
     public function test_filename_is_based_on_instance_name(): void {

@@ -98,12 +98,16 @@ class ics_export {
                 $event->add_property('description', implode("\n", $descriptionlines));
             }
 
-            $roomnames = array_filter(array_map(
-                static fn (int $roomid): string => $roomnamesbyid[$roomid] ?? '',
-                $slot['roomids']
-            ));
-            if ($roomnames) {
-                $event->add_property('location', implode(', ', $roomnames));
+            if (!empty($slot['roomnameoverride'])) {
+                $event->add_property('location', $slot['roomnameoverride']);
+            } else {
+                $roomnames = array_filter(array_map(
+                    static fn (int $roomid): string => $roomnamesbyid[$roomid] ?? '',
+                    $slot['roomids']
+                ));
+                if ($roomnames) {
+                    $event->add_property('location', implode(', ', $roomnames));
+                }
             }
 
             $event->add_property('dtstamp', \Bennu::timestamp_to_datetime());
