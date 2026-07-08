@@ -301,5 +301,14 @@ function xmldb_confscheduler_upgrade($oldversion) {
         upgrade_mod_savepoint(true, 2026070801, 'confscheduler');
     }
 
+    if ($oldversion < 2026070802) {
+        // No schema change here: this savepoint exists purely to make sure the upgrade
+        // pipeline runs, which is what registers the new mod_confscheduler_add_to_container
+        // external function declared in db/services.php (container-blocks feature, Task 9,
+        // 2026-07-08 -- nesting an accepted-but-unscheduled presentation inside a container
+        // span block). Same pattern as 2026070407 above for set_gap_minutes.
+        upgrade_mod_savepoint(true, 2026070802, 'confscheduler');
+    }
+
     return true;
 }
