@@ -80,47 +80,56 @@ export const unscheduleSlot = (cmid, slotid) => Ajax.call([{
 }])[0];
 
 /**
- * Creates a column-spanning block (e.g. Lunch/Plenary) with no presentation, or
- * a container that may hold nested presentations (poster/keynote sessions,
- * user request 2026-07-08).
+ * Creates a column-spanning block, or a container that may hold nested
+ * presentations, optionally themed with a per-container child-tile text
+ * alignment (Round 2, 2026-07-08).
  *
  * @param {Number} cmid The confscheduler course-module id
  * @param {String} label The span-block label
  * @param {Number[]} roomids Room id(s) this block spans
  * @param {Number} starttime Unix timestamp
  * @param {Number} endtime Unix timestamp
- * @param {String|null} colour Hex colour (e.g. #3366cc) to theme this block, or null
+ * @param {String|null} colour Hex colour, or null
  * @param {Boolean} [iscontainer] Whether this block is a container
  * @param {String|null} [roomnameoverride] Text to display instead of the joined room name(s), or null
+ * @param {String} [childtextalign] 'left'/'center'/'right' for this container's nested tiles
+ * @param {String} [childtextvalign] 'top'/'middle'/'bottom' for this container's nested tiles
  * @return {Promise}
  */
 export const addSpanBlock = (
-    cmid, label, roomids, starttime, endtime, colour, iscontainer = false, roomnameoverride = null
+    cmid, label, roomids, starttime, endtime, colour, iscontainer = false, roomnameoverride = null,
+    childtextalign = 'left', childtextvalign = 'top'
 ) => Ajax.call([{
     methodname: 'mod_confscheduler_add_span_block',
-    args: {cmid, label, roomids, starttime, endtime, colour, iscontainer, roomnameoverride},
+    args: {cmid, label, roomids, starttime, endtime, colour, iscontainer, roomnameoverride, childtextalign, childtextvalign},
 }])[0];
 
 /**
- * Edits an existing column-spanning block in place (label, colour, time range,
- * room-range, container mode, room-name override).
+ * Edits an existing column-spanning block in place, including its
+ * per-container child-tile text alignment (Round 2, 2026-07-08).
  *
  * @param {Number} cmid The confscheduler course-module id
- * @param {Number} slotid The confscheduler_slot id to update (must be a span block)
+ * @param {Number} slotid The confscheduler_slot id to update
  * @param {String} label The span-block label
  * @param {Number[]} roomids Room id(s) this block spans
  * @param {Number} starttime Unix timestamp
  * @param {Number} endtime Unix timestamp
- * @param {String|null} colour Hex colour (e.g. #3366cc) to theme this block, or null
+ * @param {String|null} colour Hex colour, or null
  * @param {Boolean} [iscontainer] Whether this block is a container
  * @param {String|null} [roomnameoverride] Text to display instead of the joined room name(s), or null
+ * @param {String} [childtextalign] 'left'/'center'/'right' for this container's nested tiles
+ * @param {String} [childtextvalign] 'top'/'middle'/'bottom' for this container's nested tiles
  * @return {Promise}
  */
 export const updateSpanBlock = (
-    cmid, slotid, label, roomids, starttime, endtime, colour, iscontainer = false, roomnameoverride = null
+    cmid, slotid, label, roomids, starttime, endtime, colour, iscontainer = false, roomnameoverride = null,
+    childtextalign = 'left', childtextvalign = 'top'
 ) => Ajax.call([{
     methodname: 'mod_confscheduler_update_span_block',
-    args: {cmid, slotid, label, roomids, starttime, endtime, colour, iscontainer, roomnameoverride},
+    args: {
+        cmid, slotid, label, roomids, starttime, endtime, colour, iscontainer, roomnameoverride,
+        childtextalign, childtextvalign,
+    },
 }])[0];
 
 /**
