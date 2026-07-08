@@ -226,6 +226,36 @@ class api {
     }
 
     /**
+     * Validates a horizontal text-alignment value for a container's nested
+     * tiles. Null is always accepted (means "use the caller's own default" --
+     * see add_slot()/update_span_block() for how each handles a null
+     * differently).
+     *
+     * @param ?string $align One of 'left'/'center'/'right', or null
+     * @return void
+     * @throws \invalid_parameter_exception
+     */
+    protected static function validate_childtextalign(?string $align): void {
+        if ($align !== null && !in_array($align, ['left', 'center', 'right'], true)) {
+            throw new \invalid_parameter_exception(get_string('error:invalidtextalign', 'mod_confscheduler'));
+        }
+    }
+
+    /**
+     * Validates a vertical text-alignment value for a container's nested
+     * tiles. Null is always accepted, same as validate_childtextalign() above.
+     *
+     * @param ?string $valign One of 'top'/'middle'/'bottom', or null
+     * @return void
+     * @throws \invalid_parameter_exception
+     */
+    protected static function validate_childtextvalign(?string $valign): void {
+        if ($valign !== null && !in_array($valign, ['top', 'middle', 'bottom'], true)) {
+            throw new \invalid_parameter_exception(get_string('error:invalidtextvalign', 'mod_confscheduler'));
+        }
+    }
+
+    /**
      * Validates a room capacity value (null means unlimited, so always valid; a
      * negative capacity is meaningless and rejected -- same convention as
      * mod_confcheckin's confcheckin_tickettype.capacity).
@@ -809,12 +839,19 @@ class api {
      *        is non-null (container span blocks are a span-block-only feature)
      * @param string|null $roomnameoverride An optional override label for the room name(s) on this span block;
      *        must be null when $submissionid is non-null (room-name override applies only to span blocks)
+     * @param string|null $childtextalign Horizontal text alignment ('left'/'center'/'right') for nested-presentation
+     *        tiles when this is a container; must be null when $submissionid is non-null (span-block-only);
+     *        null means "use the caller's own default of 'left'"
+     * @param string|null $childtextvalign Vertical text alignment ('top'/'middle'/'bottom') for nested-presentation
+     *        tiles when this is a container; must be null when $submissionid is non-null (span-block-only);
+     *        null means "use the caller's own default of 'top'"
      * @return int The confscheduler_slot id
      * @throws \moodle_exception if the submission's chain of custody is invalid, or the placement
      *         overlaps/violates SnapGap
      * @throws \invalid_parameter_exception if a room does not belong to this instance, $colour is set and not a
-     *         valid hex colour, or $colour/$iscontainer/$roomnameoverride is given together with a non-null
-     *         $submissionid (all three are span-block-only features)
+     *         valid hex colour, $childtextalign/$childtextvalign is set and not a recognised alignment value, or
+     *         $colour/$iscontainer/$roomnameoverride/$childtextalign/$childtextvalign is given together with a
+     *         non-null $submissionid (all are span-block-only features)
      */
     public static function add_slot(
         int $confschedulerid,
@@ -825,11 +862,15 @@ class api {
         ?string $label = null,
         ?string $colour = null,
         ?bool $iscontainer = false,
-        ?string $roomnameoverride = null
+        ?string $roomnameoverride = null,
+        ?string $childtextalign = null,
+        ?string $childtextvalign = null
     ): int {
         global $DB;
 
         self::validate_colour($colour);
+        self::validate_childtextalign($childtextalign);
+        self::validate_childtextvalign($childtextvalign);
         if ($colour !== null && $submissionid !== null) {
             throw new \invalid_parameter_exception(get_string('error:notaspanblock', 'mod_confscheduler'));
         }
@@ -837,6 +878,12 @@ class api {
             throw new \invalid_parameter_exception(get_string('error:notaspanblock', 'mod_confscheduler'));
         }
         if ($roomnameoverride !== null && $submissionid !== null) {
+            throw new \invalid_parameter_exception(get_string('error:notaspanblock', 'mod_confscheduler'));
+        }
+        if ($childtextalign !== null && $submissionid !== null) {
+            throw new \invalid_parameter_exception(get_string('error:notaspanblock', 'mod_confscheduler'));
+        }
+        if ($childtextvalign !== null && $submissionid !== null) {
             throw new \invalid_parameter_exception(get_string('error:notaspanblock', 'mod_confscheduler'));
         }
 
@@ -866,6 +913,8 @@ class api {
             'colour'           => $colour,
             'roomnameoverride' => $roomnameoverride,
             'iscontainer'      => $iscontainer ? 1 : 0,
+            'childtextalign'   => $childtextalign ?? 'left',
+            'childtextvalign'  => $childtextvalign ?? 'top',
             'starttime'        => $starttime,
             'endtime'          => $endtime,
             'timecreated'      => $now,
@@ -970,11 +1019,15 @@ class api {
      * @param int $endtime Unix timestamp
      * @param bool $iscontainer Whether this block is (or should become/remain) a container
      * @param string|null $roomnameoverride Text to display instead of the joined room name(s), or null
+     * @param string $childtextalign Horizontal text alignment ('left'/'center'/'right') for nested-presentation
+     *        tiles when this is a container
+     * @param string $childtextvalign Vertical text alignment ('top'/'middle'/'bottom') for nested-presentation
+     *        tiles when this is a container
      * @return void
      * @throws \moodle_exception if the slot is not a span block, the new placement overlaps/violates
      *         SnapGap, or $iscontainer is false while children are still nested inside this container
-     * @throws \invalid_parameter_exception if a room does not belong to this instance, or $colour is set and
-     *         not a valid hex colour
+     * @throws \invalid_parameter_exception if a room does not belong to this instance, $colour is set and
+     *         not a valid hex colour, or $childtextalign/$childtextvalign is not a recognised alignment value
      */
     public static function update_span_block(
         int $slotid,
@@ -984,11 +1037,15 @@ class api {
         int $starttime,
         int $endtime,
         bool $iscontainer = false,
-        ?string $roomnameoverride = null
+        ?string $roomnameoverride = null,
+        string $childtextalign = 'left',
+        string $childtextvalign = 'top'
     ): void {
         global $DB;
 
         self::validate_colour($colour);
+        self::validate_childtextalign($childtextalign);
+        self::validate_childtextvalign($childtextvalign);
 
         $slot = $DB->get_record('confscheduler_slot', ['id' => $slotid], '*', MUST_EXIST);
         if ($slot->submissionid !== null) {
@@ -1022,6 +1079,8 @@ class api {
             'colour'           => $colour,
             'roomnameoverride' => $roomnameoverride,
             'iscontainer'      => $iscontainer ? 1 : 0,
+            'childtextalign'   => $childtextalign,
+            'childtextvalign'  => $childtextvalign,
             'starttime'        => $starttime,
             'endtime'          => $endtime,
             'timemodified'     => time(),

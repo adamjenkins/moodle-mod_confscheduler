@@ -69,6 +69,18 @@ class add_span_block extends external_api {
                 VALUE_DEFAULT,
                 null
             ),
+            'childtextalign' => new external_value(
+                PARAM_ALPHA,
+                'Horizontal text alignment for nested-presentation tiles when this is a container (left/center/right)',
+                VALUE_DEFAULT,
+                'left'
+            ),
+            'childtextvalign' => new external_value(
+                PARAM_ALPHA,
+                'Vertical text alignment for nested-presentation tiles when this is a container (top/middle/bottom)',
+                VALUE_DEFAULT,
+                'top'
+            ),
         ]);
     }
 
@@ -83,6 +95,8 @@ class add_span_block extends external_api {
      * @param string|null $colour Hex colour (e.g. #3366cc), or null
      * @param bool $iscontainer Whether this block is a container that may hold nested presentations
      * @param string|null $roomnameoverride Text to display instead of the joined room name(s), or null
+     * @param string|null $childtextalign Horizontal text alignment for nested-presentation tiles (left/center/right)
+     * @param string|null $childtextvalign Vertical text alignment for nested-presentation tiles (top/middle/bottom)
      * @return array{slotid: int}
      */
     public static function execute(
@@ -93,7 +107,9 @@ class add_span_block extends external_api {
         int $endtime,
         ?string $colour = null,
         bool $iscontainer = false,
-        ?string $roomnameoverride = null
+        ?string $roomnameoverride = null,
+        ?string $childtextalign = 'left',
+        ?string $childtextvalign = 'top'
     ): array {
         $params = self::validate_parameters(self::execute_parameters(), [
             'cmid'             => $cmid,
@@ -104,6 +120,8 @@ class add_span_block extends external_api {
             'colour'           => $colour,
             'iscontainer'      => $iscontainer,
             'roomnameoverride' => $roomnameoverride,
+            'childtextalign'   => $childtextalign,
+            'childtextvalign'  => $childtextvalign,
         ]);
 
         if (trim($params['label']) === '') {
@@ -121,7 +139,9 @@ class add_span_block extends external_api {
             $params['label'],
             $params['colour'],
             $params['iscontainer'],
-            $params['roomnameoverride']
+            $params['roomnameoverride'],
+            $params['childtextalign'],
+            $params['childtextvalign']
         );
 
         return ['slotid' => $slotid];

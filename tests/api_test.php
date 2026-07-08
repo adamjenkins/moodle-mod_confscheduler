@@ -783,6 +783,185 @@ final class api_test extends advanced_testcase {
     }
 
     /**
+     * add_slot() persists childtextalign/childtextvalign, defaulting to
+     * 'left'/'top' when not passed.
+     */
+    public function test_add_slot_persists_alignment_defaults(): void {
+        global $DB;
+        $this->resetAfterTest();
+
+        [$confscheduler] = $this->create_full_fixture();
+        $roomid = api::add_room((int) $confscheduler->id, 'Main Hall');
+
+        $slotid = api::add_slot(
+            (int) $confscheduler->id,
+            [$roomid],
+            strtotime('2026-09-01 09:00:00'),
+            strtotime('2026-09-01 11:00:00'),
+            null,
+            'Poster Session',
+            null,
+            true
+        );
+
+        $slot = $DB->get_record('confscheduler_slot', ['id' => $slotid], '*', MUST_EXIST);
+        $this->assertSame('left', $slot->childtextalign);
+        $this->assertSame('top', $slot->childtextvalign);
+    }
+
+    /**
+     * add_slot() persists explicit non-default alignment values.
+     */
+    public function test_add_slot_persists_explicit_alignment(): void {
+        global $DB;
+        $this->resetAfterTest();
+
+        [$confscheduler] = $this->create_full_fixture();
+        $roomid = api::add_room((int) $confscheduler->id, 'Main Hall');
+
+        $slotid = api::add_slot(
+            (int) $confscheduler->id,
+            [$roomid],
+            strtotime('2026-09-01 09:00:00'),
+            strtotime('2026-09-01 11:00:00'),
+            null,
+            'Poster Session',
+            null,
+            true,
+            null,
+            'center',
+            'middle'
+        );
+
+        $slot = $DB->get_record('confscheduler_slot', ['id' => $slotid], '*', MUST_EXIST);
+        $this->assertSame('center', $slot->childtextalign);
+        $this->assertSame('middle', $slot->childtextvalign);
+    }
+
+    /**
+     * add_slot() rejects an invalid childtextalign/childtextvalign value.
+     */
+    public function test_add_slot_rejects_invalid_alignment(): void {
+        $this->resetAfterTest();
+
+        [$confscheduler] = $this->create_full_fixture();
+        $roomid = api::add_room((int) $confscheduler->id, 'Main Hall');
+
+        $this->expectException(\invalid_parameter_exception::class);
+        api::add_slot(
+            (int) $confscheduler->id,
+            [$roomid],
+            strtotime('2026-09-01 09:00:00'),
+            strtotime('2026-09-01 11:00:00'),
+            null,
+            'Poster Session',
+            null,
+            true,
+            null,
+            'diagonal'
+        );
+    }
+
+    /**
+     * add_slot() rejects a non-null childtextalign/childtextvalign together
+     * with a non-null submissionid -- alignment only ever applies to a span
+     * block.
+     */
+    public function test_add_slot_rejects_alignment_with_presentation_submission(): void {
+        $this->resetAfterTest();
+
+        [$confscheduler, $confprogram, $confsubmissions] = $this->create_full_fixture();
+        $roomid = api::add_room((int) $confscheduler->id, 'Main Hall');
+        $submissionid = $this->create_accepted_submission($confsubmissions, $confprogram);
+
+        $this->expectException(\invalid_parameter_exception::class);
+        api::add_slot(
+            (int) $confscheduler->id,
+            [$roomid],
+            strtotime('2026-09-01 09:00:00'),
+            strtotime('2026-09-01 10:00:00'),
+            $submissionid,
+            null,
+            null,
+            false,
+            null,
+            'center'
+        );
+    }
+
+    /**
+     * update_span_block() persists childtextalign/childtextvalign.
+     */
+    public function test_update_span_block_persists_alignment(): void {
+        global $DB;
+        $this->resetAfterTest();
+
+        [$confscheduler] = $this->create_full_fixture();
+        $roomid = api::add_room((int) $confscheduler->id, 'Main Hall');
+
+        $slotid = api::add_slot(
+            (int) $confscheduler->id,
+            [$roomid],
+            strtotime('2026-09-01 09:00:00'),
+            strtotime('2026-09-01 11:00:00'),
+            null,
+            'Poster Session',
+            null,
+            true
+        );
+
+        api::update_span_block(
+            $slotid,
+            'Poster Session',
+            null,
+            [$roomid],
+            strtotime('2026-09-01 09:00:00'),
+            strtotime('2026-09-01 11:00:00'),
+            true,
+            null,
+            'right',
+            'bottom'
+        );
+
+        $slot = $DB->get_record('confscheduler_slot', ['id' => $slotid], '*', MUST_EXIST);
+        $this->assertSame('right', $slot->childtextalign);
+        $this->assertSame('bottom', $slot->childtextvalign);
+    }
+
+    /**
+     * update_span_block() rejects an invalid childtextvalign value.
+     */
+    public function test_update_span_block_rejects_invalid_valign(): void {
+        $this->resetAfterTest();
+
+        [$confscheduler] = $this->create_full_fixture();
+        $roomid = api::add_room((int) $confscheduler->id, 'Main Hall');
+
+        $slotid = api::add_slot(
+            (int) $confscheduler->id,
+            [$roomid],
+            strtotime('2026-09-01 09:00:00'),
+            strtotime('2026-09-01 11:00:00'),
+            null,
+            'Poster Session'
+        );
+
+        $this->expectException(\invalid_parameter_exception::class);
+        api::update_span_block(
+            $slotid,
+            'Poster Session',
+            null,
+            [$roomid],
+            strtotime('2026-09-01 09:00:00'),
+            strtotime('2026-09-01 11:00:00'),
+            false,
+            null,
+            'left',
+            'sideways'
+        );
+    }
+
+    /**
      * add_slot() rejects iscontainer=true together with a non-null submissionid --
      * the same mutual-exclusivity rule as colour theming.
      */

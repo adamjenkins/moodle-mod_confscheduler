@@ -79,6 +79,18 @@ class update_span_block extends external_api {
                 VALUE_DEFAULT,
                 null
             ),
+            'childtextalign' => new external_value(
+                PARAM_ALPHA,
+                'Horizontal text alignment for nested-presentation tiles when this is a container (left/center/right)',
+                VALUE_DEFAULT,
+                'left'
+            ),
+            'childtextvalign' => new external_value(
+                PARAM_ALPHA,
+                'Vertical text alignment for nested-presentation tiles when this is a container (top/middle/bottom)',
+                VALUE_DEFAULT,
+                'top'
+            ),
         ]);
     }
 
@@ -94,6 +106,8 @@ class update_span_block extends external_api {
      * @param int $endtime Unix timestamp
      * @param bool $iscontainer Whether this block is (or should become/remain) a container
      * @param string|null $roomnameoverride Text to display instead of the joined room name(s), or null
+     * @param string $childtextalign Horizontal text alignment for nested-presentation tiles (left/center/right)
+     * @param string $childtextvalign Vertical text alignment for nested-presentation tiles (top/middle/bottom)
      * @return array{success: bool}
      */
     public static function execute(
@@ -105,7 +119,9 @@ class update_span_block extends external_api {
         int $starttime,
         int $endtime,
         bool $iscontainer = false,
-        ?string $roomnameoverride = null
+        ?string $roomnameoverride = null,
+        string $childtextalign = 'left',
+        string $childtextvalign = 'top'
     ): array {
         $params = self::validate_parameters(self::execute_parameters(), [
             'cmid'             => $cmid,
@@ -117,6 +133,8 @@ class update_span_block extends external_api {
             'endtime'          => $endtime,
             'iscontainer'      => $iscontainer,
             'roomnameoverride' => $roomnameoverride,
+            'childtextalign'   => $childtextalign,
+            'childtextvalign'  => $childtextvalign,
         ]);
 
         if (trim($params['label']) === '') {
@@ -134,7 +152,9 @@ class update_span_block extends external_api {
             $params['starttime'],
             $params['endtime'],
             $params['iscontainer'],
-            $params['roomnameoverride']
+            $params['roomnameoverride'],
+            $params['childtextalign'],
+            $params['childtextvalign']
         );
 
         return ['success' => true];
