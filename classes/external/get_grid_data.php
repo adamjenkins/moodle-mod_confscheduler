@@ -127,6 +127,23 @@ class get_grid_data extends external_api {
                         PARAM_BOOL,
                         'Whether the scheduled presentation\'s submission has been withdrawn (always false for a span-block)'
                     ),
+                    'iscontainer' => new external_value(
+                        PARAM_BOOL,
+                        'Whether this is a container span-block (always false for a presentation slot, even one nested ' .
+                            'inside a container)'
+                    ),
+                    'parentslotid' => new external_value(
+                        PARAM_INT,
+                        'The container slot id this presentation is nested inside, or null if not nested',
+                        VALUE_DEFAULT,
+                        null
+                    ),
+                    'roomnameoverride' => new external_value(
+                        PARAM_TEXT,
+                        'Room name override, resolved from the parent container for a nested presentation, or null',
+                        VALUE_DEFAULT,
+                        null
+                    ),
                 ])
             ),
             'unscheduled' => new external_multiple_structure(

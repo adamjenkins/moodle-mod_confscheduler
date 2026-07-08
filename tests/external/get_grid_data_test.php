@@ -158,7 +158,15 @@ final class get_grid_data_test extends advanced_testcase {
      * The grid payload exposes iscontainer/parentslotid/roomnameoverride for a
      * container and its child, with the child's roomids/roomnameoverride
      * resolved from the parent (user request, 2026-07-08 -- poster/keynote
-     * container blocks).
+     * container blocks). Also runs the result through clean_returnvalue(), the
+     * same schema-stripping step Moodle's real AJAX transport applies -- per
+     * the exact lesson this file's own trackcolour/daybounds/withdrawn tests
+     * already learned the hard way: an undeclared field in execute_returns()
+     * is silently stripped in transit even though execute() alone would keep
+     * passing (this is exactly the bug that shipped: these three fields were
+     * never declared in execute_returns(), so real browser AJAX calls lost
+     * them even though this test's assertions against the raw execute()
+     * return kept passing).
      */
     public function test_grid_data_exposes_container_fields(): void {
         $this->resetAfterTest();
@@ -197,6 +205,20 @@ final class get_grid_data_test extends advanced_testcase {
         $this->assertSame($containerid, $byid[$childid]['parentslotid']);
         $this->assertSame('Exhibit Hall', $byid[$childid]['roomnameoverride']);
         $this->assertSame([$room1, $room2], $byid[$childid]['roomids']);
+
+        $clean = \core_external\external_api::clean_returnvalue(get_grid_data::execute_returns(), $result);
+        $cleanbyid = [];
+        foreach ($clean['slots'] as $entry) {
+            $cleanbyid[$entry['id']] = $entry;
+        }
+
+        $this->assertTrue($cleanbyid[$containerid]['iscontainer']);
+        $this->assertNull($cleanbyid[$containerid]['parentslotid']);
+        $this->assertSame('Exhibit Hall', $cleanbyid[$containerid]['roomnameoverride']);
+
+        $this->assertFalse($cleanbyid[$childid]['iscontainer']);
+        $this->assertSame($containerid, $cleanbyid[$childid]['parentslotid']);
+        $this->assertSame('Exhibit Hall', $cleanbyid[$childid]['roomnameoverride']);
     }
 
     /**
