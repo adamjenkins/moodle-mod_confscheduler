@@ -619,7 +619,12 @@ a.mod_confscheduler-track-pill:focus {
     top: 24px;
     left: 4px;
     right: 4px;
-    bottom: 4px;
+    /* Increased from 4px (Round 2, 2026-07-08): the roomtime line
+       (.mod_confscheduler-block-roomtime, bottom:2px) was visually
+       colliding with the last child tile's own background in this
+       corner. 18px reserves a dedicated strip below the children so the
+       container's own room/time is never obscured. */
+    bottom: 18px;
 }
 
 .mod_confscheduler-block-child {
@@ -629,6 +634,29 @@ a.mod_confscheduler-track-pill:focus {
     border-radius: 2px;
     padding: 2px 4px;
     font-size: 0.75rem;
+    display: flex;
+    flex-direction: column;
+    text-align: left;
+    align-items: flex-start;
+    justify-content: flex-start;
+}
+
+.mod_confscheduler-block-child[data-align="center"] {
+    text-align: center;
+    align-items: center;
+}
+
+.mod_confscheduler-block-child[data-align="right"] {
+    text-align: right;
+    align-items: flex-end;
+}
+
+.mod_confscheduler-block-child[data-valign="middle"] {
+    justify-content: center;
+}
+
+.mod_confscheduler-block-child[data-valign="bottom"] {
+    justify-content: flex-end;
 }
 
 .mod_confscheduler-fullscreen {
@@ -680,6 +708,25 @@ a.mod_confscheduler-track-pill:focus {
 .mod_confscheduler-block-link:hover .mod_confscheduler-block-title,
 .mod_confscheduler-block-link:focus .mod_confscheduler-block-title {
     text-decoration: underline;
+}
+
+/*
+ * Whole-block-clickable cards in Display mode (Round 2, 2026-07-08): the
+ * anchor gains Bootstrap's .stretched-link utility (a ::after covering the
+ * full nearest position:relative/absolute ancestor -- .mod_confscheduler-block
+ * already has position:absolute, so no extra ancestor wrapper is needed).
+ * The favourite star and track pill, which must stay independently
+ * clickable ON TOP of the stretched anchor, get an explicit z-index above
+ * it.
+ */
+.mod_confscheduler-block-link.stretched-link::after {
+    z-index: 1;
+}
+
+.mod_confscheduler-block-fav,
+.mod_confscheduler-track-pill {
+    position: relative;
+    z-index: 2;
 }
 
 /* Position/size/colour come from the shared .mod_confscheduler-block-fav rule above
