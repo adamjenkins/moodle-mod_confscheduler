@@ -487,7 +487,8 @@
    opens the same modal used to add one, pre-filled, to edit it in place. Floated
    right, mirroring .mod_confscheduler-block-fav's slot on presentation blocks
    (span blocks never have a favourite star, so there's no collision). */
-.mod_confscheduler-block-edit-span {
+.mod_confscheduler-block-edit-span,
+.mod_confscheduler-container-add {
     float: right;
     margin: 0 0 0.15rem 0.3rem;
     background: none;
@@ -595,6 +596,39 @@ a.mod_confscheduler-track-pill:focus {
 .mod_confscheduler-block-resize:hover::after,
 .mod_confscheduler-block-resize:focus-visible::after {
     background: var(--mod_confscheduler-resize-grip-colour-hover, rgba(0, 0, 0, 0.55));
+}
+
+/*
+ * Container child-holder: CSS grid, one column per child ("1fr of the
+ * available space each" per the feature request), absolutely positioned to
+ * fill the container block's own remaining space below its label/button row.
+ * Children never have independent top/height positioning -- they always share
+ * the container's exact time range (user request, 2026-07-08: poster/keynote
+ * container blocks).
+ */
+.mod_confscheduler-container-children {
+    display: grid;
+    grid-auto-flow: column;
+    gap: 2px;
+    position: absolute;
+    /* 24px clears the label/edit-pencil/add-button row for a typical short,
+       one-line container label (e.g. "Poster Session"); a label long enough to
+       wrap to a second line can overlap the first child row -- an accepted v1
+       tradeoff, same class as this plugin's other documented display-only
+       edge cases (e.g. amd/src/day_utils.js's timezone caveat). */
+    top: 24px;
+    left: 4px;
+    right: 4px;
+    bottom: 4px;
+}
+
+.mod_confscheduler-block-child {
+    position: relative;
+    overflow: hidden;
+    background: rgba(255, 255, 255, 0.85);
+    border-radius: 2px;
+    padding: 2px 4px;
+    font-size: 0.75rem;
 }
 
 .mod_confscheduler-fullscreen {
