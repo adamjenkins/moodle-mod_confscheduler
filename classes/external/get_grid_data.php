@@ -144,6 +144,16 @@ class get_grid_data extends external_api {
                         VALUE_DEFAULT,
                         null
                     ),
+                    'childtextalign' => new external_value(
+                        PARAM_ALPHA,
+                        'Horizontal text alignment for this container\'s nested tiles (left/center/right), ' .
+                            'resolved from the parent for a nested presentation'
+                    ),
+                    'childtextvalign' => new external_value(
+                        PARAM_ALPHA,
+                        'Vertical text alignment for this container\'s nested tiles (top/middle/bottom), ' .
+                            'resolved from the parent for a nested presentation'
+                    ),
                 ])
             ),
             'unscheduled' => new external_multiple_structure(
@@ -154,6 +164,8 @@ class get_grid_data extends external_api {
                     'track'        => new external_value(PARAM_TEXT, 'Track name, or null', VALUE_DEFAULT, null),
                     'trackid'      => new external_value(PARAM_INT, 'Track id, or null', VALUE_DEFAULT, null),
                     'trackcolour'  => new external_value(PARAM_TEXT, 'Track hex colour, or null', VALUE_DEFAULT, null),
+                    'type'   => new external_value(PARAM_TEXT, 'Submission type name, or null', VALUE_DEFAULT, null),
+                    'typeid' => new external_value(PARAM_INT, 'Submission type id, or null', VALUE_DEFAULT, null),
                     'durationminutes' => new external_value(
                         PARAM_INT,
                         'This submission\'s type\'s duration in minutes, or the fallback default if unset'
