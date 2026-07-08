@@ -310,5 +310,21 @@ function xmldb_confscheduler_upgrade($oldversion) {
         upgrade_mod_savepoint(true, 2026070802, 'confscheduler');
     }
 
+    if ($oldversion < 2026070803) {
+        $table = new xmldb_table('confscheduler_slot');
+
+        $field = new xmldb_field('childtextalign', XMLDB_TYPE_CHAR, '10', null, XMLDB_NOTNULL, null, 'left', 'parentslotid');
+        if (!$dbman->field_exists($table, $field)) {
+            $dbman->add_field($table, $field);
+        }
+
+        $field = new xmldb_field('childtextvalign', XMLDB_TYPE_CHAR, '10', null, XMLDB_NOTNULL, null, 'top', 'childtextalign');
+        if (!$dbman->field_exists($table, $field)) {
+            $dbman->add_field($table, $field);
+        }
+
+        upgrade_mod_savepoint(true, 2026070803, 'confscheduler');
+    }
+
     return true;
 }
