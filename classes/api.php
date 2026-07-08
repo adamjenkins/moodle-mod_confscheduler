@@ -1034,6 +1034,63 @@ class api {
     }
 
     /**
+     * Nests an accepted-but-unscheduled presentation inside an existing
+     * container span block: creates a child slot sharing the container's own
+     * time, with no confscheduler_slotroom rows of its own (see this class's
+     * docblock on how that data shape exempts a child from
+     * validate_placement()'s overlap check).
+     *
+     * Enforces the same chain-of-custody as add_slot() (validate_submission_
+     * chain_of_custody()), plus an explicit "not already scheduled anywhere in
+     * this instance" guard: a child is never checked by validate_placement()
+     * (which would normally catch a double-schedule), and there is no unique
+     * index on confscheduler_slot.submissionid, so this must be asserted here
+     * directly.
+     *
+     * @param int $confschedulerid The confscheduler instance id
+     * @param int $containerslotid The confscheduler_slot id of the container
+     * @param int $submissionid The mod_confsubmissions confsubmissions_submission id to nest
+     * @return int The new child confscheduler_slot id
+     * @throws \moodle_exception if $containerslotid does not belong to this instance or is not a
+     *         container, the submission is already scheduled anywhere in this instance, or the
+     *         submission's chain of custody is invalid
+     */
+    public static function add_presentation_to_container(int $confschedulerid, int $containerslotid, int $submissionid): int {
+        global $DB;
+
+        $confscheduler = $DB->get_record('confscheduler', ['id' => $confschedulerid], '*', MUST_EXIST);
+        $container = $DB->get_record('confscheduler_slot', [
+            'id' => $containerslotid, 'confscheduler' => $confschedulerid,
+        ], '*', MUST_EXIST);
+
+        if ($container->submissionid !== null || empty($container->iscontainer)) {
+            throw new \moodle_exception('error:notacontainer', 'mod_confscheduler');
+        }
+
+        self::validate_submission_chain_of_custody($confscheduler, $submissionid);
+
+        if ($DB->record_exists('confscheduler_slot', ['confscheduler' => $confschedulerid, 'submissionid' => $submissionid])) {
+            throw new \moodle_exception('error:alreadyscheduled', 'mod_confscheduler');
+        }
+
+        $now = time();
+        return $DB->insert_record('confscheduler_slot', (object) [
+            'confscheduler'    => $confschedulerid,
+            'submissionid'     => $submissionid,
+            'label'            => null,
+            'colour'           => null,
+            'roomnameoverride' => null,
+            'iscontainer'      => 0,
+            'parentslotid'     => $containerslotid,
+            'starttime'        => $container->starttime,
+            'endtime'          => $container->endtime,
+            'timecreated'      => $now,
+            'timemodified'     => $now,
+            'notifiedtime'     => 0,
+        ]);
+    }
+
+    /**
      * Unschedules a slot: removes it and its confscheduler_slotroom rows.
      * When the slot was a presentation (non-null submissionid), this returns
      * that submission to the "unscheduled" panel.

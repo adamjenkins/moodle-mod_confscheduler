@@ -1219,6 +1219,160 @@ final class api_test extends advanced_testcase {
     }
 
     /**
+     * add_presentation_to_container() nests a presentation inside a container,
+     * copying the container's own time, with no confscheduler_slotroom rows of
+     * its own (the data-shape exemption from the overlap check).
+     */
+    public function test_add_presentation_to_container_creates_child(): void {
+        global $DB;
+        $this->resetAfterTest();
+
+        [$confscheduler, $confprogram, $confsubmissions] = $this->create_full_fixture();
+        $roomid = api::add_room((int) $confscheduler->id, 'Main Hall');
+        $submissionid = $this->create_accepted_submission($confsubmissions, $confprogram);
+
+        $containerid = api::add_slot(
+            (int) $confscheduler->id,
+            [$roomid],
+            strtotime('2026-09-01 09:00:00'),
+            strtotime('2026-09-01 11:00:00'),
+            null,
+            'Poster Session',
+            null,
+            true
+        );
+
+        $childid = api::add_presentation_to_container((int) $confscheduler->id, $containerid, $submissionid);
+
+        $child = $DB->get_record('confscheduler_slot', ['id' => $childid], '*', MUST_EXIST);
+        $this->assertSame($submissionid, (int) $child->submissionid);
+        $this->assertSame($containerid, (int) $child->parentslotid);
+        $this->assertEquals(strtotime('2026-09-01 09:00:00'), (int) $child->starttime);
+        $this->assertEquals(strtotime('2026-09-01 11:00:00'), (int) $child->endtime);
+        $this->assertFalse($DB->record_exists('confscheduler_slotroom', ['slotid' => $childid]));
+    }
+
+    /**
+     * Two children of the same container never conflict with each other, and a
+     * child never conflicts with another normally-scheduled slot in one of the
+     * container's own rooms -- both because a child has no confscheduler_slotroom
+     * rows at all, so validate_placement() (never called for a child anyway) is
+     * moot.
+     */
+    public function test_add_presentation_to_container_no_overlap_check_between_children(): void {
+        $this->resetAfterTest();
+
+        [$confscheduler, $confprogram, $confsubmissions] = $this->create_full_fixture();
+        $roomid = api::add_room((int) $confscheduler->id, 'Main Hall');
+        $first = $this->create_accepted_submission($confsubmissions, $confprogram, 'First Poster');
+        $second = $this->create_accepted_submission($confsubmissions, $confprogram, 'Second Poster');
+
+        $containerid = api::add_slot(
+            (int) $confscheduler->id,
+            [$roomid],
+            strtotime('2026-09-01 09:00:00'),
+            strtotime('2026-09-01 11:00:00'),
+            null,
+            'Poster Session',
+            null,
+            true
+        );
+
+        $firstchild = api::add_presentation_to_container((int) $confscheduler->id, $containerid, $first);
+        $secondchild = api::add_presentation_to_container((int) $confscheduler->id, $containerid, $second);
+
+        $this->assertGreaterThan(0, $firstchild);
+        $this->assertGreaterThan(0, $secondchild);
+    }
+
+    /**
+     * add_presentation_to_container() refuses a target slot that is not a
+     * container (a plain span block, or a normal presentation slot).
+     */
+    public function test_add_presentation_to_container_rejects_non_container_target(): void {
+        $this->resetAfterTest();
+
+        [$confscheduler, $confprogram, $confsubmissions] = $this->create_full_fixture();
+        $roomid = api::add_room((int) $confscheduler->id, 'Main Hall');
+        $submissionid = $this->create_accepted_submission($confsubmissions, $confprogram);
+
+        $plainspanid = api::add_slot(
+            (int) $confscheduler->id,
+            [$roomid],
+            strtotime('2026-09-01 09:00:00'),
+            strtotime('2026-09-01 11:00:00'),
+            null,
+            'Lunch'
+        );
+
+        $this->expectException(\moodle_exception::class);
+        api::add_presentation_to_container((int) $confscheduler->id, $plainspanid, $submissionid);
+    }
+
+    /**
+     * add_presentation_to_container() refuses a submission already scheduled
+     * elsewhere in this instance (a normal slot, or another container).
+     */
+    public function test_add_presentation_to_container_rejects_already_scheduled_submission(): void {
+        $this->resetAfterTest();
+
+        [$confscheduler, $confprogram, $confsubmissions] = $this->create_full_fixture();
+        $roomid = api::add_room((int) $confscheduler->id, 'Main Hall');
+        $submissionid = $this->create_accepted_submission($confsubmissions, $confprogram);
+
+        api::add_slot(
+            (int) $confscheduler->id,
+            [$roomid],
+            strtotime('2026-09-01 09:00:00'),
+            strtotime('2026-09-01 09:30:00'),
+            $submissionid
+        );
+
+        $containerid = api::add_slot(
+            (int) $confscheduler->id,
+            [$roomid],
+            strtotime('2026-09-01 12:00:00'),
+            strtotime('2026-09-01 13:00:00'),
+            null,
+            'Poster Session',
+            null,
+            true
+        );
+
+        $this->expectException(\moodle_exception::class);
+        api::add_presentation_to_container((int) $confscheduler->id, $containerid, $submissionid);
+    }
+
+    /**
+     * add_presentation_to_container() still enforces the same chain-of-custody
+     * check as add_slot() -- a submission that hasn't been accepted cannot be
+     * nested into a container either.
+     */
+    public function test_add_presentation_to_container_rejects_unaccepted_submission(): void {
+        global $DB;
+        $this->resetAfterTest();
+
+        [$confscheduler, $confprogram, $confsubmissions] = $this->create_full_fixture();
+        $roomid = api::add_room((int) $confscheduler->id, 'Main Hall');
+        $submissionid = $this->create_accepted_submission($confsubmissions, $confprogram);
+        $DB->delete_records('confprogram_decision', ['submissionid' => $submissionid]);
+
+        $containerid = api::add_slot(
+            (int) $confscheduler->id,
+            [$roomid],
+            strtotime('2026-09-01 09:00:00'),
+            strtotime('2026-09-01 11:00:00'),
+            null,
+            'Poster Session',
+            null,
+            true
+        );
+
+        $this->expectException(\moodle_exception::class);
+        api::add_presentation_to_container((int) $confscheduler->id, $containerid, $submissionid);
+    }
+
+    /**
      * assert_submission_belongs_to_instance() is a public pass-through to the
      * same chain-of-custody check add_slot() performs, for callers (the
      * favourite-toggle external function) that need to assert it without
