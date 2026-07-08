@@ -964,6 +964,170 @@ final class api_test extends advanced_testcase {
     }
 
     /**
+     * Directly inserts a presentation slot nested inside a container, as a
+     * stand-in for Task 4's api::add_presentation_to_container() (which does
+     * not exist yet at the time this task was implemented). A child row has
+     * no confscheduler_slotroom rows of its own and shares its container's
+     * starttime/endtime, matching the schema doc on confscheduler_slot.parentslotid.
+     *
+     * @param int $containerid The container confscheduler_slot id
+     * @param int $submissionid The confsubmissions_submission id
+     * @param int $starttime Unix timestamp, matching the container's
+     * @param int $endtime Unix timestamp, matching the container's
+     * @return int The new child confscheduler_slot id
+     */
+    protected function insert_child_slot_directly(
+        int $containerid,
+        int $submissionid,
+        int $starttime,
+        int $endtime
+    ): int {
+        global $DB;
+
+        $container = $DB->get_record('confscheduler_slot', ['id' => $containerid], '*', MUST_EXIST);
+        $now = time();
+
+        return (int) $DB->insert_record('confscheduler_slot', (object) [
+            'confscheduler' => $container->confscheduler,
+            'submissionid'  => $submissionid,
+            'parentslotid'  => $containerid,
+            'starttime'     => $starttime,
+            'endtime'       => $endtime,
+            'timecreated'   => $now,
+            'timemodified'  => $now,
+        ]);
+    }
+
+    /**
+     * update_span_block() persists iscontainer/roomnameoverride and cascades its
+     * new start/end time to every existing child.
+     */
+    public function test_update_span_block_cascades_time_to_children(): void {
+        global $DB;
+        $this->resetAfterTest();
+
+        [$confscheduler, $confprogram, $confsubmissions] = $this->create_full_fixture();
+        $roomid = api::add_room((int) $confscheduler->id, 'Main Hall');
+        $submissionid = $this->create_accepted_submission($confsubmissions, $confprogram);
+
+        $containerid = api::add_slot(
+            (int) $confscheduler->id,
+            [$roomid],
+            strtotime('2026-09-01 09:00:00'),
+            strtotime('2026-09-01 11:00:00'),
+            null,
+            'Poster Session',
+            null,
+            true
+        );
+        $childid = $this->insert_child_slot_directly(
+            $containerid,
+            $submissionid,
+            strtotime('2026-09-01 09:00:00'),
+            strtotime('2026-09-01 11:00:00')
+        );
+
+        api::update_span_block(
+            $containerid,
+            'Poster Session',
+            null,
+            [$roomid],
+            strtotime('2026-09-01 10:00:00'),
+            strtotime('2026-09-01 12:00:00'),
+            true,
+            'Exhibit Hall'
+        );
+
+        $container = $DB->get_record('confscheduler_slot', ['id' => $containerid], '*', MUST_EXIST);
+        $this->assertSame('Exhibit Hall', $container->roomnameoverride);
+
+        $child = $DB->get_record('confscheduler_slot', ['id' => $childid], '*', MUST_EXIST);
+        $this->assertEquals(strtotime('2026-09-01 10:00:00'), (int) $child->starttime);
+        $this->assertEquals(strtotime('2026-09-01 12:00:00'), (int) $child->endtime);
+    }
+
+    /**
+     * update_span_block() refuses to turn iscontainer off while children still
+     * exist, rather than silently orphaning them.
+     */
+    public function test_update_span_block_rejects_disabling_container_with_children(): void {
+        $this->resetAfterTest();
+
+        [$confscheduler, $confprogram, $confsubmissions] = $this->create_full_fixture();
+        $roomid = api::add_room((int) $confscheduler->id, 'Main Hall');
+        $submissionid = $this->create_accepted_submission($confsubmissions, $confprogram);
+
+        $containerid = api::add_slot(
+            (int) $confscheduler->id,
+            [$roomid],
+            strtotime('2026-09-01 09:00:00'),
+            strtotime('2026-09-01 11:00:00'),
+            null,
+            'Poster Session',
+            null,
+            true
+        );
+        $this->insert_child_slot_directly(
+            $containerid,
+            $submissionid,
+            strtotime('2026-09-01 09:00:00'),
+            strtotime('2026-09-01 11:00:00')
+        );
+
+        $this->expectException(\moodle_exception::class);
+        api::update_span_block(
+            $containerid,
+            'Poster Session',
+            null,
+            [$roomid],
+            strtotime('2026-09-01 09:00:00'),
+            strtotime('2026-09-01 11:00:00'),
+            false
+        );
+    }
+
+    /**
+     * update_slot() (the plain drag/resize path every slot type goes through)
+     * also cascades a container's new time to its children.
+     */
+    public function test_update_slot_cascades_time_to_children_when_container(): void {
+        global $DB;
+        $this->resetAfterTest();
+
+        [$confscheduler, $confprogram, $confsubmissions] = $this->create_full_fixture();
+        $roomid = api::add_room((int) $confscheduler->id, 'Main Hall');
+        $submissionid = $this->create_accepted_submission($confsubmissions, $confprogram);
+
+        $containerid = api::add_slot(
+            (int) $confscheduler->id,
+            [$roomid],
+            strtotime('2026-09-01 09:00:00'),
+            strtotime('2026-09-01 11:00:00'),
+            null,
+            'Poster Session',
+            null,
+            true
+        );
+        $childid = $this->insert_child_slot_directly(
+            $containerid,
+            $submissionid,
+            strtotime('2026-09-01 09:00:00'),
+            strtotime('2026-09-01 11:00:00')
+        );
+
+        api::update_slot(
+            $containerid,
+            [$roomid],
+            strtotime('2026-09-01 13:00:00'),
+            strtotime('2026-09-01 15:00:00')
+        );
+
+        $child = $DB->get_record('confscheduler_slot', ['id' => $childid], '*', MUST_EXIST);
+        $this->assertEquals(strtotime('2026-09-01 13:00:00'), (int) $child->starttime);
+        $this->assertEquals(strtotime('2026-09-01 15:00:00'), (int) $child->endtime);
+    }
+
+    /**
      * update_slot() reschedules a slot and excludes the slot's own current
      * confscheduler_slotroom rows from the overlap/SnapGap check against itself.
      */

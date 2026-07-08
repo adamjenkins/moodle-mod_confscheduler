@@ -884,6 +884,10 @@ class api {
                 'roomid' => $roomid,
             ]);
         }
+
+        if ($slot->submissionid === null && !empty($slot->iscontainer)) {
+            self::cascade_container_time_to_children((int) $slotid, $starttime, $endtime);
+        }
     }
 
     /**
@@ -900,14 +904,27 @@ class api {
      * Re-runs the same SnapGap/overlap validation as update_slot(), excluding the slot's
      * own current confscheduler_slotroom rows from the conflict check.
      *
+     * Also accepts the container-span-block fields introduced alongside add_slot()
+     * (Task 2): $iscontainer and $roomnameoverride. Refuses to turn container mode off
+     * (from true to false) while presentation slots are still nested inside it
+     * (parentslotid pointing at this slot) -- doing so would silently orphan those
+     * children, so this is a data-integrity check that belongs here rather than being
+     * left to the caller. Whenever the block remains (or becomes) a container, its new
+     * start/end time is cascaded to every existing child via
+     * cascade_container_time_to_children(), keeping a child's own starttime/endtime in
+     * lock-step with its container at all times.
+     *
      * @param int $slotid The confscheduler_slot id (must be a span block)
      * @param string $label The new label
      * @param string|null $colour A hex colour (e.g. #3366cc), or null to clear the theme
      * @param int[] $roomids The new room id(s) this block should span
      * @param int $starttime Unix timestamp
      * @param int $endtime Unix timestamp
+     * @param bool $iscontainer Whether this block is (or should become/remain) a container
+     * @param string|null $roomnameoverride Text to display instead of the joined room name(s), or null
      * @return void
-     * @throws \moodle_exception if the slot is not a span block, or the new placement overlaps/violates SnapGap
+     * @throws \moodle_exception if the slot is not a span block, the new placement overlaps/violates
+     *         SnapGap, or $iscontainer is false while children are still nested inside this container
      * @throws \invalid_parameter_exception if a room does not belong to this instance, or $colour is set and
      *         not a valid hex colour
      */
@@ -917,7 +934,9 @@ class api {
         ?string $colour,
         array $roomids,
         int $starttime,
-        int $endtime
+        int $endtime,
+        bool $iscontainer = false,
+        ?string $roomnameoverride = null
     ): void {
         global $DB;
 
@@ -926,6 +945,13 @@ class api {
         $slot = $DB->get_record('confscheduler_slot', ['id' => $slotid], '*', MUST_EXIST);
         if ($slot->submissionid !== null) {
             throw new \moodle_exception('error:notaspanblock', 'mod_confscheduler');
+        }
+
+        if (!empty($slot->iscontainer) && !$iscontainer) {
+            $haschildren = $DB->record_exists('confscheduler_slot', ['parentslotid' => $slotid]);
+            if ($haschildren) {
+                throw new \moodle_exception('error:containerhaschildren', 'mod_confscheduler');
+            }
         }
 
         $confscheduler = $DB->get_record('confscheduler', ['id' => $slot->confscheduler], '*', MUST_EXIST);
@@ -943,12 +969,14 @@ class api {
         );
 
         $DB->update_record('confscheduler_slot', (object) [
-            'id'           => $slot->id,
-            'label'        => $label,
-            'colour'       => $colour,
-            'starttime'    => $starttime,
-            'endtime'      => $endtime,
-            'timemodified' => time(),
+            'id'               => $slot->id,
+            'label'            => $label,
+            'colour'           => $colour,
+            'roomnameoverride' => $roomnameoverride,
+            'iscontainer'      => $iscontainer ? 1 : 0,
+            'starttime'        => $starttime,
+            'endtime'          => $endtime,
+            'timemodified'     => time(),
         ]);
 
         $DB->delete_records('confscheduler_slotroom', ['slotid' => $slotid]);
@@ -958,6 +986,51 @@ class api {
                 'roomid' => $roomid,
             ]);
         }
+
+        if ($iscontainer) {
+            self::cascade_container_time_to_children($slotid, $starttime, $endtime);
+        }
+    }
+
+    /**
+     * Cascades a container's new start/end time to every child nested inside it
+     * (a presentation slot with parentslotid = $containerslotid), keeping a
+     * child's own starttime/endtime equal to its container's at all times. No
+     * overlap re-validation is needed: a child has no confscheduler_slotroom
+     * rows and is exempt from validate_placement() by design (see this class's
+     * docblock). Bumping timemodified is enough to make
+     * get_pending_notification_slots() correctly flag the child as needing a
+     * fresh notification -- no extra logic needed there.
+     *
+     * @param int $containerslotid The confscheduler_slot id of the container
+     * @param int $starttime Unix timestamp
+     * @param int $endtime Unix timestamp
+     * @return void
+     */
+    protected static function cascade_container_time_to_children(int $containerslotid, int $starttime, int $endtime): void {
+        global $DB;
+
+        $DB->set_field_select(
+            'confscheduler_slot',
+            'starttime',
+            $starttime,
+            'parentslotid = :parentslotid',
+            ['parentslotid' => $containerslotid]
+        );
+        $DB->set_field_select(
+            'confscheduler_slot',
+            'endtime',
+            $endtime,
+            'parentslotid = :parentslotid',
+            ['parentslotid' => $containerslotid]
+        );
+        $DB->set_field_select(
+            'confscheduler_slot',
+            'timemodified',
+            time(),
+            'parentslotid = :parentslotid',
+            ['parentslotid' => $containerslotid]
+        );
     }
 
     /**

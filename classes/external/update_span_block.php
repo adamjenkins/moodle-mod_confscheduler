@@ -65,8 +65,20 @@ class update_span_block extends external_api {
                 new external_value(PARAM_INT, 'Room id'),
                 'Room id(s) this block spans'
             ),
-            'starttime' => new external_value(PARAM_INT, 'Unix timestamp'),
-            'endtime'   => new external_value(PARAM_INT, 'Unix timestamp'),
+            'starttime'   => new external_value(PARAM_INT, 'Unix timestamp'),
+            'endtime'     => new external_value(PARAM_INT, 'Unix timestamp'),
+            'iscontainer' => new external_value(
+                PARAM_BOOL,
+                'Whether this block is a container that may hold nested presentations',
+                VALUE_DEFAULT,
+                false
+            ),
+            'roomnameoverride' => new external_value(
+                PARAM_TEXT,
+                'Text to display instead of the joined room name(s), or null',
+                VALUE_DEFAULT,
+                null
+            ),
         ]);
     }
 
@@ -80,6 +92,8 @@ class update_span_block extends external_api {
      * @param int[] $roomids Room id(s) this block spans
      * @param int $starttime Unix timestamp
      * @param int $endtime Unix timestamp
+     * @param bool $iscontainer Whether this block is (or should become/remain) a container
+     * @param string|null $roomnameoverride Text to display instead of the joined room name(s), or null
      * @return array{success: bool}
      */
     public static function execute(
@@ -89,16 +103,20 @@ class update_span_block extends external_api {
         ?string $colour,
         array $roomids,
         int $starttime,
-        int $endtime
+        int $endtime,
+        bool $iscontainer = false,
+        ?string $roomnameoverride = null
     ): array {
         $params = self::validate_parameters(self::execute_parameters(), [
-            'cmid'      => $cmid,
-            'slotid'    => $slotid,
-            'label'     => $label,
-            'colour'    => $colour,
-            'roomids'   => $roomids,
-            'starttime' => $starttime,
-            'endtime'   => $endtime,
+            'cmid'             => $cmid,
+            'slotid'           => $slotid,
+            'label'            => $label,
+            'colour'           => $colour,
+            'roomids'          => $roomids,
+            'starttime'        => $starttime,
+            'endtime'          => $endtime,
+            'iscontainer'      => $iscontainer,
+            'roomnameoverride' => $roomnameoverride,
         ]);
 
         if (trim($params['label']) === '') {
@@ -114,7 +132,9 @@ class update_span_block extends external_api {
             $params['colour'],
             $params['roomids'],
             $params['starttime'],
-            $params['endtime']
+            $params['endtime'],
+            $params['iscontainer'],
+            $params['roomnameoverride']
         );
 
         return ['success' => true];

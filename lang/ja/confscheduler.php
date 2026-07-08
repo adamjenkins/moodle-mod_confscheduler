@@ -72,6 +72,7 @@ $string['displaysettings'] = '表示設定';
 $string['editroom'] = '会場を編集';
 $string['editspanblock'] = 'スパンブロックを編集';
 $string['error:conferenceendbeforestart'] = '開催終了日時は開催開始日時より後にしてください。';
+$string['error:containerhaschildren'] = 'このコンテナーにはまだネストされた発表があります。コンテナーモードを無効にする前に削除してください。';
 $string['error:gapviolation'] = 'この配置は同じ会場の別の発表と近すぎます。設定されている最小間隔を満たしていません。';
 $string['error:invalidcapacity'] = '会場の定員は空欄（無制限）にするか、0以上の整数で指定してください。';
 $string['error:invalidcolour'] = '会場の色は空欄にするか、6桁の16進数カラーコード（例: #3366cc）で指定してください。';

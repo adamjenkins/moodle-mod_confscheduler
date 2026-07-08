@@ -72,6 +72,7 @@ $string['displaysettings'] = 'Display settings';
 $string['editroom'] = 'Edit room';
 $string['editspanblock'] = 'Edit span block';
 $string['error:conferenceendbeforestart'] = 'The conference end date must be after the conference start date.';
+$string['error:containerhaschildren'] = 'This container still has nested presentations; remove them before turning off container mode.';
 $string['error:gapviolation'] = 'This placement is too close to another presentation in the same room; the configured minimum gap is not met.';
 $string['error:invalidcapacity'] = 'Room capacity must be left blank (unlimited) or a whole number of 0 or more.';
 $string['error:invalidcolour'] = 'Room colour must be left blank or a 6-digit hex colour (e.g. #3366cc).';
