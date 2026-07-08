@@ -841,6 +841,21 @@ const buildGridInto = (state, gridEl, slots, dayKey) => {
     columnsWrap.style.minWidth = (Math.max(state.rooms.length, 1) * COLUMN_WIDTH) + 'px';
     columnsWrap.style.height = totalHeight + 'px';
 
+    // Horizontal gridlines: solid on the hour, dotted on the half-hour (user report,
+    // 2026-07-08 -- see DayUtils.gridlineTicks()'s own docblock for why these are real
+    // positioned elements computed from actual clock timestamps, not a CSS background
+    // gradient anchored to the column's own top edge as before). Appended before the
+    // room columns/bands/blocks below so they paint behind all of them, matching the old
+    // background-image's own stacking (room columns have no background of their own
+    // otherwise, so this is visually equivalent to "behind everything").
+    DayUtils.gridlineTicks(state.timelineStart, state.timelineEnd).forEach((tick) => {
+        const line = document.createElement('div');
+        line.className = 'mod_confscheduler-gridline'
+            + (tick.ishour ? ' mod_confscheduler-gridline-hour' : ' mod_confscheduler-gridline-halfhour');
+        line.style.top = timeToY(state, tick.time) + 'px';
+        columnsWrap.appendChild(line);
+    });
+
     state.rooms.forEach((room) => {
         const column = document.createElement('div');
         column.className = 'mod_confscheduler-room-column';
@@ -849,11 +864,6 @@ const buildGridInto = (state, gridEl, slots, dayKey) => {
             column.style.setProperty('--mod_confscheduler-room-colour', room.colour);
             column.classList.add('has-colour');
         }
-        // The hourly gridline background (styles.css) is authored as a repeating gradient
-        // sized for a 144px-per-hour tile; scaling it via background-size lets one
-        // instance's own configured row height (state.pxperhour) stretch/compress the same
-        // gradient rather than needing per-height CSS variants.
-        column.style.backgroundSize = `100% ${state.pxperhour}px`;
         columnsWrap.appendChild(column);
     });
 

@@ -24,12 +24,9 @@
  * widths should be responsive to fill all the available space ... min-width of
  * 200px"), via flex-grow rather than a fixed pixel width; see
  * .mod_confscheduler-room-header/-room-column below and buildGridInto()'s
- * docblock in amd/src/scheduler_grid.js. Hour gridline spacing is no longer a
- * fixed constant here: the room column's repeating-gradient background is
- * authored at a 144px-per-hour reference tile, but amd/src/scheduler_grid.js/
- * amd/src/scheduler_display.js override background-size per-instance to the
- * organiser-configured state.pxperhour (60-480, see classes/api.php's
- * DEFAULT_PX_PER_HOUR/MIN_PX_PER_HOUR/MAX_PX_PER_HOUR).
+ * docblock in amd/src/scheduler_grid.js. Horizontal gridlines (.mod_confscheduler-
+ * gridline below) are real positioned elements, not a CSS background pattern --
+ * see amd/src/day_utils.js's gridlineTicks() docblock for why.
  */
 
 .mod_confscheduler-toolbar {
@@ -219,14 +216,39 @@
     box-sizing: border-box;
     position: relative;
     border-right: 1px solid rgba(0, 0, 0, 0.08);
-    background-image:
-        repeating-linear-gradient(
-            to bottom,
-            rgba(0, 0, 0, 0.06) 0,
-            rgba(0, 0, 0, 0.06) 1px,
-            transparent 1px,
-            transparent 144px
-        );
+}
+
+/*
+ * Horizontal gridlines (user report, 2026-07-08): one absolutely-positioned, full-width
+ * line per amd/src/day_utils.js's gridlineTicks() tick -- solid on the hour, dotted on
+ * the half-hour. Appended as the first children of .mod_confscheduler-columns (see
+ * buildGridInto()/buildDayGridInto()'s own comments), so they paint behind the room
+ * columns' colour tint and behind scheduled blocks, replacing a CSS repeating-linear-
+ * gradient that was anchored to the grid's own top edge rather than to real clock hours
+ * -- see gridlineTicks()'s own docblock for the full story of why that drifted out of
+ * alignment with the time-axis labels ("seems kind of random").
+ */
+.mod_confscheduler-gridline {
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 0;
+    z-index: 0;
+    pointer-events: none;
+}
+
+.mod_confscheduler-gridline-hour {
+    border-top: 1px solid rgba(0, 0, 0, 0.15);
+}
+
+/* A noticeably higher opacity than the hour line above, not just a different
+   border-style: a 1px dotted line's gaps make it read as much fainter than a
+   solid line of the same colour/opacity would, to the point of being
+   essentially invisible at the hour line's 0.15 (confirmed visually while
+   fixing this -- both lines exist and are correctly positioned either way,
+   this is purely a contrast issue, not a stacking/z-index one). */
+.mod_confscheduler-gridline-halfhour {
+    border-top: 1px dotted rgba(0, 0, 0, 0.35);
 }
 
 /* Pale tint of the room colour behind blocks, via a low-opacity overlay rather than a
@@ -667,11 +689,17 @@ a.mod_confscheduler-track-pill:focus {
  * already on screen, with no separate print-only colour logic needed.
  */
 .mod_confscheduler-bw .mod_confscheduler-room-header {
-    /* stylelint-disable-next-line declaration-no-important -- must beat the inline
-       style.backgroundColor amd/src/scheduler_grid.js and scheduler_display.js set
-       per room, which otherwise always wins on specificity. */
+    /* stylelint-disable declaration-no-important -- both properties below must beat the
+       inline style.backgroundColor/color amd/src/scheduler_grid.js and
+       scheduler_display.js set per room (background AND a YIQ-contrast text colour
+       computed against the room's OWN colour, e.g. white text for a dark room), which
+       otherwise always win on specificity. Losing just the color !important here was
+       the actual bug (user report, 2026-07-08): background flipped to white as
+       intended, but the inline white text colour survived underneath it, since only
+       background-color was !important -- white text on white background. */
     background-color: #fff !important;
-    color: #000;
+    color: #000 !important;
+    /* stylelint-enable declaration-no-important */
     border: 1px solid #000;
 }
 
@@ -680,10 +708,12 @@ a.mod_confscheduler-track-pill:focus {
 }
 
 .mod_confscheduler-bw .mod_confscheduler-block {
-    /* stylelint-disable-next-line declaration-no-important -- must beat the inline
-       style.backgroundColor the grid/display JS sets per slot/room colour. */
+    /* stylelint-disable declaration-no-important -- see the room-header rule above:
+       same bug, same fix -- block.style.color is set per slot/track colour by the
+       same two JS modules and needs the same !important to actually be overridden. */
     background: #fff !important;
-    color: #000;
+    color: #000 !important;
+    /* stylelint-enable declaration-no-important */
 }
 
 .mod_confscheduler-bw .mod_confscheduler-track-pill {

@@ -183,6 +183,40 @@ export const computeDayTimelineBounds = (slots, fallbackDayKey, daystartminutes,
 };
 
 /**
+ * Returns every half-hour tick between start and end (the first at or after start, the
+ * last at or before end), each flagged whether it falls on a whole hour -- the shared
+ * basis for the grid's horizontal gridlines (solid on the hour, dotted on the half-hour;
+ * user report, 2026-07-08).
+ *
+ * Previously, these gridlines were a single CSS repeating-linear-gradient painted as each
+ * room column's own background, anchored to the column's own top edge (i.e. this day's
+ * range start, computeDayTimelineBounds()'s return value above). That start time is not,
+ * in general, hour-aligned: the automatic case rounds down to the hour and then subtracts
+ * a further 30 minutes of padding, and an organiser-configured daystart can be any
+ * arbitrary clock time -- so the gradient's lines drifted away from the real hour marks
+ * the time-axis labels are drawn at, by whatever offset the range start happened to have
+ * from a true hour boundary. It also could not express a DIFFERENT line style for the
+ * half-hour ticks the user also asked for here, since a linear-gradient can only paint
+ * solid colour stops, never a dotted/dashed line.
+ *
+ * Ticks are computed from real clock timestamps here, exactly like the existing
+ * hour-label loops in scheduler_grid.js/scheduler_display.js -- which is what guarantees
+ * a gridline lands in the same place as its corresponding label, by construction, rather
+ * than by the range start coincidentally already being hour-aligned.
+ *
+ * @param {Number} start Unix timestamp, the top of the visible range
+ * @param {Number} end Unix timestamp, the bottom of the visible range
+ * @return {{time: Number, ishour: Boolean}[]}
+ */
+export const gridlineTicks = (start, end) => {
+    const ticks = [];
+    for (let time = Math.ceil(start / 1800) * 1800; time <= end; time += 1800) {
+        ticks.push({time, ishour: time % 3600 === 0});
+    }
+    return ticks;
+};
+
+/**
  * Resolves the effective daily display-window minutes for one day: that day's own
  * override if one exists, otherwise the instance-level default (user request,
  * 2026-07-07 -- the window is now settable per conference day, since these often differ

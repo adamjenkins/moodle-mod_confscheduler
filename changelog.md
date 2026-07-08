@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+- Bug fix (2026-07-08): the grid's horizontal hour gridlines "seemed kind of
+  random" -- they were a single CSS `repeating-linear-gradient` painted as
+  each room column's own background, anchored to the column's own top edge
+  (the day's timeline start) rather than to real clock hours. That start
+  time is essentially never hour-aligned (the automatic case rounds down to
+  the hour and then subtracts a further 30 minutes of padding; an
+  organiser-configured day-start can be any arbitrary clock time), so the
+  gradient's lines drifted away from the actual hour marks the time-axis
+  labels are drawn at. Replaced with a new shared
+  `amd/src/day_utils.js::gridlineTicks()`, generating one positioned `<div>`
+  per real half-hour timestamp (solid `border-top` on the hour, dotted on
+  the half-hour, per the same user request) -- both `amd/src/scheduler_grid.js`
+  (edit mode) and `amd/src/scheduler_display.js` (read-only Display mode)
+  now build their gridlines from this, guaranteeing alignment with the
+  hour-label loop each already has, by construction. The dotted half-hour
+  line needed a noticeably higher opacity (0.35 vs the hour line's 0.15) to
+  actually be visible -- a dotted line reads much fainter than a solid one
+  at the same low opacity, confirmed visually while fixing this.
 - User request (2026-07-06): added `composer.json` so the plugin can be
   published on Packagist per the
   [Moodle Composer guide](https://moodledev.io/docs/5.2/guides/composer) --
