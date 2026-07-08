@@ -35,7 +35,6 @@
 }}
 <form class="mod_confscheduler-addtocontainer-form">
     <input type="hidden" name="containerslotid" value="{{containerslotid}}">
-    {{#submissions}}
     <div class="form-group">
         <label for="mod_confscheduler-addtocontainer-submission">{{#str}} addtocontainerpresentation, mod_confscheduler {{/str}}</label>
         <select class="form-control" id="mod_confscheduler-addtocontainer-submission" name="submissionid">
@@ -44,7 +43,6 @@
             {{/submissions}}
         </select>
     </div>
-    {{/submissions}}
     {{^submissions}}
     <p>{{#str}} addtocontainernounscheduled, mod_confscheduler {{/str}}</p>
     {{/submissions}}
