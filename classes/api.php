@@ -1098,8 +1098,26 @@ class api {
      * @param int $slotid The confscheduler_slot id
      * @return void
      */
+    /**
+     * Unschedules a slot: removes it and its confscheduler_slotroom rows. When
+     * the slot was a presentation (non-null submissionid), this returns that
+     * submission to the "unscheduled" panel. When the slot is a container, every
+     * child nested inside it (parentslotid = this slot's id) is recursively
+     * deleted too, rather than left as an orphaned row pointing at a
+     * now-nonexistent parent.
+     *
+     * @param int $slotid The confscheduler_slot id
+     * @return void
+     */
     public static function delete_slot(int $slotid): void {
         global $DB;
+
+        $slot = $DB->get_record('confscheduler_slot', ['id' => $slotid]);
+        if ($slot && $slot->submissionid === null && !empty($slot->iscontainer)) {
+            foreach ($DB->get_records('confscheduler_slot', ['parentslotid' => $slotid]) as $child) {
+                self::delete_slot((int) $child->id);
+            }
+        }
 
         $DB->delete_records('confscheduler_slotroom', ['slotid' => $slotid]);
         $DB->delete_records('confscheduler_slot', ['id' => $slotid]);

@@ -1219,6 +1219,39 @@ final class api_test extends advanced_testcase {
     }
 
     /**
+     * delete_slot() cascades to every child nested inside a container, removing
+     * their slotroom rows too (they have none, but the call must still be safe).
+     */
+    public function test_delete_slot_cascades_to_container_children(): void {
+        global $DB;
+        $this->resetAfterTest();
+
+        [$confscheduler, $confprogram, $confsubmissions] = $this->create_full_fixture();
+        $roomid = api::add_room((int) $confscheduler->id, 'Main Hall');
+        $first = $this->create_accepted_submission($confsubmissions, $confprogram, 'First Poster');
+        $second = $this->create_accepted_submission($confsubmissions, $confprogram, 'Second Poster');
+
+        $containerid = api::add_slot(
+            (int) $confscheduler->id,
+            [$roomid],
+            strtotime('2026-09-01 09:00:00'),
+            strtotime('2026-09-01 11:00:00'),
+            null,
+            'Poster Session',
+            null,
+            true
+        );
+        $firstchild = api::add_presentation_to_container((int) $confscheduler->id, $containerid, $first);
+        $secondchild = api::add_presentation_to_container((int) $confscheduler->id, $containerid, $second);
+
+        api::delete_slot($containerid);
+
+        $this->assertFalse($DB->record_exists('confscheduler_slot', ['id' => $containerid]));
+        $this->assertFalse($DB->record_exists('confscheduler_slot', ['id' => $firstchild]));
+        $this->assertFalse($DB->record_exists('confscheduler_slot', ['id' => $secondchild]));
+    }
+
+    /**
      * add_presentation_to_container() nests a presentation inside a container,
      * copying the container's own time, with no confscheduler_slotroom rows of
      * its own (the data-shape exemption from the overlap check).
