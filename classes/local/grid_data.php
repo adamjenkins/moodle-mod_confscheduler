@@ -79,7 +79,18 @@ class grid_data {
      * that container's id) and 'roomnameoverride' (string|null; resolved from the PARENT
      * for a nested presentation, since a child's own row always has this null by
      * construction -- see api::add_presentation_to_container()) (user request, 2026-07-08,
-     * poster/keynote container span blocks).
+     * poster/keynote container span blocks). Each 'slots' entry also includes
+     * 'childtextalign' (string, one of 'left'/'center'/'right', never null) and
+     * 'childtextvalign' (string, one of 'top'/'middle'/'bottom', never null), the
+     * container's configured text alignment for its nested-presentation tiles --
+     * resolved from the PARENT for a nested presentation, exactly matching
+     * 'roomnameoverride''s pattern above, since a child's own row always carries just
+     * the schema default (Round 2, 2026-07-08, modal filters + child tile alignment).
+     * Each 'unscheduled' entry also includes 'type' (string|null, the submission
+     * type's name, format_string()'d) and 'typeid' (int|null), resolved from the same
+     * already-fetched submission-types rows this method uses for 'durationminutes'
+     * above; both null when the submission has no type configured (or it was since
+     * deleted) (Round 2, 2026-07-08).
      */
     public static function build(\stdClass $confscheduler, int $userid): array {
         global $DB;
@@ -118,8 +129,10 @@ class grid_data {
         }
 
         $typedurationsbyid = [];
+        $typenamesbyid = [];
         foreach (submissions_api::get_submission_types($confsubmissionscm->id) as $submissiontype) {
             $typedurationsbyid[(int) $submissiontype->id] = (int) $submissiontype->durationminutes;
+            $typenamesbyid[(int) $submissiontype->id] = $submissiontype->name;
         }
 
         $slots = \mod_confscheduler\api::get_slots($confschedulerid);
@@ -155,6 +168,8 @@ class grid_data {
                 'iscontainer'      => $slot->submissionid === null ? (bool) $slot->iscontainer : false,
                 'parentslotid'     => $parentslotid,
                 'roomnameoverride' => $parentslot ? $parentslot->roomnameoverride : $slot->roomnameoverride,
+                'childtextalign'   => $parentslot ? $parentslot->childtextalign : $slot->childtextalign,
+                'childtextvalign'  => $parentslot ? $parentslot->childtextvalign : $slot->childtextvalign,
                 'title'            => null,
                 'speakers'         => null,
                 'track'            => null,
@@ -232,6 +247,10 @@ class grid_data {
                     : null,
                 'trackid'         => $hastrack ? (int) $submission->trackid : null,
                 'trackcolour'     => $hastrack ? ($tracksbyid[(int) $submission->trackid]->colour ?: null) : null,
+                'type'            => $submissiontypeid !== null && isset($typenamesbyid[$submissiontypeid])
+                    ? format_string($typenamesbyid[$submissiontypeid], true, ['escape' => false])
+                    : null,
+                'typeid'          => $submissiontypeid,
                 // Falls back to api::DEFAULT_DURATION_MINUTES when this submission has no
                 // type (or the type was deleted after being chosen) -- see that constant's
                 // docblock. The client uses this only as the INITIAL duration of a newly

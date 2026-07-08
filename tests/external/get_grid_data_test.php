@@ -222,6 +222,137 @@ final class get_grid_data_test extends advanced_testcase {
     }
 
     /**
+     * The grid payload exposes childtextalign/childtextvalign for a container
+     * and its child (resolved from the parent, not the child's own
+     * always-default row), and type/typeid for an unscheduled submission --
+     * null/null when it has no type, the real name/id when it does (Round 2,
+     * 2026-07-08 -- modal filters + child tile alignment).
+     *
+     * $submissionid from create_fixture() gets nested into the container below
+     * (to exercise the parent-resolution path for childtextalign/childtextvalign),
+     * so it no longer appears in 'unscheduled' at all -- two fresh
+     * accepted-but-unscheduled submissions are created instead, one with a
+     * submission type and one without, to see 'type'/'typeid' in that array.
+     *
+     * Also runs the result through clean_returnvalue(), this project's
+     * established regression guard (see test_grid_data_exposes_container_fields()'s
+     * docblock above for why): get_grid_data.php's execute_returns() does not yet
+     * declare these four fields (that lands in the next round task), so the
+     * clean_returnvalue() assertions below are EXPECTED to fail until then --
+     * kept here, RED, as the guard that will catch the schema declaration when
+     * it's added.
+     */
+    public function test_grid_data_exposes_alignment_and_type_fields(): void {
+        global $DB;
+        $this->resetAfterTest();
+
+        [$course, $cmid, $confscheduler, $confprogram, $submissionid] = $this->create_fixture();
+        $teacher = $this->getDataGenerator()->create_and_enrol($course, 'editingteacher');
+        $this->setUser($teacher);
+
+        $roomid = api::add_room((int) $confscheduler->id, 'Main Hall');
+
+        $confsubmissionsid = (int) $DB->get_field(
+            'confsubmissions_submission',
+            'confsubmissions',
+            ['id' => $submissionid]
+        );
+        $submissiontypeid = submissions_api::add_submission_type($confsubmissionsid, 'Lightning Talk', 15);
+
+        $decider = $this->getDataGenerator()->create_user();
+
+        $typedsubmitter = $this->getDataGenerator()->create_user();
+        $typedsubmissionid = (int) $DB->insert_record('confsubmissions_submission', (object) [
+            'confsubmissions'  => $confsubmissionsid,
+            'userid'           => $typedsubmitter->id,
+            'title'            => 'A Typed Talk',
+            'abstract'         => 'An abstract.',
+            'status'           => 'submitted',
+            'submissiontypeid' => $submissiontypeid,
+            'timecreated'      => time(),
+            'timemodified'     => time(),
+        ]);
+        \mod_confprogram\api::record_decision((int) $confprogram->id, $typedsubmissionid, 'accept', 1, (int) $decider->id);
+
+        $untypedsubmitter = $this->getDataGenerator()->create_user();
+        $untypedsubmissionid = (int) $DB->insert_record('confsubmissions_submission', (object) [
+            'confsubmissions' => $confsubmissionsid,
+            'userid'          => $untypedsubmitter->id,
+            'title'           => 'An Untyped Talk',
+            'abstract'        => 'An abstract.',
+            'status'          => 'submitted',
+            'timecreated'     => time(),
+            'timemodified'    => time(),
+        ]);
+        \mod_confprogram\api::record_decision(
+            (int) $confprogram->id,
+            $untypedsubmissionid,
+            'accept',
+            1,
+            (int) $decider->id
+        );
+
+        $containerid = api::add_slot(
+            (int) $confscheduler->id,
+            [$roomid],
+            strtotime('2026-09-01 09:00:00'),
+            strtotime('2026-09-01 11:00:00'),
+            null,
+            'Poster Session',
+            null,
+            true,
+            null,
+            'center',
+            'middle'
+        );
+        $childid = api::add_presentation_to_container((int) $confscheduler->id, $containerid, $submissionid);
+
+        $result = get_grid_data::execute($cmid);
+
+        $byid = [];
+        foreach ($result['slots'] as $entry) {
+            $byid[$entry['id']] = $entry;
+        }
+        $this->assertSame('center', $byid[$containerid]['childtextalign']);
+        $this->assertSame('middle', $byid[$containerid]['childtextvalign']);
+        // Child resolves from the parent, not its own (always-default) row.
+        $this->assertSame('center', $byid[$childid]['childtextalign']);
+        $this->assertSame('middle', $byid[$childid]['childtextvalign']);
+
+        $unscheduledbyid = [];
+        foreach ($result['unscheduled'] as $entry) {
+            $unscheduledbyid[$entry['submissionid']] = $entry;
+        }
+        $this->assertSame('Lightning Talk', $unscheduledbyid[$typedsubmissionid]['type']);
+        $this->assertSame($submissiontypeid, $unscheduledbyid[$typedsubmissionid]['typeid']);
+        $this->assertNull($unscheduledbyid[$untypedsubmissionid]['type']);
+        $this->assertNull($unscheduledbyid[$untypedsubmissionid]['typeid']);
+
+        // Running the result through clean_returnvalue() is expected RED until the
+        // next task adds these four fields to get_grid_data.php's execute_returns()
+        // schema (see this method's docblock above).
+        $clean = \core_external\external_api::clean_returnvalue(get_grid_data::execute_returns(), $result);
+
+        $cleanslotsbyid = [];
+        foreach ($clean['slots'] as $entry) {
+            $cleanslotsbyid[$entry['id']] = $entry;
+        }
+        $this->assertSame('center', $cleanslotsbyid[$containerid]['childtextalign']);
+        $this->assertSame('middle', $cleanslotsbyid[$containerid]['childtextvalign']);
+        $this->assertSame('center', $cleanslotsbyid[$childid]['childtextalign']);
+        $this->assertSame('middle', $cleanslotsbyid[$childid]['childtextvalign']);
+
+        $cleanunscheduledbyid = [];
+        foreach ($clean['unscheduled'] as $entry) {
+            $cleanunscheduledbyid[$entry['submissionid']] = $entry;
+        }
+        $this->assertSame('Lightning Talk', $cleanunscheduledbyid[$typedsubmissionid]['type']);
+        $this->assertSame($submissiontypeid, $cleanunscheduledbyid[$typedsubmissionid]['typeid']);
+        $this->assertNull($cleanunscheduledbyid[$untypedsubmissionid]['type']);
+        $this->assertNull($cleanunscheduledbyid[$untypedsubmissionid]['typeid']);
+    }
+
+    /**
      * A scheduled presentation's 'nonpreferredday' flag (user feedback,
      * 2026-07-05, consumed by the edit-mode grid to highlight the block) is true
      * only when the submission has a non-empty preferred-dates list AND the slot's
