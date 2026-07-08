@@ -33,6 +33,8 @@
     * slotid int|string - the confscheduler_slot id, when editing an existing span block (empty string when adding)
     * label string - the current label (empty when adding)
     * colour string|null - the current hex colour, or null
+    * iscontainer bool - whether this span block is a container (false when adding)
+    * roomnameoverride string|null - the current room-name override, or null
     * rooms array - [{id, name, startselected, endselected}, ...] in column order, for the start/end room selects
     * years array - zero-padded/plain year strings for every select's year dropdown
     * months array - zero-padded "01".."12" strings for every select's month dropdown
@@ -110,5 +112,13 @@
             <input type="checkbox" class="form-check-input" id="mod_confscheduler-spanblock-nocolour" name="nocolour" {{^colour}}checked{{/colour}}>
             <label class="form-check-label" for="mod_confscheduler-spanblock-nocolour">{{#str}} nocolour, mod_confscheduler {{/str}}</label>
         </div>
+    </div>
+    <div class="form-group form-check">
+        <input type="checkbox" class="form-check-input" id="mod_confscheduler-spanblock-iscontainer" name="iscontainer" {{#iscontainer}}checked{{/iscontainer}}>
+        <label class="form-check-label" for="mod_confscheduler-spanblock-iscontainer">{{#str}} iscontainer, mod_confscheduler {{/str}}</label>
+    </div>
+    <div class="form-group">
+        <label for="mod_confscheduler-spanblock-roomnameoverride">{{#str}} roomnameoverride, mod_confscheduler {{/str}}</label>
+        <input type="text" class="form-control" id="mod_confscheduler-spanblock-roomnameoverride" name="roomnameoverride" maxlength="255" value="{{#roomnameoverride}}{{roomnameoverride}}{{/roomnameoverride}}">
     </div>
 </form>
