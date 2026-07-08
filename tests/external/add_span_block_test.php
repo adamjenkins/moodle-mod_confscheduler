@@ -149,6 +149,34 @@ final class add_span_block_test extends advanced_testcase {
     }
 
     /**
+     * A span block can be created as a container, with a room-name override
+     * (user request, 2026-07-08 -- poster/keynote container blocks).
+     */
+    public function test_creates_container_span_block(): void {
+        $this->resetAfterTest();
+
+        [$course, $cmid, , $room1, $room2] = $this->create_fixture();
+        $teacher = $this->getDataGenerator()->create_and_enrol($course, 'editingteacher');
+        $this->setUser($teacher);
+
+        $result = add_span_block::execute(
+            $cmid,
+            'Poster Session',
+            [$room1, $room2],
+            strtotime('2026-09-01 09:00:00'),
+            strtotime('2026-09-01 11:00:00'),
+            null,
+            true,
+            'Exhibit Hall'
+        );
+
+        global $DB;
+        $slot = $DB->get_record('confscheduler_slot', ['id' => $result['slotid']]);
+        $this->assertSame(1, (int) $slot->iscontainer);
+        $this->assertSame('Exhibit Hall', $slot->roomnameoverride);
+    }
+
+    /**
      * A plain student (no manageschedule) cannot call this endpoint.
      */
     public function test_requires_manageschedule_capability(): void {

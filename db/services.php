@@ -61,6 +61,13 @@ $functions = [
         'ajax'         => true,
         'capabilities' => 'mod/confscheduler:manageschedule',
     ],
+    'mod_confscheduler_add_to_container' => [
+        'classname'    => 'mod_confscheduler\external\add_to_container',
+        'description'  => 'Nests an accepted-but-unscheduled presentation inside a container span block.',
+        'type'         => 'write',
+        'ajax'         => true,
+        'capabilities' => 'mod/confscheduler:manageschedule',
+    ],
     'mod_confscheduler_update_span_block' => [
         'classname'    => 'mod_confscheduler\external\update_span_block',
         'description'  => 'Edits an existing column-spanning block (label, colour, time range, room-range) in place.',

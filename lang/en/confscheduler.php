@@ -24,6 +24,8 @@
 
 $string['addroom'] = 'Add room';
 $string['addspanblock'] = 'Add span block';
+$string['addtocontainer'] = 'Add presentation to container';
+$string['addtocontainerpresentation'] = 'Presentation';
 $string['alldays'] = 'All days';
 $string['autoscheduler'] = 'Autoscheduler';
 $string['autoschedulerclearfirst'] = 'Clear existing schedule in this window first';

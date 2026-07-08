@@ -24,6 +24,8 @@
 
 $string['addroom'] = '会場を追加';
 $string['addspanblock'] = 'スパンブロックを追加';
+$string['addtocontainer'] = 'コンテナーに発表を追加';
+$string['addtocontainerpresentation'] = '発表';
 $string['alldays'] = 'All days（全日程）';
 $string['autoscheduler'] = '自動スケジューラー';
 $string['autoschedulerclearfirst'] = 'この時間帯の既存のスケジュールを先にクリアする';
