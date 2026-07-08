@@ -870,7 +870,7 @@ const buildGridInto = (state, gridEl, slots, dayKey) => {
     gridEl.appendChild(columnsWrap);
 
     renderOutOfHoursBands(state, columnsWrap, dayKey);
-    slots.forEach((slot) => renderBlock(state, columnsWrap, slot));
+    slots.filter((slot) => !slot.parentslotid).forEach((slot) => renderBlock(state, columnsWrap, slot, slots));
 
     return columnsWrap;
 };
@@ -988,8 +988,9 @@ const renderAllDaysBody = (state) => {
  * @param {Object} state The module state object
  * @param {HTMLElement} columnsWrap The .mod_confscheduler-columns container
  * @param {Object} slot A slot entry as returned by mod_confscheduler_get_grid_data
+ * @param {Object[]} slots The full slots array (used to find a container's children)
  */
-const renderBlock = (state, columnsWrap, slot) => {
+const renderBlock = (state, columnsWrap, slot, slots) => {
     const indices = slot.roomids
         .map((id) => state.rooms.findIndex((room) => room.id === id))
         .filter((index) => index >= 0);
@@ -1086,10 +1087,28 @@ const renderBlock = (state, columnsWrap, slot) => {
         editBtn.innerHTML = '&#9998;';
         block.appendChild(editBtn);
 
+        if (slot.iscontainer) {
+            const addBtn = document.createElement('button');
+            addBtn.type = 'button';
+            addBtn.className = 'mod_confscheduler-container-add';
+            addBtn.setAttribute('aria-label', state.strings.addtocontainer);
+            addBtn.innerHTML = '&#43;';
+            block.appendChild(addBtn);
+        }
+
         const label = document.createElement('div');
         label.className = 'mod_confscheduler-block-label';
         label.textContent = slot.label || '';
         block.appendChild(label);
+
+        if (slot.iscontainer) {
+            const childHolder = document.createElement('div');
+            childHolder.className = 'mod_confscheduler-container-children';
+            const children = slots.filter((candidate) => candidate.parentslotid === slot.id);
+            childHolder.style.gridTemplateColumns = `repeat(${Math.max(children.length, 1)}, 1fr)`;
+            children.forEach((child) => renderContainerChild(state, childHolder, child));
+            block.appendChild(childHolder);
+        }
     } else {
         const favBtn = document.createElement('button');
         favBtn.type = 'button';
@@ -1121,7 +1140,7 @@ const renderBlock = (state, columnsWrap, slot) => {
         block.appendChild(footer);
     }
 
-    const roomNames = slot.roomids
+    const roomNames = slot.roomnameoverride || slot.roomids
         .map((id) => (state.rooms.find((room) => room.id === id) || {}).name)
         .filter(Boolean)
         .join(', ');
@@ -1150,6 +1169,46 @@ const renderBlock = (state, columnsWrap, slot) => {
     block.appendChild(resizeHandle);
 
     columnsWrap.appendChild(block);
+};
+
+/**
+ * Renders one compact child block inside a container's child-holder (edit
+ * mode). Deliberately shows only title + speakers -- no roomtime line, no
+ * independent top/height positioning, no resize handle/favourite-star --
+ * since the container itself already displays the shared room/time once for
+ * the whole group (user request, 2026-07-08: room/time info inside a
+ * container should not repeat what's already visible on the parent block).
+ * Carries the same .mod_confscheduler-block-remove button and data-slotid the
+ * existing delegated click handler (onUnscheduleClick(), see bindEvents())
+ * already knows how to unschedule, so no new remove-handling code is needed.
+ *
+ * @param {Object} state The module state object
+ * @param {HTMLElement} holder The .mod_confscheduler-container-children element to append into
+ * @param {Object} slot The child slot entry (from state.slots)
+ */
+const renderContainerChild = (state, holder, slot) => {
+    const child = document.createElement('div');
+    child.className = 'mod_confscheduler-block mod_confscheduler-block-child';
+    child.dataset.slotid = slot.id;
+
+    const removeBtn = document.createElement('button');
+    removeBtn.type = 'button';
+    removeBtn.className = 'mod_confscheduler-block-remove';
+    removeBtn.setAttribute('aria-label', state.strings.unschedule);
+    removeBtn.textContent = '×';
+    child.appendChild(removeBtn);
+
+    const title = document.createElement('div');
+    title.className = 'mod_confscheduler-block-title';
+    title.textContent = slot.title || '';
+    child.appendChild(title);
+
+    const speakers = document.createElement('div');
+    speakers.className = 'mod_confscheduler-block-speakers';
+    speakers.textContent = slot.speakers || '';
+    child.appendChild(speakers);
+
+    holder.appendChild(child);
 };
 
 /**
@@ -1613,6 +1672,8 @@ const openSpanBlockModal = async(state, slot = null) => {
         slotid: isEdit ? slot.id : '',
         label: isEdit ? (slot.label || '') : '',
         colour: isEdit ? slot.colour : null,
+        iscontainer: isEdit ? Boolean(slot.iscontainer) : false,
+        roomnameoverride: isEdit ? (slot.roomnameoverride || '') : '',
         rooms: state.rooms.map((room) => ({
             id: room.id,
             name: room.name,
@@ -1646,6 +1707,8 @@ const openSpanBlockModal = async(state, slot = null) => {
         const endroom = Number(form.querySelector('[name=endroom]').value);
         const nocolour = form.querySelector('[name=nocolour]').checked;
         const colour = nocolour ? null : form.querySelector('[name=colour]').value;
+        const iscontainer = form.querySelector('[name=iscontainer]').checked;
+        const roomnameoverride = form.querySelector('[name=roomnameoverride]').value.trim() || null;
 
         if (label === '') {
             return;
@@ -1664,12 +1727,63 @@ const openSpanBlockModal = async(state, slot = null) => {
         const endtime = getDateTimeSelectGroupTimestamp(form, 'endtime');
 
         const promise = slotid
-            ? Repository.updateSpanBlock(state.cmid, slotid, label, roomids, starttime, endtime, colour)
-            : Repository.addSpanBlock(state.cmid, label, roomids, starttime, endtime, colour);
+            ? Repository.updateSpanBlock(
+                state.cmid, slotid, label, roomids, starttime, endtime, colour, iscontainer, roomnameoverride
+            )
+            : Repository.addSpanBlock(
+                state.cmid, label, roomids, starttime, endtime, colour, iscontainer, roomnameoverride
+            );
 
         promise.then(() => {
             modal.destroy();
             return fetchAndRenderBody(state);
+        }).catch(Notification.exception);
+    });
+};
+
+/**
+ * Opens the "+" modal for adding an accepted-but-unscheduled presentation into
+ * a container span block (user request, 2026-07-08). Drag-and-drop directly
+ * onto a container is explicitly deferred; this modal picker, reusing
+ * state.unscheduled (no separate AJAX call), is the v1 mechanism.
+ *
+ * @param {Object} state The module state object
+ * @param {Number} containerslotid The confscheduler_slot id of the container
+ * @return {Promise}
+ */
+const openAddToContainerModal = async(state, containerslotid) => {
+    const body = await Templates.render('mod_confscheduler/addtocontainer_form', {
+        containerslotid,
+        submissions: state.unscheduled.map((item) => ({
+            submissionid: item.submissionid,
+            title: item.title,
+            speakers: item.speakers,
+        })),
+    });
+
+    const modal = await ModalSaveCancel.create({
+        title: state.strings.addtocontainer,
+        body,
+        show: true,
+        removeOnClose: true,
+    });
+
+    modal.getRoot().on(ModalEvents.save, (event) => {
+        event.preventDefault();
+
+        const form = modal.getRoot()[0].querySelector('.mod_confscheduler-addtocontainer-form');
+        const submissionSelect = form.querySelector('[name=submissionid]');
+        if (!submissionSelect) {
+            return;
+        }
+        const submissionid = Number(submissionSelect.value);
+        if (!submissionid) {
+            return;
+        }
+
+        Repository.addToContainer(state.cmid, containerslotid, submissionid).then(() => {
+            modal.destroy();
+            return fetchAndRenderAll(state);
         }).catch(Notification.exception);
     });
 };
@@ -1891,16 +2005,42 @@ const onPxPerHourChange = (state, input) => {
 };
 
 /**
- * Unschedules a block.
+ * Unschedules a block. If the block is a container with children, confirms
+ * first (showing the child count) since deleting it also unschedules every
+ * nested presentation -- mirroring onSendNotificationsClick()'s/onDeleteRoomClick()'s
+ * existing Notification.confirm() pattern for a destructive edit-mode action.
  *
  * @param {Object} state The module state object
  * @param {HTMLElement} block The block to unschedule
  */
 const onUnscheduleClick = (state, block) => {
     const slotid = Number(block.dataset.slotid);
-    Repository.unscheduleSlot(state.cmid, slotid)
-        .then(() => fetchAndRenderAll(state))
-        .catch(Notification.exception);
+    const slot = state.slots.find((candidate) => candidate.id === slotid);
+    const childcount = slot && slot.iscontainer
+        ? state.slots.filter((candidate) => candidate.parentslotid === slotid).length
+        : 0;
+
+    if (childcount === 0) {
+        Repository.unscheduleSlot(state.cmid, slotid)
+            .then(() => fetchAndRenderAll(state))
+            .catch(Notification.exception);
+        return;
+    }
+
+    getString('confirmdeletecontainer', 'mod_confscheduler', childcount).then((confirmmessage) => {
+        Notification.confirm(
+            state.strings.deletecontainer,
+            confirmmessage,
+            state.strings.deletecontainer,
+            state.strings.cancel,
+            () => {
+                Repository.unscheduleSlot(state.cmid, slotid)
+                    .then(() => fetchAndRenderAll(state))
+                    .catch(Notification.exception);
+            }
+        );
+        return null;
+    }).catch(Notification.exception);
 };
 
 /**
@@ -1944,6 +2084,13 @@ const bindEvents = (state) => {
             if (slot) {
                 openSpanBlockModal(state, slot);
             }
+            return;
+        }
+
+        const addContainerBtn = event.target.closest('.mod_confscheduler-container-add');
+        if (addContainerBtn) {
+            const containerslotid = Number(addContainerBtn.closest('.mod_confscheduler-block').dataset.slotid);
+            openAddToContainerModal(state, containerslotid);
             return;
         }
 
@@ -2014,7 +2161,7 @@ const bindEvents = (state) => {
         }
 
         const block = event.target.closest('.mod_confscheduler-block');
-        if (block && !event.target.closest('button')) {
+        if (block && !block.classList.contains('mod_confscheduler-block-child') && !event.target.closest('button')) {
             beginMoveDrag(state, event, block);
             return;
         }
@@ -2095,7 +2242,7 @@ export const init = async(cmid, confschedulerid, programurl = null) => {
         cancel, movecolumn, addroom, addspanblock, editspanblock, autoschedulerrun,
         filterbytrack, alldays, blocknonpreferredday, blockoverbooked, blockwithdrawn, roomcapacity,
         sendnotifications, confirmsendnotifications, sendnotificationssummary, sendnotificationsnonepending,
-        dayboundsscope,
+        dayboundsscope, addtocontainer, deletecontainer, confirmdeletecontainer,
     ] = await getStrings([
         {key: 'unschedule', component: 'mod_confscheduler'},
         {key: 'favourite', component: 'mod_confscheduler'},
@@ -2119,6 +2266,9 @@ export const init = async(cmid, confschedulerid, programurl = null) => {
         {key: 'sendnotificationssummary', component: 'mod_confscheduler'},
         {key: 'sendnotificationsnonepending', component: 'mod_confscheduler'},
         {key: 'dayboundsscope', component: 'mod_confscheduler'},
+        {key: 'addtocontainer', component: 'mod_confscheduler'},
+        {key: 'deletecontainer', component: 'mod_confscheduler'},
+        {key: 'confirmdeletecontainer', component: 'mod_confscheduler'},
     ]);
 
     const state = {
@@ -2152,7 +2302,7 @@ export const init = async(cmid, confschedulerid, programurl = null) => {
             cancel, movecolumn, addroom, addspanblock, editspanblock, autoschedulerrun,
             filterbytrack, alldays, blocknonpreferredday, blockoverbooked, blockwithdrawn, roomcapacity,
             sendnotifications, confirmsendnotifications, sendnotificationssummary, sendnotificationsnonepending,
-            dayboundsscope,
+            dayboundsscope, addtocontainer, deletecontainer, confirmdeletecontainer,
         },
     };
 
