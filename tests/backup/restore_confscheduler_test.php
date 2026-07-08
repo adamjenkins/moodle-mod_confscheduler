@@ -143,4 +143,87 @@ final class restore_confscheduler_test extends \restore_date_testcase {
         $this->assertSame((int) $newroom->id, (int) $newslotroom->roomid);
         $this->assertNotSame($roomid, (int) $newslotroom->roomid);
     }
+
+    /**
+     * A container span block and its nested child both survive a backup/
+     * restore round trip, with the child's parentslotid remapped to the
+     * restored container's new id (user request, 2026-07-08 -- poster/keynote
+     * container blocks).
+     */
+    public function test_backup_and_restore_remaps_container_parentslotid(): void {
+        global $DB;
+
+        $course = $this->getDataGenerator()->create_course(['startdate' => $this->startdate]);
+
+        $confsubmissions = $this->getDataGenerator()->create_module('confsubmissions', ['course' => $course->id]);
+        $confsubmissionscm = get_coursemodule_from_instance('confsubmissions', $confsubmissions->id);
+
+        $confprogram = $this->getDataGenerator()->create_module('confprogram', [
+            'course'              => $course->id,
+            'confsubmissionscmid' => $confsubmissionscm->id,
+        ]);
+        $confprogramcm = get_coursemodule_from_instance('confprogram', $confprogram->id);
+
+        $confscheduler = $this->getDataGenerator()->create_module('confscheduler', [
+            'course'          => $course->id,
+            'confprogramcmid' => $confprogramcm->id,
+        ]);
+
+        $speaker = $this->getDataGenerator()->create_user();
+        $decider = $this->getDataGenerator()->create_user();
+        $now = time();
+        $submissionid = (int) $DB->insert_record('confsubmissions_submission', (object) [
+            'confsubmissions' => $confsubmissions->id,
+            'userid'          => $speaker->id,
+            'title'           => 'A Poster',
+            'abstract'        => 'Abstract text',
+            'status'          => 'submitted',
+            'timecreated'     => $now,
+            'timemodified'    => $now,
+        ]);
+        \mod_confprogram\api::record_decision((int) $confprogram->id, $submissionid, 'accept', 1, (int) $decider->id);
+
+        $roomid = \mod_confscheduler\api::add_room((int) $confscheduler->id, 'Main Hall');
+        $containerid = \mod_confscheduler\api::add_slot(
+            (int) $confscheduler->id,
+            [$roomid],
+            $this->startdate + (9 * HOURSECS),
+            $this->startdate + (11 * HOURSECS),
+            null,
+            'Poster Session',
+            null,
+            true,
+            'Exhibit Hall'
+        );
+        $childid = \mod_confscheduler\api::add_presentation_to_container(
+            (int) $confscheduler->id,
+            $containerid,
+            $submissionid
+        );
+
+        $newcourseid = $this->backup_and_restore($course);
+
+        $newconfscheduler = $DB->get_record('confscheduler', ['course' => $newcourseid], '*', MUST_EXIST);
+        $newslots = $DB->get_records('confscheduler_slot', ['confscheduler' => $newconfscheduler->id], 'starttime ASC');
+        $this->assertCount(2, $newslots);
+        $newslots = array_values($newslots);
+
+        $newcontainer = null;
+        $newchild = null;
+        foreach ($newslots as $slot) {
+            if ($slot->submissionid === null) {
+                $newcontainer = $slot;
+            } else {
+                $newchild = $slot;
+            }
+        }
+
+        $this->assertNotNull($newcontainer);
+        $this->assertNotNull($newchild);
+        $this->assertSame(1, (int) $newcontainer->iscontainer);
+        $this->assertSame('Exhibit Hall', $newcontainer->roomnameoverride);
+        $this->assertSame((int) $newcontainer->id, (int) $newchild->parentslotid);
+        $this->assertNotSame($containerid, (int) $newcontainer->id);
+        $this->assertNotSame($childid, (int) $newchild->id);
+    }
 }

@@ -245,5 +245,34 @@ class restore_confscheduler_activity_structure_step extends restore_activity_str
                 $DB->delete_records('confscheduler_slot', ['id' => $slot->id]);
             }
         }
+
+        // Container/child remap (user request, 2026-07-08 -- poster/keynote
+        // container blocks): a child's parentslotid was inserted above as its
+        // OLD (unmapped) value, since the container it references might not
+        // have been restored yet during the main structure-step pass -- same
+        // "same-table self-reference, lighter-weight version of the
+        // cross-activity-reference pattern" rule as every other remap in this
+        // method, even though this one is entirely within this plugin's own
+        // restored rows (confscheduler_slot -> confscheduler_slot), not a
+        // cross-activity reference.
+        $childslots = $DB->get_records_select(
+            'confscheduler_slot',
+            'confscheduler = :confscheduler AND parentslotid IS NOT NULL',
+            ['confscheduler' => $confschedulerid]
+        );
+        foreach ($childslots as $child) {
+            $newparentid = $this->get_mappingid('confscheduler_slot', $child->parentslotid);
+            if ($newparentid) {
+                $DB->set_field('confscheduler_slot', 'parentslotid', $newparentid, ['id' => $child->id]);
+            } else {
+                // The container this presentation was nested in wasn't restored
+                // (should not normally happen -- a container and its children are
+                // always backed up together within the same activity) -- delete
+                // the child defensively rather than leave parentslotid pointing at
+                // an unrelated slot that happens to share the old numeric id.
+                $DB->delete_records('confscheduler_slotroom', ['slotid' => $child->id]);
+                $DB->delete_records('confscheduler_slot', ['id' => $child->id]);
+            }
+        }
     }
 }
