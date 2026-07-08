@@ -1091,14 +1091,6 @@ class api {
     }
 
     /**
-     * Unschedules a slot: removes it and its confscheduler_slotroom rows.
-     * When the slot was a presentation (non-null submissionid), this returns
-     * that submission to the "unscheduled" panel.
-     *
-     * @param int $slotid The confscheduler_slot id
-     * @return void
-     */
-    /**
      * Unschedules a slot: removes it and its confscheduler_slotroom rows. When
      * the slot was a presentation (non-null submissionid), this returns that
      * submission to the "unscheduled" panel. When the slot is a container, every
