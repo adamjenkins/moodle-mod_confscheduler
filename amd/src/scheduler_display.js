@@ -302,7 +302,7 @@ const renderBlock = (state, columnsWrap, slot, slots) => {
         }
 
         const link = document.createElement('a');
-        link.className = 'mod_confscheduler-block-link';
+        link.className = 'mod_confscheduler-block-link stretched-link';
         link.href = state.programUrl;
 
         const title = document.createElement('div');
@@ -367,6 +367,8 @@ const renderContainerChild = (state, holder, slot) => {
     child.dataset.submissionid = slot.submissionid !== null ? slot.submissionid : '';
     child.dataset.favourited = slot.favourited ? '1' : '0';
     child.dataset.withdrawn = slot.withdrawn ? '1' : '0';
+    child.dataset.align = slot.childtextalign;
+    child.dataset.valign = slot.childtextvalign;
 
     if (state.canfavourite && !slot.withdrawn) {
         const favBtn = document.createElement('button');
@@ -389,7 +391,7 @@ const renderContainerChild = (state, holder, slot) => {
     }
 
     const link = document.createElement('a');
-    link.className = 'mod_confscheduler-block-link';
+    link.className = 'mod_confscheduler-block-link stretched-link';
     link.href = state.programUrl;
 
     const title = document.createElement('div');
@@ -403,6 +405,15 @@ const renderContainerChild = (state, holder, slot) => {
     link.appendChild(speakers);
 
     child.appendChild(link);
+
+    if (slot.track) {
+        const footer = document.createElement('div');
+        footer.className = 'mod_confscheduler-block-footer';
+        footer.appendChild(
+            buildTrackPill(state.programUrl, slot.trackid, slot.track, slot.trackcolour, state.strings.filterbytrack)
+        );
+        child.appendChild(footer);
+    }
 
     holder.appendChild(child);
 };
