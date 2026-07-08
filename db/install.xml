@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" ?>
-<XMLDB PATH="mod/confscheduler/db" VERSION="2026070702" COMMENT="XMLDB file for Moodle mod/confscheduler"
+<XMLDB PATH="mod/confscheduler/db" VERSION="2026070801" COMMENT="XMLDB file for Moodle mod/confscheduler"
     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
     xsi:noNamespaceSchemaLocation="../../../lib/xmldb/xmldb.xsd">
   <TABLES>
@@ -49,8 +49,11 @@
         <FIELD NAME="submissionid" TYPE="int" LENGTH="10" NOTNULL="false" SEQUENCE="false" COMMENT="References mod_confsubmissions's confsubmissions_submission.id. Not a real foreign key: it is a cross-plugin reference into another activity's table. Null for a column-spanning block with no presentation"/>
         <FIELD NAME="label" TYPE="char" LENGTH="255" NOTNULL="false" SEQUENCE="false" COMMENT="Used only when submissionid is null, e.g. Lunch Break"/>
         <FIELD NAME="colour" TYPE="char" LENGTH="7" NOTNULL="false" SEQUENCE="false" COMMENT="Hex colour (e.g. #3366cc) used to theme a span block (submissionid null); null means no theme/default styling. Not applicable to presentation slots (Revision round 1, 2026-07-03)"/>
+        <FIELD NAME="roomnameoverride" TYPE="char" LENGTH="255" NOTNULL="false" SEQUENCE="false" COMMENT="When set, this text is displayed in place of the joined room name(s) for a span block (container or plain) in the roomtime line, both in the grid and via get_schedule_for_submission()'s 'room' field for a container's children. Null means show the real room name(s) as before. Applies only to a span block (submissionid IS NULL); a presentation slot never has this set directly (a child inherits its container's override at read time, it is never copied onto the child's own row)."/>
         <FIELD NAME="starttime" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" DEFAULT="0"/>
         <FIELD NAME="endtime" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" DEFAULT="0"/>
+        <FIELD NAME="iscontainer" TYPE="int" LENGTH="1" NOTNULL="true" SEQUENCE="false" DEFAULT="0" COMMENT="Whether this span block (submissionid IS NULL) is a container: presentations may be nested inside it via parentslotid on their own slot row, sharing its time/room and exempt from the overlap check. Meaningless (always 0) for a presentation slot."/>
+        <FIELD NAME="parentslotid" TYPE="int" LENGTH="10" NOTNULL="false" SEQUENCE="false" COMMENT="Set only on a presentation slot (submissionid non-null) nested inside a container: the confscheduler_slot.id of that container. Null for every other row (a container itself, a plain span block, or a normally-scheduled presentation). A child row has no confscheduler_slotroom rows of its own -- see classes/api.php's docblock on how this exempts it from validate_placement()'s overlap check by data shape rather than a procedural skip."/>
         <FIELD NAME="timecreated" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" DEFAULT="0"/>
         <FIELD NAME="timemodified" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" DEFAULT="0"/>
         <FIELD NAME="notifiedtime" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" DEFAULT="0" COMMENT="Timestamp a schedule-change notification was last sent for this slot's current scheduling info, or 0 if never sent. Pending (needs (re-)notifying) whenever this is 0 or less than timemodified. Only meaningful for presentation slots (submissionid non-null); span blocks are never notified. Sending is manually triggered via the edit-mode 'Send notifications' button, never automatic (user request, 2026-07-05)"/>
@@ -61,6 +64,7 @@
       </KEYS>
       <INDEXES>
         <INDEX NAME="submissionid" UNIQUE="false" FIELDS="submissionid"/>
+        <INDEX NAME="parentslotid" UNIQUE="false" FIELDS="parentslotid"/>
       </INDEXES>
     </TABLE>
     <TABLE NAME="confscheduler_slotroom" COMMENT="Junction table: the room(s) a slot occupies. A normal single-room presentation has exactly one row; a column-spanning block has one row per room it spans">

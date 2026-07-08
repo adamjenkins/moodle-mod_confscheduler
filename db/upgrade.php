@@ -275,5 +275,31 @@ function xmldb_confscheduler_upgrade($oldversion) {
         upgrade_mod_savepoint(true, 2026070702, 'confscheduler');
     }
 
+    if ($oldversion < 2026070801) {
+        $table = new xmldb_table('confscheduler_slot');
+
+        $field = new xmldb_field('roomnameoverride', XMLDB_TYPE_CHAR, '255', null, null, null, null, 'colour');
+        if (!$dbman->field_exists($table, $field)) {
+            $dbman->add_field($table, $field);
+        }
+
+        $field = new xmldb_field('iscontainer', XMLDB_TYPE_INTEGER, '1', null, XMLDB_NOTNULL, null, '0', 'endtime');
+        if (!$dbman->field_exists($table, $field)) {
+            $dbman->add_field($table, $field);
+        }
+
+        $field = new xmldb_field('parentslotid', XMLDB_TYPE_INTEGER, '10', null, null, null, null, 'iscontainer');
+        if (!$dbman->field_exists($table, $field)) {
+            $dbman->add_field($table, $field);
+        }
+
+        $index = new xmldb_index('parentslotid', XMLDB_INDEX_NOTUNIQUE, ['parentslotid']);
+        if (!$dbman->index_exists($table, $index)) {
+            $dbman->add_index($table, $index);
+        }
+
+        upgrade_mod_savepoint(true, 2026070801, 'confscheduler');
+    }
+
     return true;
 }
