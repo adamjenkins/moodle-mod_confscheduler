@@ -25,6 +25,9 @@
 $string['addroom'] = 'Add room';
 $string['addspanblock'] = 'Add span block';
 $string['addtocontainer'] = 'Add presentation to container';
+$string['addtocontainerfilterall'] = 'All';
+$string['addtocontainerfiltertrack'] = 'Filter by track';
+$string['addtocontainerfiltertype'] = 'Filter by type';
 $string['addtocontainernounscheduled'] = 'There are no unscheduled presentations to add.';
 $string['addtocontainerpresentation'] = 'Presentation';
 $string['alldays'] = 'All days';

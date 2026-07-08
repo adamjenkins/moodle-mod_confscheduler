@@ -17,31 +17,60 @@
 {{!
     @template mod_confscheduler/addtocontainer_form
 
-    Modal body for the "+" button on a container span block: picks one
-    accepted-but-unscheduled submission (from the already-fetched
-    state.unscheduled, no separate AJAX call) to nest inside it.
+    Modal body for the "+" button on a container span block: picks one or
+    more accepted-but-unscheduled submissions (from the already-fetched
+    state.unscheduled, no separate AJAX call) to nest inside it, with
+    client-side track/type filters (Round 2, 2026-07-08).
 
     Context variables required for this template:
     * containerslotid int - the confscheduler_slot id of the container
-    * submissions array - [{submissionid, title, speakers}, ...] currently unscheduled
+    * submissions array - [{submissionid, title, speakers, trackid, track, typeid, type}, ...]
+      currently unscheduled -- trackid/track/typeid/type may be null
+    * tracks array - [{trackid, track}, ...] distinct tracks present in submissions, for the filter
+    * types array - [{typeid, type}, ...] distinct types present in submissions, for the filter
 
     Example context (json):
     {
         "containerslotid": 12,
         "submissions": [
-            {"submissionid": 5, "title": "A Poster", "speakers": "Jane Doe"}
-        ]
+            {"submissionid": 5, "title": "A Poster", "speakers": "Jane Doe", "trackid": 2, "track": "AI", "typeid": 1, "type": "Poster"}
+        ],
+        "tracks": [{"trackid": 2, "track": "AI"}],
+        "types": [{"typeid": 1, "type": "Poster"}]
     }
 }}
 <form class="mod_confscheduler-addtocontainer-form">
     <input type="hidden" name="containerslotid" value="{{containerslotid}}">
-    <div class="form-group">
-        <label for="mod_confscheduler-addtocontainer-submission">{{#str}} addtocontainerpresentation, mod_confscheduler {{/str}}</label>
-        <select class="form-control" id="mod_confscheduler-addtocontainer-submission" name="submissionid">
-            {{#submissions}}
-            <option value="{{submissionid}}">{{title}} — {{speakers}}</option>
-            {{/submissions}}
-        </select>
+    <div class="form-row mb-2">
+        <div class="col">
+            <label for="mod_confscheduler-addtocontainer-filtertrack">{{#str}} addtocontainerfiltertrack, mod_confscheduler {{/str}}</label>
+            <select class="form-control mod_confscheduler-addtocontainer-filtertrack" id="mod_confscheduler-addtocontainer-filtertrack">
+                <option value="">{{#str}} addtocontainerfilterall, mod_confscheduler {{/str}}</option>
+                {{#tracks}}
+                <option value="{{trackid}}">{{track}}</option>
+                {{/tracks}}
+            </select>
+        </div>
+        <div class="col">
+            <label for="mod_confscheduler-addtocontainer-filtertype">{{#str}} addtocontainerfiltertype, mod_confscheduler {{/str}}</label>
+            <select class="form-control mod_confscheduler-addtocontainer-filtertype" id="mod_confscheduler-addtocontainer-filtertype">
+                <option value="">{{#str}} addtocontainerfilterall, mod_confscheduler {{/str}}</option>
+                {{#types}}
+                <option value="{{typeid}}">{{type}}</option>
+                {{/types}}
+            </select>
+        </div>
+    </div>
+    <div class="mod_confscheduler-addtocontainer-list">
+        {{#submissions}}
+        <div class="form-check mod_confscheduler-addtocontainer-row" data-trackid="{{trackid}}" data-typeid="{{typeid}}">
+            <input class="form-check-input" type="checkbox" name="submissionid[]" value="{{submissionid}}"
+                id="mod_confscheduler-addtocontainer-submission-{{submissionid}}">
+            <label class="form-check-label" for="mod_confscheduler-addtocontainer-submission-{{submissionid}}">
+                {{title}} — {{speakers}}
+            </label>
+        </div>
+        {{/submissions}}
     </div>
     {{^submissions}}
     <p>{{#str}} addtocontainernounscheduled, mod_confscheduler {{/str}}</p>

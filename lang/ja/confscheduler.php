@@ -25,6 +25,9 @@
 $string['addroom'] = '会場を追加';
 $string['addspanblock'] = 'スパンブロックを追加';
 $string['addtocontainer'] = 'コンテナーに発表を追加';
+$string['addtocontainerfilterall'] = 'すべて';
+$string['addtocontainerfiltertrack'] = 'トラックで絞り込み';
+$string['addtocontainerfiltertype'] = '種別で絞り込み';
 $string['addtocontainernounscheduled'] = '追加できる未配置の発表がありません。';
 $string['addtocontainerpresentation'] = '発表';
 $string['alldays'] = 'All days（全日程）';
