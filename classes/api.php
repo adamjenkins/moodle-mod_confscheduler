@@ -105,6 +105,36 @@ class api {
     }
 
     /**
+     * Resolves the effective room-owning slot id and room-name override for a
+     * presentation slot: a slot with no parentslotid is its own room owner; a
+     * container CHILD (parentslotid set) resolves to its container, since that
+     * is where the actual confscheduler_slotroom rows and any roomnameoverride
+     * live (a child has neither on its own row -- see this class's docblock).
+     * Shared by get_schedule_for_submission() and send_pending_notifications(),
+     * which both need to resolve a presentation's effective room the same way.
+     *
+     * @param \stdClass $slot The confscheduler_slot record (a presentation slot)
+     * @return array{roomownerid: int, override: string|null}
+     */
+    protected static function resolve_room_owner(\stdClass $slot): array {
+        global $DB;
+
+        if (empty($slot->parentslotid)) {
+            return ['roomownerid' => (int) $slot->id, 'override' => $slot->roomnameoverride ?? null];
+        }
+
+        $container = $DB->get_record('confscheduler_slot', ['id' => $slot->parentslotid]);
+        if (!$container) {
+            // Defensive: delete_slot() cascades to children, so a dangling
+            // parentslotid should not happen -- fall back to the child's own
+            // (empty) room set rather than erroring.
+            return ['roomownerid' => (int) $slot->id, 'override' => null];
+        }
+
+        return ['roomownerid' => (int) $container->id, 'override' => $container->roomnameoverride ?? null];
+    }
+
+    /**
      * Returns the scheduled time/room for a submission, or null if it has not
      * been scheduled yet.
      *
@@ -139,19 +169,26 @@ class api {
         }
         $slot = reset($slots);
 
-        $roomnames = $DB->get_fieldset_sql(
-            "SELECT r.name
-               FROM {confscheduler_slotroom} sr
-               JOIN {confscheduler_room} r ON r.id = sr.roomid
-              WHERE sr.slotid = :slotid
-           ORDER BY r.sortorder ASC",
-            ['slotid' => $slot->id]
-        );
+        ['roomownerid' => $roomownerid, 'override' => $override] = self::resolve_room_owner($slot);
+
+        if ($override !== null && $override !== '') {
+            $room = $override;
+        } else {
+            $roomnames = $DB->get_fieldset_sql(
+                "SELECT r.name
+                   FROM {confscheduler_slotroom} sr
+                   JOIN {confscheduler_room} r ON r.id = sr.roomid
+                  WHERE sr.slotid = :slotid
+              ORDER BY r.sortorder ASC",
+                ['slotid' => $roomownerid]
+            );
+            $room = implode(', ', $roomnames);
+        }
 
         return [
             'starttime' => (int) $slot->starttime,
             'endtime'   => (int) $slot->endtime,
-            'room'      => implode(', ', $roomnames),
+            'room'      => $room,
         ];
     }
 
@@ -1174,15 +1211,21 @@ class api {
         $sent = 0;
 
         foreach ($slots as $slot) {
-            $roomnames = array_values($DB->get_records_sql(
-                "SELECT r.id, r.name
-                   FROM {confscheduler_room} r
-                   JOIN {confscheduler_slotroom} sr ON sr.roomid = r.id
-                  WHERE sr.slotid = :slotid
-               ORDER BY r.sortorder ASC",
-                ['slotid' => $slot->id]
-            ));
-            $roomnames = array_map(static fn (\stdClass $room): string => format_string($room->name), $roomnames);
+            ['roomownerid' => $roomownerid, 'override' => $override] = self::resolve_room_owner($slot);
+
+            if ($override !== null && $override !== '') {
+                $roomnames = [format_string($override)];
+            } else {
+                $roomrows = array_values($DB->get_records_sql(
+                    "SELECT r.id, r.name
+                       FROM {confscheduler_room} r
+                       JOIN {confscheduler_slotroom} sr ON sr.roomid = r.id
+                      WHERE sr.slotid = :slotid
+                  ORDER BY r.sortorder ASC",
+                    ['slotid' => $roomownerid]
+                ));
+                $roomnames = array_map(static fn (\stdClass $room): string => format_string($room->name), $roomrows);
+            }
 
             if (\mod_confscheduler\local\notifier::notify_slot($confschedulerid, $slot, $roomnames)) {
                 $DB->update_record('confscheduler_slot', (object) [

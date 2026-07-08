@@ -1542,6 +1542,69 @@ final class api_test extends advanced_testcase {
     }
 
     /**
+     * get_schedule_for_submission() resolves a container CHILD's effective
+     * room(s) and time by following parentslotid to the container -- this is
+     * the cross-plugin contract mod_confprogram/mod_confcheckin rely on.
+     */
+    public function test_get_schedule_for_submission_resolves_container_child(): void {
+        $this->resetAfterTest();
+
+        [$confscheduler, $confprogram, $confsubmissions] = $this->create_full_fixture();
+        $room1 = api::add_room((int) $confscheduler->id, 'Main Hall');
+        $room2 = api::add_room((int) $confscheduler->id, 'Room B');
+        $submissionid = $this->create_accepted_submission($confsubmissions, $confprogram);
+
+        $containerid = api::add_slot(
+            (int) $confscheduler->id,
+            [$room1, $room2],
+            strtotime('2026-09-01 09:00:00'),
+            strtotime('2026-09-01 11:00:00'),
+            null,
+            'Poster Session',
+            null,
+            true
+        );
+        api::add_presentation_to_container((int) $confscheduler->id, $containerid, $submissionid);
+
+        $schedule = api::get_schedule_for_submission($submissionid);
+
+        $this->assertIsArray($schedule);
+        $this->assertEquals(strtotime('2026-09-01 09:00:00'), $schedule['starttime']);
+        $this->assertEquals(strtotime('2026-09-01 11:00:00'), $schedule['endtime']);
+        $this->assertSame('Main Hall, Room B', $schedule['room']);
+    }
+
+    /**
+     * get_schedule_for_submission() prefers the container's roomnameoverride,
+     * when set, over the joined real room names -- for the container itself
+     * AND for every child nested inside it.
+     */
+    public function test_get_schedule_for_submission_prefers_container_roomnameoverride(): void {
+        $this->resetAfterTest();
+
+        [$confscheduler, $confprogram, $confsubmissions] = $this->create_full_fixture();
+        $roomid = api::add_room((int) $confscheduler->id, 'Main Hall');
+        $submissionid = $this->create_accepted_submission($confsubmissions, $confprogram);
+
+        $containerid = api::add_slot(
+            (int) $confscheduler->id,
+            [$roomid],
+            strtotime('2026-09-01 09:00:00'),
+            strtotime('2026-09-01 11:00:00'),
+            null,
+            'Poster Session',
+            null,
+            true,
+            'Exhibit Hall'
+        );
+        api::add_presentation_to_container((int) $confscheduler->id, $containerid, $submissionid);
+
+        $schedule = api::get_schedule_for_submission($submissionid);
+
+        $this->assertSame('Exhibit Hall', $schedule['room']);
+    }
+
+    /**
      * The full \mod_confprogram\local\schedule_info integration contract works
      * end-to-end once mod_confscheduler (this plugin) is installed: it no longer
      * degrades to null, and correctly delegates to
