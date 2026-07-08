@@ -1173,14 +1173,16 @@ const renderBlock = (state, columnsWrap, slot, slots) => {
 
 /**
  * Renders one compact child block inside a container's child-holder (edit
- * mode). Deliberately shows only title + speakers -- no roomtime line, no
- * independent top/height positioning, no resize handle/favourite-star --
- * since the container itself already displays the shared room/time once for
- * the whole group (user request, 2026-07-08: room/time info inside a
- * container should not repeat what's already visible on the parent block).
- * Carries the same .mod_confscheduler-block-remove button and data-slotid the
- * existing delegated click handler (onUnscheduleClick(), see bindEvents())
- * already knows how to unschedule, so no new remove-handling code is needed.
+ * mode). Shows title + speakers + a track pill (if the nested presentation
+ * has a track) -- still never a roomtime line, permanently, since the
+ * container's own roomtime line already shows that once for the whole group.
+ * Text alignment is driven by the container's own childtextalign/
+ * childtextvalign settings (Round 2, 2026-07-08), applied via data
+ * attributes so styles.css can select on them without a class per
+ * combination. Carries the same .mod_confscheduler-block-remove button and
+ * data-slotid the existing delegated click handler (onUnscheduleClick(), see
+ * bindEvents()) already knows how to unschedule, so no new remove-handling
+ * code is needed.
  *
  * @param {Object} state The module state object
  * @param {HTMLElement} holder The .mod_confscheduler-container-children element to append into
@@ -1190,6 +1192,8 @@ const renderContainerChild = (state, holder, slot) => {
     const child = document.createElement('div');
     child.className = 'mod_confscheduler-block mod_confscheduler-block-child';
     child.dataset.slotid = slot.id;
+    child.dataset.align = slot.childtextalign;
+    child.dataset.valign = slot.childtextvalign;
 
     const removeBtn = document.createElement('button');
     removeBtn.type = 'button';
@@ -1207,6 +1211,15 @@ const renderContainerChild = (state, holder, slot) => {
     speakers.className = 'mod_confscheduler-block-speakers';
     speakers.textContent = slot.speakers || '';
     child.appendChild(speakers);
+
+    if (slot.track) {
+        const footer = document.createElement('div');
+        footer.className = 'mod_confscheduler-block-footer';
+        footer.appendChild(
+            buildTrackPill(state.programUrl, slot.trackid, slot.track, slot.trackcolour, state.strings.filterbytrack)
+        );
+        child.appendChild(footer);
+    }
 
     holder.appendChild(child);
 };
@@ -1674,6 +1687,12 @@ const openSpanBlockModal = async(state, slot = null) => {
         colour: isEdit ? slot.colour : null,
         iscontainer: isEdit ? Boolean(slot.iscontainer) : false,
         roomnameoverride: isEdit ? (slot.roomnameoverride || '') : '',
+        childtextalignleft: isEdit ? (slot.childtextalign || 'left') === 'left' : true,
+        childtextaligncenter: isEdit ? slot.childtextalign === 'center' : false,
+        childtextalignright: isEdit ? slot.childtextalign === 'right' : false,
+        childtextvaligntop: isEdit ? (slot.childtextvalign || 'top') === 'top' : true,
+        childtextvalignmiddle: isEdit ? slot.childtextvalign === 'middle' : false,
+        childtextvalignbottom: isEdit ? slot.childtextvalign === 'bottom' : false,
         rooms: state.rooms.map((room) => ({
             id: room.id,
             name: room.name,
@@ -1709,6 +1728,8 @@ const openSpanBlockModal = async(state, slot = null) => {
         const colour = nocolour ? null : form.querySelector('[name=colour]').value;
         const iscontainer = form.querySelector('[name=iscontainer]').checked;
         const roomnameoverride = form.querySelector('[name=roomnameoverride]').value.trim() || null;
+        const childtextalign = form.querySelector('[name=childtextalign]').value;
+        const childtextvalign = form.querySelector('[name=childtextvalign]').value;
 
         if (label === '') {
             return;
@@ -1728,10 +1749,12 @@ const openSpanBlockModal = async(state, slot = null) => {
 
         const promise = slotid
             ? Repository.updateSpanBlock(
-                state.cmid, slotid, label, roomids, starttime, endtime, colour, iscontainer, roomnameoverride
+                state.cmid, slotid, label, roomids, starttime, endtime, colour, iscontainer, roomnameoverride,
+                childtextalign, childtextvalign
             )
             : Repository.addSpanBlock(
-                state.cmid, label, roomids, starttime, endtime, colour, iscontainer, roomnameoverride
+                state.cmid, label, roomids, starttime, endtime, colour, iscontainer, roomnameoverride,
+                childtextalign, childtextvalign
             );
 
         promise.then(() => {
@@ -1742,23 +1765,44 @@ const openSpanBlockModal = async(state, slot = null) => {
 };
 
 /**
- * Opens the "+" modal for adding an accepted-but-unscheduled presentation into
- * a container span block (user request, 2026-07-08). Drag-and-drop directly
- * onto a container is explicitly deferred; this modal picker, reusing
- * state.unscheduled (no separate AJAX call), is the v1 mechanism.
+ * Opens the "+" modal for adding one or more accepted-but-unscheduled
+ * presentations into a container span block, with client-side track/type
+ * filters (Round 2, 2026-07-08 -- previously single-select with no filters).
+ * Drag-and-drop directly onto a container remains explicitly deferred.
  *
  * @param {Object} state The module state object
  * @param {Number} containerslotid The confscheduler_slot id of the container
  * @return {Promise}
  */
 const openAddToContainerModal = async(state, containerslotid) => {
+    const submissions = state.unscheduled.map((item) => ({
+        submissionid: item.submissionid,
+        title: item.title,
+        speakers: item.speakers,
+        trackid: item.trackid,
+        track: item.track,
+        typeid: item.typeid,
+        type: item.type,
+    }));
+
+    const tracksbyid = new Map();
+    const typesbyid = new Map();
+    submissions.forEach((item) => {
+        if (item.trackid && !tracksbyid.has(item.trackid)) {
+            tracksbyid.set(item.trackid, item.track);
+        }
+        if (item.typeid && !typesbyid.has(item.typeid)) {
+            typesbyid.set(item.typeid, item.type);
+        }
+    });
+    const tracks = Array.from(tracksbyid, ([trackid, track]) => ({trackid, track}));
+    const types = Array.from(typesbyid, ([typeid, type]) => ({typeid, type}));
+
     const body = await Templates.render('mod_confscheduler/addtocontainer_form', {
         containerslotid,
-        submissions: state.unscheduled.map((item) => ({
-            submissionid: item.submissionid,
-            title: item.title,
-            speakers: item.speakers,
-        })),
+        submissions,
+        tracks,
+        types,
     });
 
     const modal = await ModalSaveCancel.create({
@@ -1768,23 +1812,41 @@ const openAddToContainerModal = async(state, containerslotid) => {
         removeOnClose: true,
     });
 
+    const root = modal.getRoot()[0];
+    const applyFilter = () => {
+        const trackFilter = root.querySelector('.mod_confscheduler-addtocontainer-filtertrack').value;
+        const typeFilter = root.querySelector('.mod_confscheduler-addtocontainer-filtertype').value;
+        root.querySelectorAll('.mod_confscheduler-addtocontainer-row').forEach((row) => {
+            const matchesTrack = !trackFilter || row.dataset.trackid === trackFilter;
+            const matchesType = !typeFilter || row.dataset.typeid === typeFilter;
+            row.style.display = (matchesTrack && matchesType) ? '' : 'none';
+        });
+    };
+    const trackSelect = root.querySelector('.mod_confscheduler-addtocontainer-filtertrack');
+    const typeSelect = root.querySelector('.mod_confscheduler-addtocontainer-filtertype');
+    if (trackSelect) {
+        trackSelect.addEventListener('change', applyFilter);
+    }
+    if (typeSelect) {
+        typeSelect.addEventListener('change', applyFilter);
+    }
+
     modal.getRoot().on(ModalEvents.save, (event) => {
         event.preventDefault();
 
-        const form = modal.getRoot()[0].querySelector('.mod_confscheduler-addtocontainer-form');
-        const submissionSelect = form.querySelector('[name=submissionid]');
-        if (!submissionSelect) {
-            return;
-        }
-        const submissionid = Number(submissionSelect.value);
-        if (!submissionid) {
+        const checked = Array.from(root.querySelectorAll('[name="submissionid[]"]:checked'))
+            .map((input) => Number(input.value))
+            .filter(Boolean);
+        if (!checked.length) {
             return;
         }
 
-        Repository.addToContainer(state.cmid, containerslotid, submissionid).then(() => {
-            modal.destroy();
-            return fetchAndRenderAll(state);
-        }).catch(Notification.exception);
+        Promise.all(checked.map((submissionid) => Repository.addToContainer(state.cmid, containerslotid, submissionid)))
+            .then(() => {
+                modal.destroy();
+                return fetchAndRenderAll(state);
+            })
+            .catch(Notification.exception);
     });
 };
 
