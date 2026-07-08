@@ -757,11 +757,16 @@ class api {
      * @param string|null $label Used only when submissionid is null, e.g. "Lunch Break"
      * @param string|null $colour A hex colour (e.g. #3366cc) to theme a span block with; must be null when
      *        $submissionid is non-null (colour theming applies only to span blocks, Revision round 1)
+     * @param bool|null $iscontainer True if this is a container span block; must be null/false when $submissionid
+     *        is non-null (container span blocks are a span-block-only feature)
+     * @param string|null $roomnameoverride An optional override label for the room name(s) on this span block;
+     *        must be null when $submissionid is non-null (room-name override applies only to span blocks)
      * @return int The confscheduler_slot id
      * @throws \moodle_exception if the submission's chain of custody is invalid, or the placement
      *         overlaps/violates SnapGap
      * @throws \invalid_parameter_exception if a room does not belong to this instance, $colour is set and not a
-     *         valid hex colour, or $colour is given together with a non-null $submissionid
+     *         valid hex colour, or $colour/$iscontainer/$roomnameoverride is given together with a non-null
+     *         $submissionid (all three are span-block-only features)
      */
     public static function add_slot(
         int $confschedulerid,
@@ -770,12 +775,20 @@ class api {
         int $endtime,
         ?int $submissionid = null,
         ?string $label = null,
-        ?string $colour = null
+        ?string $colour = null,
+        ?bool $iscontainer = false,
+        ?string $roomnameoverride = null
     ): int {
         global $DB;
 
         self::validate_colour($colour);
         if ($colour !== null && $submissionid !== null) {
+            throw new \invalid_parameter_exception(get_string('error:notaspanblock', 'mod_confscheduler'));
+        }
+        if ($iscontainer && $submissionid !== null) {
+            throw new \invalid_parameter_exception(get_string('error:notaspanblock', 'mod_confscheduler'));
+        }
+        if ($roomnameoverride !== null && $submissionid !== null) {
             throw new \invalid_parameter_exception(get_string('error:notaspanblock', 'mod_confscheduler'));
         }
 
@@ -799,14 +812,16 @@ class api {
 
         $now = time();
         $slotid = $DB->insert_record('confscheduler_slot', (object) [
-            'confscheduler' => $confschedulerid,
-            'submissionid'  => $submissionid,
-            'label'         => $label,
-            'colour'        => $colour,
-            'starttime'     => $starttime,
-            'endtime'       => $endtime,
-            'timecreated'   => $now,
-            'timemodified'  => $now,
+            'confscheduler'    => $confschedulerid,
+            'submissionid'     => $submissionid,
+            'label'            => $label,
+            'colour'           => $colour,
+            'roomnameoverride' => $roomnameoverride,
+            'iscontainer'      => $iscontainer ? 1 : 0,
+            'starttime'        => $starttime,
+            'endtime'          => $endtime,
+            'timecreated'      => $now,
+            'timemodified'     => $now,
         ]);
 
         foreach (array_unique(array_map('intval', $roomids)) as $roomid) {

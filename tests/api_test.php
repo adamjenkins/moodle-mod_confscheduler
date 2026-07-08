@@ -756,6 +756,82 @@ final class api_test extends advanced_testcase {
     }
 
     /**
+     * add_slot() persists iscontainer/roomnameoverride on a span block.
+     */
+    public function test_add_slot_persists_container_fields(): void {
+        global $DB;
+        $this->resetAfterTest();
+
+        [$confscheduler] = $this->create_full_fixture();
+        $roomid = api::add_room((int) $confscheduler->id, 'Main Hall');
+
+        $slotid = api::add_slot(
+            (int) $confscheduler->id,
+            [$roomid],
+            strtotime('2026-09-01 09:00:00'),
+            strtotime('2026-09-01 11:00:00'),
+            null,
+            'Poster Session',
+            null,
+            true,
+            'Exhibit Hall'
+        );
+
+        $slot = $DB->get_record('confscheduler_slot', ['id' => $slotid], '*', MUST_EXIST);
+        $this->assertSame(1, (int) $slot->iscontainer);
+        $this->assertSame('Exhibit Hall', $slot->roomnameoverride);
+    }
+
+    /**
+     * add_slot() rejects iscontainer=true together with a non-null submissionid --
+     * the same mutual-exclusivity rule as colour theming.
+     */
+    public function test_add_slot_rejects_iscontainer_with_presentation_submission(): void {
+        $this->resetAfterTest();
+
+        [$confscheduler, $confprogram, $confsubmissions] = $this->create_full_fixture();
+        $roomid = api::add_room((int) $confscheduler->id, 'Main Hall');
+        $submissionid = $this->create_accepted_submission($confsubmissions, $confprogram);
+
+        $this->expectException(\invalid_parameter_exception::class);
+        api::add_slot(
+            (int) $confscheduler->id,
+            [$roomid],
+            strtotime('2026-09-01 09:00:00'),
+            strtotime('2026-09-01 10:00:00'),
+            $submissionid,
+            null,
+            null,
+            true
+        );
+    }
+
+    /**
+     * add_slot() rejects a non-null roomnameoverride together with a non-null
+     * submissionid -- roomnameoverride only ever applies to a span block.
+     */
+    public function test_add_slot_rejects_roomnameoverride_with_presentation_submission(): void {
+        $this->resetAfterTest();
+
+        [$confscheduler, $confprogram, $confsubmissions] = $this->create_full_fixture();
+        $roomid = api::add_room((int) $confscheduler->id, 'Main Hall');
+        $submissionid = $this->create_accepted_submission($confsubmissions, $confprogram);
+
+        $this->expectException(\invalid_parameter_exception::class);
+        api::add_slot(
+            (int) $confscheduler->id,
+            [$roomid],
+            strtotime('2026-09-01 09:00:00'),
+            strtotime('2026-09-01 10:00:00'),
+            $submissionid,
+            null,
+            null,
+            false,
+            'Exhibit Hall'
+        );
+    }
+
+    /**
      * update_span_block() edits a span block's label/colour/time/room-range in place.
      */
     public function test_update_span_block_edits_in_place(): void {
