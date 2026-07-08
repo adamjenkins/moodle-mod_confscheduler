@@ -2,6 +2,36 @@
 
 ## Unreleased
 
+- User request (2026-07-08): **container span blocks** ("poster/keynote
+  sessions") -- a column-spanning block can now be marked a **container**
+  that holds several nested presentations sharing the container's own time
+  and room, added via a "+" button/modal picker (`add_to_container` AJAX
+  endpoint, new `api::add_presentation_to_container()`). Nested
+  presentations are exempt from the normal overlap/SnapGap check by
+  construction (a child slot has no room rows of its own); moving/resizing
+  the container cascades its new time to every child, and deleting it
+  cascade-unschedules them back to the unscheduled panel (with a
+  child-count confirmation dialog first). Children render as equal-width
+  columns showing only title + speakers -- room/time is deliberately never
+  repeated on a child block, since the container's own line already shows
+  it once for the whole group. New `roomnameoverride` field also applies to
+  **any** span block, container or not: optional text shown instead of the
+  real joined room name(s), both in the grid and via
+  `get_schedule_for_submission()` (so it also flows through to `mod_confprogram`'s
+  Display-phase list, `mod_confcheckin`'s badge/certificate placeholders,
+  notification emails, and `.ics` export). Full backup/restore support,
+  including remapping a restored child's container reference. New schema:
+  `confscheduler_slot.iscontainer`/`.parentslotid`/`.roomnameoverride`.
+  Two real bugs were caught only by live browser verification after every
+  other check (PHPUnit, phpcs, a full `moodle-reviewer` pass) had already
+  passed, and are fixed in the same release: `get_grid_data`'s
+  `execute_returns()` never declared the three new fields, so Moodle's
+  `clean_returnvalue()` silently stripped them from every real AJAX
+  response (the "+" button, nesting, and room overrides all silently failed
+  in a browser despite the underlying logic and every unit test being
+  correct); and the new `add_to_container` service was registered in
+  `db/services.php` but the plugin version was never bumped, so Moodle
+  never actually activated it (the "+" modal's Save button hung forever).
 - Bug fix (2026-07-08): the grid's horizontal hour gridlines "seemed kind of
   random" -- they were a single CSS `repeating-linear-gradient` painted as
   each room column's own background, anchored to the column's own top edge
