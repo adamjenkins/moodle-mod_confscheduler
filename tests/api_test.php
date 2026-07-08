@@ -1718,7 +1718,7 @@ final class api_test extends advanced_testcase {
         // The same user on a DIFFERENT instance is also unaffected.
         $this->assertNull(api::get_last_viewed_day($confschedulerid2, (int) $user1->id));
 
-        // 'all' is a valid value too (the All days view).
+        // The string 'all' is a valid value too (the All days view).
         api::set_last_viewed_day($confschedulerid1, (int) $user1->id, 'all');
         $this->assertSame('all', api::get_last_viewed_day($confschedulerid1, (int) $user1->id));
 

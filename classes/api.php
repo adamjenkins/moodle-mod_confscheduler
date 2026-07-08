@@ -39,6 +39,17 @@ namespace mod_confscheduler;
  * ownership/integrity half belongs here because it is intrinsic to the data
  * model, not to any particular caller's capabilities.
  *
+ * Container span blocks (submissionid null, iscontainer=1) may have zero or
+ * more presentations nested inside them via a child slot's parentslotid. A
+ * child (submissionid non-null, parentslotid set) intentionally has NO
+ * confscheduler_slotroom rows of its own: since validate_placement() only
+ * ever considers slots that JOIN confscheduler_slotroom, a child is exempt
+ * from the overlap/gap check purely by this data shape, not by a procedural
+ * skip. A child's effective room and roomnameoverride are always resolved
+ * live from its container via resolve_room_owner(), never copied onto the
+ * child's own row, so moving/renaming a container is automatically reflected
+ * in every child at read time.
+ *
  * @package    mod_confscheduler
  * @copyright  2026 Adam Jenkins <adam@wisecat.net>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later

@@ -2242,7 +2242,7 @@ export const init = async(cmid, confschedulerid, programurl = null) => {
         cancel, movecolumn, addroom, addspanblock, editspanblock, autoschedulerrun,
         filterbytrack, alldays, blocknonpreferredday, blockoverbooked, blockwithdrawn, roomcapacity,
         sendnotifications, confirmsendnotifications, sendnotificationssummary, sendnotificationsnonepending,
-        dayboundsscope, addtocontainer, deletecontainer, confirmdeletecontainer,
+        dayboundsscope, addtocontainer, deletecontainer,
     ] = await getStrings([
         {key: 'unschedule', component: 'mod_confscheduler'},
         {key: 'favourite', component: 'mod_confscheduler'},
@@ -2268,7 +2268,6 @@ export const init = async(cmid, confschedulerid, programurl = null) => {
         {key: 'dayboundsscope', component: 'mod_confscheduler'},
         {key: 'addtocontainer', component: 'mod_confscheduler'},
         {key: 'deletecontainer', component: 'mod_confscheduler'},
-        {key: 'confirmdeletecontainer', component: 'mod_confscheduler'},
     ]);
 
     const state = {
@@ -2302,7 +2301,7 @@ export const init = async(cmid, confschedulerid, programurl = null) => {
             cancel, movecolumn, addroom, addspanblock, editspanblock, autoschedulerrun,
             filterbytrack, alldays, blocknonpreferredday, blockoverbooked, blockwithdrawn, roomcapacity,
             sendnotifications, confirmsendnotifications, sendnotificationssummary, sendnotificationsnonepending,
-            dayboundsscope, addtocontainer, deletecontainer, confirmdeletecontainer,
+            dayboundsscope, addtocontainer, deletecontainer,
         },
     };
 
