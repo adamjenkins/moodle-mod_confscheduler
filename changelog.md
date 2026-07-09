@@ -2,6 +2,32 @@
 
 ## Unreleased
 
+- User request (2026-07-09): **container blocks, round 2** -- modal usability
+  and child-tile rendering polish on top of the container span blocks feature
+  below. The "+" picker is now a filterable **multi-select**: a checkbox list
+  (was a single-select dropdown) with client-side Track and Type filter
+  dropdowns, saved in one operation by calling the existing
+  `add_to_container` endpoint once per selection (no new endpoint; each call
+  independently validated server-side). Nested-presentation tiles now show a
+  **track pill** when the presentation has a track, and a container's own
+  **text alignment** for its nested tiles (horizontal: left/center/right;
+  vertical: top/middle/bottom) is now configurable via two new fields on the
+  span-block form, resolved for a child the same way `roomnameoverride`
+  already is. Fixed: the container's own roomtime line was visually
+  colliding with the last child tile's background -- the child-holder now
+  reserves its own dedicated space, leaving the roomtime line legible. Every
+  presentation block in the read-only Display view is now fully clickable as
+  a card (Bootstrap `stretched-link`), not just its title text -- the
+  favourite star and track pill on the same block stay independently
+  clickable via an explicit z-index carve-out. New schema:
+  `confscheduler_slot.childtextalign`/`.childtextvalign`. A `moodle-reviewer`
+  pass found one real issue, fixed in the same release: the multi-select
+  save handler used `Promise.all()`, so one selection failing server-side
+  validation (e.g. already scheduled elsewhere) would hide every OTHER
+  selection that succeeded from the visible grid -- changed to
+  `Promise.allSettled()`, always refreshing the grid and surfacing only the
+  first failure afterward. Unlike the previous round, live browser
+  verification found zero real product bugs this time.
 - User request (2026-07-08): **container span blocks** ("poster/keynote
   sessions") -- a column-spanning block can now be marked a **container**
   that holds several nested presentations sharing the container's own time
