@@ -1841,12 +1841,22 @@ const openAddToContainerModal = async(state, containerslotid) => {
             return;
         }
 
-        Promise.all(checked.map((submissionid) => Repository.addToContainer(state.cmid, containerslotid, submissionid)))
-            .then(() => {
-                modal.destroy();
-                return fetchAndRenderAll(state);
-            })
-            .catch(Notification.exception);
+        // allSettled (not all): one selection failing server-side validation (e.g.
+        // already scheduled elsewhere by another organiser between the modal opening
+        // and Save) must not hide the OTHER selections that did succeed -- always
+        // refresh the grid so it never goes silently out of sync with the DB, then
+        // surface the first failure (if any) after the refresh.
+        Promise.allSettled(
+            checked.map((submissionid) => Repository.addToContainer(state.cmid, containerslotid, submissionid))
+        ).then((results) => {
+            modal.destroy();
+            const failure = results.find((result) => result.status === 'rejected');
+            return fetchAndRenderAll(state).then(() => {
+                if (failure) {
+                    Notification.exception(failure.reason);
+                }
+            });
+        }).catch(Notification.exception);
     });
 };
 

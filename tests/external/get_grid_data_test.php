@@ -236,11 +236,9 @@ final class get_grid_data_test extends advanced_testcase {
      *
      * Also runs the result through clean_returnvalue(), this project's
      * established regression guard (see test_grid_data_exposes_container_fields()'s
-     * docblock above for why): get_grid_data.php's execute_returns() does not yet
-     * declare these four fields (that lands in the next round task), so the
-     * clean_returnvalue() assertions below are EXPECTED to fail until then --
-     * kept here, RED, as the guard that will catch the schema declaration when
-     * it's added.
+     * docblock above for why): get_grid_data.php's execute_returns() now declares
+     * all four fields (added immediately after this test in the same branch), so
+     * the clean_returnvalue() assertions below pass, confirming the schema fix.
      */
     public function test_grid_data_exposes_alignment_and_type_fields(): void {
         global $DB;
