@@ -88,14 +88,17 @@ final class update_span_block_test extends advanced_testcase {
         $teacher = $this->getDataGenerator()->create_and_enrol($course, 'editingteacher');
         $this->setUser($teacher);
 
-        $result = update_span_block::execute(
-            $cmid,
-            $slotid,
-            'Plenary',
-            '#ff0000',
-            [$room1, $room2],
-            strtotime('2026-09-01 14:00:00'),
-            strtotime('2026-09-01 15:00:00')
+        $result = \core_external\external_api::clean_returnvalue(
+            update_span_block::execute_returns(),
+            update_span_block::execute(
+                $cmid,
+                $slotid,
+                'Plenary',
+                '#ff0000',
+                [$room1, $room2],
+                strtotime('2026-09-01 14:00:00'),
+                strtotime('2026-09-01 15:00:00')
+            )
         );
 
         $this->assertTrue($result['success']);

@@ -25,10 +25,15 @@
 defined('MOODLE_INTERNAL') || die();
 
 $plugin->component = 'mod_confscheduler';
-$plugin->version   = 2026070803; // The current module version (Date: YYYYMMDDXX).
+$plugin->version   = 2026070900; // The current module version (Date: YYYYMMDDXX).
 $plugin->requires  = 2026042000; // Moodle 5.2.
 $plugin->maturity  = MATURITY_ALPHA;
-$plugin->release   = '0.4.0';
+$plugin->release   = '0.4.1';
 $plugin->dependencies = [
     'mod_confprogram' => ANY_VERSION,
+    // Called directly (api.php, grid_data.php, notifier.php) -- previously this
+    // worked only transitively through mod_confprogram's own dependency, per
+    // RELATIONS.md's rule that every direct classes/api.php consumer declares
+    // its upstream itself.
+    'mod_confsubmissions' => ANY_VERSION,
 ];

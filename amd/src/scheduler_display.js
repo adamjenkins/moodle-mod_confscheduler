@@ -625,7 +625,6 @@ const renderAllDaysBody = (state) => {
 
         const gridEl = document.createElement('div');
         gridEl.className = 'mod_confscheduler-day-grid';
-        gridEl.setAttribute('role', 'table');
         wrapper.appendChild(gridEl);
 
         buildDayGridInto(state, gridEl, state.slotsByDay[dayKey] || [], dayKey);

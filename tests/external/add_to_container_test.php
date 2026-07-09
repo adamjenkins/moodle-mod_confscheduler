@@ -97,7 +97,10 @@ final class add_to_container_test extends advanced_testcase {
         $teacher = $this->getDataGenerator()->create_and_enrol($course, 'editingteacher');
         $this->setUser($teacher);
 
-        $result = add_to_container::execute($cmid, $containerid, $submissionid);
+        $result = \core_external\external_api::clean_returnvalue(
+            add_to_container::execute_returns(),
+            add_to_container::execute($cmid, $containerid, $submissionid)
+        );
 
         global $DB;
         $child = $DB->get_record('confscheduler_slot', ['id' => $result['slotid']], '*', MUST_EXIST);

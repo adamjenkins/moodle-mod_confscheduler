@@ -41,7 +41,9 @@
 }}
 <form class="mod_confscheduler-addtocontainer-form">
     <input type="hidden" name="containerslotid" value="{{containerslotid}}">
-    <div class="form-row mb-2">
+    {{! .row, not the Bootstrap-4-only .form-row this theme no longer ships (same note as
+        autoscheduler_form.mustache / spanblock_form.mustache). }}
+    <div class="row mb-2">
         <div class="col">
             <label for="mod_confscheduler-addtocontainer-filtertrack">{{#str}} addtocontainerfiltertrack, mod_confscheduler {{/str}}</label>
             <select class="form-control mod_confscheduler-addtocontainer-filtertrack" id="mod_confscheduler-addtocontainer-filtertrack">

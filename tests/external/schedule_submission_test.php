@@ -85,12 +85,15 @@ final class schedule_submission_test extends advanced_testcase {
 
         $roomid = api::add_room((int) $confscheduler->id, 'Main Hall');
 
-        $result = schedule_submission::execute(
-            $cmid,
-            $submissionid,
-            [$roomid],
-            strtotime('2026-09-01 10:00:00'),
-            strtotime('2026-09-01 10:30:00')
+        $result = \core_external\external_api::clean_returnvalue(
+            schedule_submission::execute_returns(),
+            schedule_submission::execute(
+                $cmid,
+                $submissionid,
+                [$roomid],
+                strtotime('2026-09-01 10:00:00'),
+                strtotime('2026-09-01 10:30:00')
+            )
         );
 
         $this->assertGreaterThan(0, $result['slotid']);

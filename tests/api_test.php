@@ -1904,4 +1904,86 @@ final class api_test extends advanced_testcase {
         $this->expectException(\invalid_parameter_exception::class);
         api::set_last_viewed_day($confschedulerid1, (int) $user1->id, 'not-a-day');
     }
+
+    /**
+     * add_slot() rejects a submission that is already scheduled anywhere in the
+     * same instance -- the same guard add_presentation_to_container() has always
+     * had, closing the drag-scheduling double-schedule hole (FABLE.md review,
+     * 2026-07-09: two organisers, or one stale second tab, could otherwise
+     * schedule the same talk twice, after which get_schedule_for_submission()
+     * silently returned only the earlier slot).
+     */
+    public function test_add_slot_rejects_already_scheduled_submission(): void {
+        $this->resetAfterTest();
+
+        [$confscheduler, $confprogram, $confsubmissions] = $this->create_full_fixture();
+        $roomid = api::add_room((int) $confscheduler->id, 'Main Hall');
+        $roomid2 = api::add_room((int) $confscheduler->id, 'Room B');
+        $submissionid = $this->create_accepted_submission($confsubmissions, $confprogram);
+
+        api::add_slot(
+            (int) $confscheduler->id,
+            [$roomid],
+            strtotime('2026-09-01 09:00:00'),
+            strtotime('2026-09-01 09:30:00'),
+            $submissionid
+        );
+
+        // A different time AND room -- validate_placement() alone would accept it.
+        $this->expectException(\moodle_exception::class);
+        $this->expectExceptionMessage(get_string('error:alreadyscheduled', 'mod_confscheduler'));
+        api::add_slot(
+            (int) $confscheduler->id,
+            [$roomid2],
+            strtotime('2026-09-01 14:00:00'),
+            strtotime('2026-09-01 14:30:00'),
+            $submissionid
+        );
+    }
+
+    /**
+     * update_slot() refuses to operate on a presentation nested inside a
+     * container: a child has no slotroom rows and its times mirror its
+     * container, so rescheduling it directly would corrupt that invariant
+     * (phantom slotroom rows, orphaned on the container's next edit) --
+     * children move only with their container (FABLE.md review, 2026-07-09:
+     * the edit UI never offers this, but the AJAX endpoint accepts any slot
+     * id in the instance).
+     */
+    public function test_update_slot_rejects_container_child(): void {
+        global $DB;
+        $this->resetAfterTest();
+
+        [$confscheduler, $confprogram, $confsubmissions] = $this->create_full_fixture();
+        $roomid = api::add_room((int) $confscheduler->id, 'Main Hall');
+        $submissionid = $this->create_accepted_submission($confsubmissions, $confprogram);
+
+        $containerid = api::add_slot(
+            (int) $confscheduler->id,
+            [$roomid],
+            strtotime('2026-09-01 12:00:00'),
+            strtotime('2026-09-01 13:00:00'),
+            null,
+            'Poster Session',
+            null,
+            true
+        );
+        $childid = api::add_presentation_to_container((int) $confscheduler->id, $containerid, $submissionid);
+
+        try {
+            api::update_slot($childid, [$roomid], strtotime('2026-09-01 15:00:00'), strtotime('2026-09-01 15:30:00'));
+            $this->fail('update_slot() must reject a container child');
+        } catch (\moodle_exception $e) {
+            $this->assertStringContainsString(
+                get_string('error:cannotreschedulechild', 'mod_confscheduler'),
+                $e->getMessage()
+            );
+        }
+
+        // The invariant held: no slotroom rows appeared, times still mirror the container.
+        $this->assertFalse($DB->record_exists('confscheduler_slotroom', ['slotid' => $childid]));
+        $child = $DB->get_record('confscheduler_slot', ['id' => $childid]);
+        $this->assertSame(strtotime('2026-09-01 12:00:00'), (int) $child->starttime);
+        $this->assertSame(strtotime('2026-09-01 13:00:00'), (int) $child->endtime);
+    }
 }

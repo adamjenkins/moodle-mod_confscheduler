@@ -198,8 +198,12 @@ class mod_confscheduler_mod_form extends moodleform_mod {
 
         if (
             !empty($data['conferencestart']) && !empty($data['conferenceend'])
-                && $data['conferenceend'] < $data['conferencestart']
+                && $data['conferenceend'] <= $data['conferencestart']
         ) {
+            // <=, not <: an EQUAL pair used to validate, but validate_placement()
+            // requires starttime >= conferencestart, endtime <= conferenceend and
+            // endtime > starttime, so a zero-length window could never accept any
+            // slot -- a confusing dead end better rejected here.
             $errors['conferenceend'] = get_string('error:conferenceendbeforestart', 'mod_confscheduler');
         }
 

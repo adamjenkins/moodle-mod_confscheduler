@@ -101,7 +101,22 @@ class toggle_favourite extends external_api {
             \mod_confprogram\api::remove_favourite((int) $confprogramcm->instance, $submissionid, (int) $USER->id);
         }
 
-        return ['favourited' => \mod_confprogram\api::is_favourited((int) $USER->id, $submissionid)];
+        // Read back via the instance-scoped get_favourites(), not the unscoped
+        // is_favourited(): the write above is scoped to this confprogram instance,
+        // and grid_data now reads the same way, so an unscoped read here could
+        // report "still favourited" from ANOTHER instance's row right after a
+        // successful remove (the RELATIONS.md is_favourited() inconsistency,
+        // resolved for this plugin's consumers -- FABLE.md review, 2026-07-09).
+        $favourites = \mod_confprogram\api::get_favourites((int) $USER->id, (int) $confprogramcm->instance);
+        $nowfavourited = false;
+        foreach ($favourites as $favourite) {
+            if ((int) $favourite->submissionid === $submissionid) {
+                $nowfavourited = true;
+                break;
+            }
+        }
+
+        return ['favourited' => $nowfavourited];
     }
 
     /**

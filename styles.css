@@ -659,6 +659,38 @@ a.mod_confscheduler-track-pill:focus {
     justify-content: flex-end;
 }
 
+/* Corner-anchor the action icons inside a container child: a child block is a
+   flex column (so the data-align/data-valign settings can use align-items/
+   justify-content), and float has no effect on a flex item -- the favourite
+   star was stacking as the first flex item at the top-LEFT and drifting with
+   the alignment setting, instead of sitting top-right like on a normal block
+   (user report, 2026-07-09). Same treatment for edit mode's × remove button,
+   pinned top-left where its own float puts it on normal blocks. */
+.mod_confscheduler-block-child > .mod_confscheduler-block-fav {
+    position: absolute;
+    top: 2px;
+    right: 4px;
+    float: none;
+    margin: 0;
+}
+
+.mod_confscheduler-block-child > .mod_confscheduler-block-remove {
+    position: absolute;
+    top: 2px;
+    left: 4px;
+    float: none;
+    margin: 0;
+}
+
+/* Keep child text from running under the corner icons. */
+.mod_confscheduler-block-child:has(> .mod_confscheduler-block-fav) {
+    padding-right: 1.15rem;
+}
+
+.mod_confscheduler-block-child:has(> .mod_confscheduler-block-remove) {
+    padding-left: 1.15rem;
+}
+
 .mod_confscheduler-fullscreen {
     background: #fff;
     padding: 0.5rem;
@@ -737,8 +769,14 @@ a.mod_confscheduler-track-pill:focus {
 }
 
 /* "My timetable" toggle: grey out every non-favourited block, and lift the
-   favourited ones slightly so they stay legible/scannable against the greyed rest. */
-.mod_confscheduler-mytimetable-active .mod_confscheduler-block:not([data-favourited="1"]) {
+   favourited ones slightly so they stay legible/scannable against the greyed rest.
+   The :not(:has(...)) exemption keeps a CONTAINER holding at least one favourited
+   child at full opacity: CSS opacity multiplies down the tree, so dimming the
+   container (which is itself never favouritable) made even a starred child inside
+   it translucent (user report, 2026-07-09). The container's non-starred children
+   still match this selector individually and dim on their own. */
+.mod_confscheduler-mytimetable-active
+.mod_confscheduler-block:not([data-favourited="1"]):not(:has(.mod_confscheduler-block[data-favourited="1"])) {
     opacity: 0.35;
     filter: grayscale(60%);
 }

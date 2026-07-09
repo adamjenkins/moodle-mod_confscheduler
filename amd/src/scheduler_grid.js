@@ -969,7 +969,6 @@ const renderAllDaysBody = (state) => {
         // CSS rule instead (see styles.css) to avoid that ambiguity entirely.
         const gridEl = document.createElement('div');
         gridEl.className = 'mod_confscheduler-day-grid';
-        gridEl.setAttribute('role', 'table');
         wrapper.appendChild(gridEl);
 
         const columnsWrap = buildGridInto(state, gridEl, daySlots, dayKey);
@@ -1004,6 +1003,10 @@ const renderBlock = (state, columnsWrap, slot, slots) => {
 
     const block = document.createElement('div');
     block.className = 'mod_confscheduler-block' + (isSpanBlock ? ' mod_confscheduler-block-span' : '');
+    // Warning tooltips accumulate rather than overwrite: a block that is
+    // simultaneously non-preferred-day + overbooked + withdrawn previously kept
+    // only the LAST assignment's text (FABLE.md review, 2026-07-09).
+    const warningTitles = [];
     if (slot.nonpreferredday) {
         // Edit-mode-only highlight (user feedback, 2026-07-05): flagged server-side
         // (see \mod_confscheduler\local\grid_data::build()'s docblock) whenever this
@@ -1012,7 +1015,7 @@ const renderBlock = (state, columnsWrap, slot, slots) => {
         // override. scheduler_display.js (read-only Display mode) never reads this
         // field at all, so a flagged block still displays normally there.
         block.classList.add('mod_confscheduler-block-nonpreferred');
-        block.title = state.strings.blocknonpreferredday;
+        warningTitles.push(state.strings.blocknonpreferredday);
     }
     if (slot.overbooked) {
         // Edit-mode-only highlight (user request, 2026-07-05): flagged server-side
@@ -1023,7 +1026,7 @@ const renderBlock = (state, columnsWrap, slot, slots) => {
         block.classList.add('mod_confscheduler-block-overbooked');
         const room = state.rooms.find((candidate) => candidate.id === slot.roomids[0]);
         const capacity = room ? room.capacity : null;
-        block.title = `${state.strings.blockoverbooked} ${slot.favouritecount}/${capacity}`;
+        warningTitles.push(`${state.strings.blockoverbooked} ${slot.favouritecount}/${capacity}`);
     }
     if (slot.withdrawn) {
         // Edit-mode indication (user request, 2026-07-07 follow-up) that this already-
@@ -1035,7 +1038,10 @@ const renderBlock = (state, columnsWrap, slot, slots) => {
         // strikethrough, appropriate for the read-only public view; edit mode wants it
         // to stand out instead, since an organiser needs to notice and free the slot).
         block.classList.add('mod_confscheduler-block-withdrawn-edit');
-        block.title = state.strings.blockwithdrawn;
+        warningTitles.push(state.strings.blockwithdrawn);
+    }
+    if (warningTitles.length) {
+        block.title = warningTitles.join('\n');
     }
     block.dataset.slotid = slot.id;
     block.dataset.roomids = JSON.stringify(slot.roomids);
@@ -2087,9 +2093,14 @@ const onPxPerHourChange = (state, input) => {
  */
 const onUnscheduleClick = (state, block) => {
     const slotid = Number(block.dataset.slotid);
-    const slot = state.slots.find((candidate) => candidate.id === slotid);
+    // State.allSlots, NOT state.slots: in "All days" mode state.slots is
+    // deliberately [] (see applyDayFilter()), so a state.slots lookup found
+    // nothing, computed childcount 0, and deleted a POPULATED container --
+    // with all its nested presentations -- without the confirmation prompt
+    // single-day mode shows (FABLE.md review, 2026-07-09, reproduced live).
+    const slot = state.allSlots.find((candidate) => candidate.id === slotid);
     const childcount = slot && slot.iscontainer
-        ? state.slots.filter((candidate) => candidate.parentslotid === slotid).length
+        ? state.allSlots.filter((candidate) => candidate.parentslotid === slotid).length
         : 0;
 
     if (childcount === 0) {
@@ -2152,7 +2163,11 @@ const bindEvents = (state) => {
         const editSpanBtn = event.target.closest('.mod_confscheduler-block-edit-span');
         if (editSpanBtn) {
             const slotid = Number(editSpanBtn.closest('.mod_confscheduler-block').dataset.slotid);
-            const slot = state.slots.find((candidate) => candidate.id === slotid);
+            // State.allSlots, NOT state.slots: the latter is [] in "All days"
+            // mode, which left this pencil button rendered but silently dead
+            // there (FABLE.md review, 2026-07-09; same root cause as
+            // onUnscheduleClick()'s fix above).
+            const slot = state.allSlots.find((candidate) => candidate.id === slotid);
             if (slot) {
                 openSpanBlockModal(state, slot);
             }
@@ -2284,14 +2299,19 @@ const bindEvents = (state) => {
         }
     });
 
-    document.addEventListener('fullscreenchange', () => {
-        const isFullscreen = document.fullscreenElement === state.root;
-        state.root.classList.toggle('mod_confscheduler-fullscreen', isFullscreen);
-        const fsBtn = state.root.querySelector('.mod_confscheduler-fullscreen-toggle');
-        if (fsBtn) {
-            fsBtn.setAttribute('aria-pressed', isFullscreen ? 'true' : 'false');
-        }
-    });
+    // Guarded so a second init() over the same root can never stack a duplicate
+    // document-level listener (this one has no teardown path).
+    if (state.root.dataset.confschedulerFullscreenBound !== '1') {
+        state.root.dataset.confschedulerFullscreenBound = '1';
+        document.addEventListener('fullscreenchange', () => {
+            const isFullscreen = document.fullscreenElement === state.root;
+            state.root.classList.toggle('mod_confscheduler-fullscreen', isFullscreen);
+            const fsBtn = state.root.querySelector('.mod_confscheduler-fullscreen-toggle');
+            if (fsBtn) {
+                fsBtn.setAttribute('aria-pressed', isFullscreen ? 'true' : 'false');
+            }
+        });
+    }
 };
 
 /**

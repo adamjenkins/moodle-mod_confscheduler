@@ -102,12 +102,15 @@ final class reschedule_slot_test extends advanced_testcase {
         $teacher = $this->getDataGenerator()->create_and_enrol($course, 'editingteacher');
         $this->setUser($teacher);
 
-        $result = reschedule_slot::execute(
-            $cmid,
-            $slotid,
-            [$roomid],
-            strtotime('2026-09-01 11:00:00'),
-            strtotime('2026-09-01 11:30:00')
+        $result = \core_external\external_api::clean_returnvalue(
+            reschedule_slot::execute_returns(),
+            reschedule_slot::execute(
+                $cmid,
+                $slotid,
+                [$roomid],
+                strtotime('2026-09-01 11:00:00'),
+                strtotime('2026-09-01 11:30:00')
+            )
         );
 
         $this->assertTrue($result['success']);
@@ -160,7 +163,10 @@ final class reschedule_slot_test extends advanced_testcase {
         $teacher = $this->getDataGenerator()->create_and_enrol($course, 'editingteacher');
         $this->setUser($teacher);
 
-        $result = unschedule_slot::execute($cmid, $slotid);
+        $result = \core_external\external_api::clean_returnvalue(
+            unschedule_slot::execute_returns(),
+            unschedule_slot::execute($cmid, $slotid)
+        );
 
         $this->assertTrue($result['success']);
         global $DB;

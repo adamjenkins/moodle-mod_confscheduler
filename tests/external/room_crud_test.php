@@ -75,7 +75,10 @@ final class room_crud_test extends advanced_testcase {
         $teacher = $this->getDataGenerator()->create_and_enrol($course, 'editingteacher');
         $this->setUser($teacher);
 
-        $result = add_room::execute($cmid, 'Main Hall', '#3366cc');
+        $result = \core_external\external_api::clean_returnvalue(
+            add_room::execute_returns(),
+            add_room::execute($cmid, 'Main Hall', '#3366cc')
+        );
         $this->assertGreaterThan(0, $result['roomid']);
 
         $this->expectException(\invalid_parameter_exception::class);
@@ -134,7 +137,10 @@ final class room_crud_test extends advanced_testcase {
         $room1 = api::add_room((int) $confscheduler->id, 'A');
         $room2 = api::add_room((int) $confscheduler->id, 'B');
 
-        $result = reorder_rooms::execute($cmid, [$room2, $room1]);
+        $result = \core_external\external_api::clean_returnvalue(
+            reorder_rooms::execute_returns(),
+            reorder_rooms::execute($cmid, [$room2, $room1])
+        );
         $this->assertTrue($result['success']);
 
         global $DB;

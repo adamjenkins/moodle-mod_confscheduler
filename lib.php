@@ -140,6 +140,14 @@ function confscheduler_delete_instance($id) {
     $DB->delete_records('confscheduler_notiftemplate', ['confscheduler' => $id]);
     $DB->delete_records('confscheduler_daybounds', ['confscheduler' => $id]);
 
+    // Every user's remembered last-viewed-day preference for THIS instance --
+    // the one piece of per-user data the plugin stores (see the privacy
+    // provider); without this, deleted instances leaked one user_preferences
+    // row per user who ever used the day selector.
+    $DB->delete_records('user_preferences', [
+        'name' => \mod_confscheduler\api::last_viewed_day_preference_name($id),
+    ]);
+
     $DB->delete_records('confscheduler', ['id' => $id]);
 
     return true;

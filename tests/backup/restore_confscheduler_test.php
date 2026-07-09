@@ -193,7 +193,9 @@ final class restore_confscheduler_test extends \restore_date_testcase {
             'Poster Session',
             null,
             true,
-            'Exhibit Hall'
+            'Exhibit Hall',
+            'center',
+            'middle'
         );
         $childid = \mod_confscheduler\api::add_presentation_to_container(
             (int) $confscheduler->id,
@@ -222,6 +224,11 @@ final class restore_confscheduler_test extends \restore_date_testcase {
         $this->assertNotNull($newchild);
         $this->assertSame(1, (int) $newcontainer->iscontainer);
         $this->assertSame('Exhibit Hall', $newcontainer->roomnameoverride);
+        // The Round 2 alignment columns must round-trip -- they were missing from
+        // the backup field list, silently resetting every restored container to
+        // left/top (FABLE.md review, 2026-07-09).
+        $this->assertSame('center', $newcontainer->childtextalign);
+        $this->assertSame('middle', $newcontainer->childtextvalign);
         $this->assertSame((int) $newcontainer->id, (int) $newchild->parentslotid);
         $this->assertNotSame($containerid, (int) $newcontainer->id);
         $this->assertNotSame($childid, (int) $newchild->id);

@@ -156,6 +156,17 @@ const relevantSlots = (others, roomids, excludeslotid) => others.filter((other) 
     if (excludeslotid !== null && excludeslotid !== undefined && other.id === excludeslotid) {
         return false;
     }
+    // A presentation nested inside a container (parentslotid set) occupies no
+    // rooms of its own server-side (no confscheduler_slotroom rows; the grid
+    // payload gives it its CONTAINER's roomids purely for rendering), and
+    // validate_placement() never sees it -- treating it as a normal occupant
+    // here made the client nudge/reject flush placements next to a populated
+    // container that the server would accept, breaking the documented
+    // kept-in-sync-BY-HAND contract with api.php (FABLE.md review, 2026-07-09).
+    // The container itself still participates normally.
+    if (other.parentslotid) {
+        return false;
+    }
     return Array.isArray(other.roomids) && other.roomids.some((id) => roomids.includes(id));
 });
 

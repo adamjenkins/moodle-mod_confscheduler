@@ -93,11 +93,17 @@ final class toggle_favourite_test extends advanced_testcase {
         $student = $this->getDataGenerator()->create_and_enrol($course, 'student');
         $this->setUser($student);
 
-        $result = toggle_favourite::execute($cmid, $slotid, true);
+        $result = \core_external\external_api::clean_returnvalue(
+            toggle_favourite::execute_returns(),
+            toggle_favourite::execute($cmid, $slotid, true)
+        );
         $this->assertTrue($result['favourited']);
         $this->assertTrue(\mod_confprogram\api::is_favourited((int) $student->id, $submissionid));
 
-        $result = toggle_favourite::execute($cmid, $slotid, false);
+        $result = \core_external\external_api::clean_returnvalue(
+            toggle_favourite::execute_returns(),
+            toggle_favourite::execute($cmid, $slotid, false)
+        );
         $this->assertFalse($result['favourited']);
         $this->assertFalse(\mod_confprogram\api::is_favourited((int) $student->id, $submissionid));
     }

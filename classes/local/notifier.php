@@ -129,9 +129,16 @@ class notifier {
         $template = self::get_template($confschedulerid);
         $course = get_course((int) $confscheduler->course);
 
-        $context = [
-            'submissiontitle' => format_string($submission->title),
-            'coursename'      => format_string($course->fullname),
+        // Raw (filtered but unescaped) values: the plain-text subject and a
+        // FORMAT_PLAIN body are escaped exactly once at their own output boundary
+        // (send() wraps a plain body in s()); a FORMAT_HTML body gets the whole
+        // context escaped in ONE place below -- so a future placeholder cannot be
+        // added unescaped by accident, the previous per-value convention's exact
+        // failure mode (FABLE.md review, 2026-07-09). $roomnames arrive raw from
+        // api::send_pending_notifications() for the same reason.
+        $rawcontext = [
+            'submissiontitle' => format_string($submission->title, true, ['escape' => false]),
+            'coursename'      => format_string($course->fullname, true, ['escape' => false]),
             'roomnames'       => implode(', ', $roomnames),
             'starttime'       => userdate((int) $slot->starttime),
             'endtime'         => userdate((int) $slot->endtime),
@@ -146,12 +153,15 @@ class notifier {
                 continue;
             }
 
-            $speakercontext = $context + ['fullname' => format_string(fullname($touser))];
+            $speakerraw = $rawcontext + [
+                'fullname' => format_string(fullname($touser), true, ['escape' => false]),
+            ];
+            $bodycontext = $template['bodyformat'] === FORMAT_HTML ? array_map('s', $speakerraw) : $speakerraw;
 
             self::send(
                 $touser,
-                self::render($template['subject'], $speakercontext),
-                self::render($template['body'], $speakercontext),
+                self::render($template['subject'], $speakerraw),
+                self::render($template['body'], $bodycontext),
                 $template['bodyformat'],
                 (int) $confscheduler->course
             );

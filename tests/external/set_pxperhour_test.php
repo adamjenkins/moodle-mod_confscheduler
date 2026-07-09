@@ -73,7 +73,10 @@ final class set_pxperhour_test extends advanced_testcase {
         $teacher = $this->getDataGenerator()->create_and_enrol($course, 'editingteacher');
         $this->setUser($teacher);
 
-        $result = set_pxperhour::execute($cmid, 200);
+        $result = \core_external\external_api::clean_returnvalue(
+            set_pxperhour::execute_returns(),
+            set_pxperhour::execute($cmid, 200)
+        );
         $this->assertTrue($result['success']);
         $this->assertEquals(200, $DB->get_field('confscheduler', 'pxperhour', ['id' => $confscheduler->id]));
     }

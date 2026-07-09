@@ -89,11 +89,14 @@ final class run_autoscheduler_test extends advanced_testcase {
 
         api::add_room((int) $confscheduler->id, 'Main Hall');
 
-        $result = run_autoscheduler::execute(
-            $cmid,
-            strtotime('2026-09-01 09:00:00'),
-            strtotime('2026-09-01 17:00:00'),
-            false
+        $result = \core_external\external_api::clean_returnvalue(
+            run_autoscheduler::execute_returns(),
+            run_autoscheduler::execute(
+                $cmid,
+                strtotime('2026-09-01 09:00:00'),
+                strtotime('2026-09-01 17:00:00'),
+                false
+            )
         );
 
         $this->assertSame(2, $result['scheduled']);

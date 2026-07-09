@@ -150,6 +150,36 @@ class grid_data {
             $slotsbyid[(int) $slot->id] = $slot;
         }
 
+        // Everything per-submission is fetched in BULK up front -- submissions,
+        // speaker names, date preferences, favourite counts and the user's own
+        // favourites -- instead of ~5 queries per scheduled slot plus more per
+        // unscheduled submission (FABLE.md review, 2026-07-09: this payload is
+        // re-fetched after every drag/resize/edit, on every Display-mode view,
+        // and again per ICS download).
+        $accepted = display_list::get_accepted_submissions((int) $confprogram->id, (int) $confsubmissionscm->instance);
+
+        $slotsubmissionids = [];
+        foreach ($slots as $slot) {
+            if ($slot->submissionid !== null) {
+                $slotsubmissionids[] = (int) $slot->submissionid;
+            }
+        }
+        $acceptedids = array_map(static fn($submission): int => (int) $submission->id, $accepted);
+        $allsubmissionids = array_values(array_unique(array_merge($slotsubmissionids, $acceptedids)));
+
+        $submissionsbyid = submissions_api::get_submissions($slotsubmissionids);
+        $speakernamesbyid = self::format_speakers_bulk($allsubmissionids);
+        $preferreddatesbyid = submissions_api::get_date_preferences_for_submissions($allsubmissionids);
+        $favouritecountsbyid = \mod_confprogram\api::count_favourites_for_submissions($slotsubmissionids);
+        // The user's favourites for THIS instance's linked confprogram, in one
+        // query. Also (deliberately) instance-scopes the read: the old per-slot
+        // is_favourited() call was not confprogram-scoped, the long-documented
+        // RELATIONS.md inconsistency whose proper fix was exactly this scoping.
+        $favouritedids = [];
+        foreach (\mod_confprogram\api::get_favourites($userid, (int) $confprogram->id) as $favourite) {
+            $favouritedids[(int) $favourite->submissionid] = true;
+        }
+
         $scheduledsubmissionids = [];
         $slotsout = [];
         foreach ($slots as $slot) {
@@ -184,10 +214,10 @@ class grid_data {
 
             if ($slot->submissionid !== null) {
                 $scheduledsubmissionids[] = (int) $slot->submissionid;
-                $submission = submissions_api::get_submission((int) $slot->submissionid);
+                $submission = $submissionsbyid[(int) $slot->submissionid] ?? null;
                 if ($submission) {
                     $entry['title'] = format_string($submission->title, true, ['escape' => false]);
-                    $entry['speakers'] = self::format_speakers((int) $submission->id);
+                    $entry['speakers'] = $speakernamesbyid[(int) $submission->id] ?? '';
                     $entry['withdrawn'] = $submission->status === 'withdrawn';
                     $hastrack = !empty($submission->trackid) && isset($tracksbyid[(int) $submission->trackid]);
                     $entry['track'] = $hastrack
@@ -195,7 +225,7 @@ class grid_data {
                         : null;
                     $entry['trackid'] = $hastrack ? (int) $submission->trackid : null;
                     $entry['trackcolour'] = $hastrack ? ($tracksbyid[(int) $submission->trackid]->colour ?: null) : null;
-                    $entry['favourited'] = \mod_confprogram\api::is_favourited($userid, (int) $submission->id);
+                    $entry['favourited'] = isset($favouritedids[(int) $submission->id]);
 
                     // Flagged for edit-mode-only highlighting (user feedback,
                     // 2026-07-05: scheduling onto a non-preferred day is now only
@@ -205,7 +235,7 @@ class grid_data {
                     // recorded," never flagged as non-preferred -- matches every other
                     // consumer of get_date_preferences()'s "empty means unrestricted"
                     // contract.
-                    $preferreddates = submissions_api::get_date_preferences((int) $submission->id);
+                    $preferreddates = $preferreddatesbyid[(int) $submission->id] ?? [];
                     if ($preferreddates) {
                         $day = usergetmidnight((int) $slot->starttime);
                         $entry['nonpreferredday'] = !in_array($day, $preferreddates, true);
@@ -217,7 +247,7 @@ class grid_data {
                     // column-spanning block has no submissionid and never reaches
                     // this branch at all) with a capacity actually configured --
                     // null capacity means unlimited, never a warning.
-                    $entry['favouritecount'] = \mod_confprogram\api::count_favourites((int) $submission->id);
+                    $entry['favouritecount'] = $favouritecountsbyid[(int) $submission->id] ?? 0;
                     if (count($entry['roomids']) === 1) {
                         $roomcapacity = $capacitybyroomid[$entry['roomids'][0]] ?? null;
                         if ($roomcapacity !== null && $entry['favouritecount'] > $roomcapacity) {
@@ -230,7 +260,6 @@ class grid_data {
             $slotsout[] = $entry;
         }
 
-        $accepted = display_list::get_accepted_submissions((int) $confprogram->id, (int) $confsubmissionscm->instance);
         $unscheduledout = [];
         foreach ($accepted as $submission) {
             if (in_array((int) $submission->id, $scheduledsubmissionids, true)) {
@@ -241,7 +270,7 @@ class grid_data {
             $unscheduledout[] = [
                 'submissionid'    => (int) $submission->id,
                 'title'           => format_string($submission->title, true, ['escape' => false]),
-                'speakers'        => self::format_speakers((int) $submission->id),
+                'speakers'        => $speakernamesbyid[(int) $submission->id] ?? '',
                 'track'           => $hastrack
                     ? format_string($tracksbyid[(int) $submission->trackid]->name, true, ['escape' => false])
                     : null,
@@ -261,7 +290,7 @@ class grid_data {
                 // Empty means "no preference recorded" -- the client must treat that as
                 // "show on every day", not "hide everywhere" (user feedback, 2026-07-05;
                 // see mod_confsubmissions\api::get_date_preferences()'s docblock).
-                'preferreddates'  => submissions_api::get_date_preferences((int) $submission->id),
+                'preferreddates'  => $preferreddatesbyid[(int) $submission->id] ?? [],
             ];
         }
 
@@ -295,27 +324,51 @@ class grid_data {
     }
 
     /**
-     * Formats a submission's speaker names as a single comma-joined string,
-     * resolving enrolled-user speakers to their full name and falling back to
-     * the manually-entered name for non-user speakers.
+     * Formats many submissions' speaker names in bulk: one speakers query and one
+     * user-record query for the whole set, instead of one speakers query plus one
+     * user lookup PER SPEAKER per submission (FABLE.md review, 2026-07-09).
+     * Per-submission output is identical to the old one-at-a-time formatter:
+     * enrolled-user speakers resolve to their full name, non-user speakers fall
+     * back to the manually-entered name, blanks are dropped, comma-joined.
      *
-     * @param int $submissionid The confsubmissions_submission id
-     * @return string Comma-joined speaker display names
+     * @param int[] $submissionids The confsubmissions_submission ids
+     * @return array<int, string> Comma-joined speaker display names keyed by submissionid
      */
-    protected static function format_speakers(int $submissionid): string {
-        $names = [];
-        foreach (submissions_api::get_speakers($submissionid) as $speaker) {
-            if (!empty($speaker->userid)) {
-                $user = \core_user::get_user((int) $speaker->userid);
-                $name = $user ? fullname($user) : '';
-            } else {
-                $name = (string) ($speaker->name ?? '');
-            }
-            if ($name !== '') {
-                $names[] = $name;
+    protected static function format_speakers_bulk(array $submissionids): array {
+        global $DB;
+
+        $speakersbysubmission = submissions_api::get_speakers_for_submissions($submissionids);
+
+        $userids = [];
+        foreach ($speakersbysubmission as $speakers) {
+            foreach ($speakers as $speaker) {
+                if (!empty($speaker->userid)) {
+                    $userids[] = (int) $speaker->userid;
+                }
             }
         }
+        $namefields = implode(', ', array_merge(['id'], \core_user\fields::for_name()->get_required_fields()));
+        $users = $userids
+            ? $DB->get_records_list('user', 'id', array_unique($userids), '', $namefields)
+            : [];
 
-        return implode(', ', $names);
+        $result = [];
+        foreach ($speakersbysubmission as $submissionid => $speakers) {
+            $names = [];
+            foreach ($speakers as $speaker) {
+                if (!empty($speaker->userid)) {
+                    $user = $users[(int) $speaker->userid] ?? null;
+                    $name = $user ? fullname($user) : '';
+                } else {
+                    $name = (string) ($speaker->name ?? '');
+                }
+                if ($name !== '') {
+                    $names[] = $name;
+                }
+            }
+            $result[(int) $submissionid] = implode(', ', $names);
+        }
+
+        return $result;
     }
 }

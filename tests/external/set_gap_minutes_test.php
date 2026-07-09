@@ -72,7 +72,10 @@ final class set_gap_minutes_test extends advanced_testcase {
         $teacher = $this->getDataGenerator()->create_and_enrol($course, 'editingteacher');
         $this->setUser($teacher);
 
-        $result = set_gap_minutes::execute($cmid, 20);
+        $result = \core_external\external_api::clean_returnvalue(
+            set_gap_minutes::execute_returns(),
+            set_gap_minutes::execute($cmid, 20)
+        );
         $this->assertTrue($result['success']);
         $this->assertEquals(20, $DB->get_field('confscheduler', 'gapminutes', ['id' => $confscheduler->id]));
     }

@@ -2,6 +2,74 @@
 
 ## Unreleased
 
+- User-reported display fixes (2026-07-09):
+  - **"My timetable" no longer dims a container holding a starred child** —
+    CSS opacity multiplies down the tree, so dimming the (never-favouritable)
+    container made even a starred child inside it translucent. A container with
+    at least one favourited child now stays at full opacity via a `:has()`
+    exemption; its non-starred children still dim individually.
+  - **The favourite star sits in a child tile's top-right corner again** — a
+    child block is a flex column (for the Round 2 alignment settings), where
+    the star's `float: right` has no effect, so it stacked as the first flex
+    item top-LEFT and drifted with the alignment setting. The star (and edit
+    mode's × remove button, same root cause) are now corner-anchored with
+    `position: absolute`, independent of `data-align`/`data-valign`.
+- Review fixes (2026-07-09, from the four-plugin FABLE.md review — see the
+  coordination repo):
+  - **Privacy provider now declares and exports the last-viewed-day user
+    preference** — it was a `null_provider`, written before
+    `api::set_last_viewed_day()` existed; subject-access exports omitted that
+    behavioural data. `confscheduler_delete_instance()` also cleans up the
+    per-instance preferences it previously leaked, and the "stores no personal
+    data" lang strings were corrected (en/ja).
+  - **`add_slot()` rejects an already-scheduled submission** — the same guard
+    `add_presentation_to_container()` always had; two organisers (or one stale
+    tab) could otherwise double-schedule a talk, after which
+    `get_schedule_for_submission()` silently returned only the earlier slot.
+    New unit test.
+  - **`update_slot()` rejects a container child** — the AJAX endpoint accepted
+    any slot id, so a direct call could insert phantom slotroom rows for a
+    child and corrupt the container invariant. New `error:cannotreschedulechild`
+    string (en/ja) + unit test.
+  - **`grid_data::build()` no longer scales queries with slots** — submissions,
+    speaker names (one speakers + one user query total), date preferences,
+    favourite counts and the user's favourites are all fetched in bulk, using
+    `mod_confsubmissions`' and `mod_confprogram`'s new bulk read APIs. The
+    favourited state (here and in `toggle_favourite`'s read-back) is now also
+    confprogram-instance-scoped, resolving the long-documented RELATIONS.md
+    `is_favourited()` inconsistency for this plugin's consumers.
+  - **Autoscheduler track-overlap avoidance is in-memory** — it previously
+    re-queried every scheduled slot PER CANDIDATE POSITION (rooms × start
+    times per tracked submission); the slot set is now fetched once per
+    placement.
+  - **Backup no longer loses `childtextalign`/`childtextvalign`** — restores
+    silently reset container tile alignment to left/top. Restore test now
+    asserts the round-trip.
+  - **"All days" edit mode: container delete confirms, span-block pencil
+    works** — both handlers looked slots up in `state.slots`, which is
+    deliberately empty in All-days mode, so × on a populated container skipped
+    the "this will unschedule N presentations" prompt entirely (reproduced
+    live) and ✎ did nothing. Both now use `state.allSlots`.
+  - **Client-side SnapGap agrees with the server around populated containers**
+    — nested children (which occupy no rooms server-side) are excluded from
+    the client's conflict set, so flush placements next to a container are no
+    longer wrongly nudged/rejected.
+  - **Notifier escaping is centralised** — the whole placeholder context is
+    escaped once per output format (HTML body vs plain subject/body), so a
+    future placeholder can't be added unescaped; room names now arrive raw
+    from `api::send_pending_notifications()`.
+  - **Smaller items**: multi-row slot writes (add/update/delete/span-edit) are
+    wrapped in transactions; `reorder_rooms()` requires the complete room set,
+    not just member ids; `mod_form` rejects `conferenceend == conferencestart`
+    (a window no slot could ever fit); `version.php` declares the
+    `mod_confsubmissions` dependency it calls directly; `.form-row` (Bootstrap
+    4) replaced with `.row` in the add-to-container modal; the grid's
+    `role="table"` (which promised row/cell semantics the canvas never had)
+    replaced with a labelled `role="group"`; edit-mode warning tooltips
+    accumulate instead of overwriting each other; the fullscreen listener
+    can't double-bind; all external tests validate return structures via
+    `clean_returnvalue()`, and `send_pending_notifications` gained its missing
+    endpoint test.
 - User request (2026-07-09): **container blocks, round 2** -- modal usability
   and child-tile rendering polish on top of the container span blocks feature
   below. The "+" picker is now a filterable **multi-select**: a checkbox list

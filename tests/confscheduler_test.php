@@ -84,15 +84,73 @@ final class confscheduler_test extends advanced_testcase {
     }
 
     /**
-     * The privacy provider class exists and is a null_provider, matching this
-     * plugin's tables (which hold no personal data).
+     * The privacy provider declares and exports the one piece of per-user data
+     * this plugin stores: the mod_confscheduler_lastday_<id> user preference
+     * (FABLE.md review, 2026-07-09 -- the provider was previously a
+     * null_provider written before the preference existed).
      */
-    public function test_privacy_provider_exists(): void {
-        $this->assertTrue(class_exists(\mod_confscheduler\privacy\provider::class));
-        $this->assertInstanceOf(
-            \core_privacy\local\metadata\null_provider::class,
-            new \mod_confscheduler\privacy\provider()
-        );
+    public function test_privacy_provider_declares_and_exports_lastday_preference(): void {
+        $this->resetAfterTest();
+
+        $provider = new \mod_confscheduler\privacy\provider();
+        $this->assertInstanceOf(\core_privacy\local\metadata\provider::class, $provider);
+        $this->assertInstanceOf(\core_privacy\local\request\user_preference_provider::class, $provider);
+
+        $course = $this->getDataGenerator()->create_course();
+        $confsubmissions = $this->getDataGenerator()->create_module('confsubmissions', ['course' => $course->id]);
+        $confsubmissionscm = get_coursemodule_from_instance('confsubmissions', $confsubmissions->id);
+        $confprogram = $this->getDataGenerator()->create_module('confprogram', [
+            'course'              => $course->id,
+            'confsubmissionscmid' => $confsubmissionscm->id,
+        ]);
+        $confprogramcm = get_coursemodule_from_instance('confprogram', $confprogram->id);
+        $confscheduler = $this->getDataGenerator()->create_module('confscheduler', [
+            'course'          => $course->id,
+            'confprogramcmid' => $confprogramcm->id,
+        ]);
+
+        $user = $this->getDataGenerator()->create_user();
+        \mod_confscheduler\api::set_last_viewed_day((int) $confscheduler->id, (int) $user->id, 'all');
+
+        \mod_confscheduler\privacy\provider::export_user_preferences((int) $user->id);
+        $writer = \core_privacy\local\request\writer::with_context(\context_system::instance());
+        $prefs = $writer->get_user_context_preferences('mod_confscheduler');
+        $prefname = \mod_confscheduler\api::last_viewed_day_preference_name((int) $confscheduler->id);
+        $this->assertObjectHasProperty($prefname, $prefs);
+        $this->assertSame('all', $prefs->{$prefname}->value);
+    }
+
+    /**
+     * confscheduler_delete_instance() removes every user's remembered
+     * last-viewed-day preference for the deleted instance (it previously leaked
+     * one user_preferences row per user -- FABLE.md review, 2026-07-09).
+     */
+    public function test_delete_instance_removes_lastday_preferences(): void {
+        $this->resetAfterTest();
+        global $CFG, $DB;
+        require_once($CFG->dirroot . '/mod/confscheduler/lib.php');
+
+        $course = $this->getDataGenerator()->create_course();
+        $confsubmissions = $this->getDataGenerator()->create_module('confsubmissions', ['course' => $course->id]);
+        $confsubmissionscm = get_coursemodule_from_instance('confsubmissions', $confsubmissions->id);
+        $confprogram = $this->getDataGenerator()->create_module('confprogram', [
+            'course'              => $course->id,
+            'confsubmissionscmid' => $confsubmissionscm->id,
+        ]);
+        $confprogramcm = get_coursemodule_from_instance('confprogram', $confprogram->id);
+        $confscheduler = $this->getDataGenerator()->create_module('confscheduler', [
+            'course'          => $course->id,
+            'confprogramcmid' => $confprogramcm->id,
+        ]);
+
+        $user = $this->getDataGenerator()->create_user();
+        \mod_confscheduler\api::set_last_viewed_day((int) $confscheduler->id, (int) $user->id, 'all');
+        $prefname = \mod_confscheduler\api::last_viewed_day_preference_name((int) $confscheduler->id);
+        $this->assertTrue($DB->record_exists('user_preferences', ['name' => $prefname]));
+
+        confscheduler_delete_instance((int) $confscheduler->id);
+
+        $this->assertFalse($DB->record_exists('user_preferences', ['name' => $prefname]));
     }
 
     /**

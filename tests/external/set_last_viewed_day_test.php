@@ -73,7 +73,10 @@ final class set_last_viewed_day_test extends advanced_testcase {
         $student = $this->getDataGenerator()->create_and_enrol($course, 'student');
         $this->setUser($student);
 
-        $result = set_last_viewed_day::execute($cmid, '2026-08-15');
+        $result = \core_external\external_api::clean_returnvalue(
+            set_last_viewed_day::execute_returns(),
+            set_last_viewed_day::execute($cmid, '2026-08-15')
+        );
         $this->assertTrue($result['success']);
         $this->assertSame('2026-08-15', api::get_last_viewed_day((int) $confscheduler->id, (int) $student->id));
 
@@ -106,7 +109,10 @@ final class set_last_viewed_day_test extends advanced_testcase {
         $student = $this->getDataGenerator()->create_and_enrol($course, 'student');
         $this->setUser($student);
 
-        $result = set_last_viewed_day::execute($cmid, '2026-08-15');
+        $result = \core_external\external_api::clean_returnvalue(
+            set_last_viewed_day::execute_returns(),
+            set_last_viewed_day::execute($cmid, '2026-08-15')
+        );
         $this->assertTrue($result['success']);
         $this->assertNull(api::get_last_viewed_day((int) $confscheduler->id, (int) $student->id));
     }

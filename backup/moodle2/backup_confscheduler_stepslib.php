@@ -71,7 +71,7 @@ class backup_confscheduler_activity_structure_step extends backup_activity_struc
         $slots = new backup_nested_element('slots');
         $slot = new backup_nested_element('slot', ['id'], [
             'submissionid', 'label', 'colour', 'roomnameoverride', 'starttime', 'endtime', 'iscontainer',
-            'parentslotid', 'timecreated', 'timemodified', 'notifiedtime',
+            'parentslotid', 'childtextalign', 'childtextvalign', 'timecreated', 'timemodified', 'notifiedtime',
         ]);
 
         $slotrooms = new backup_nested_element('slotrooms');

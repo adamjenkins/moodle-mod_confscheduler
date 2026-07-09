@@ -120,7 +120,11 @@
         </div>
         {{/canmanage}}
         <div class="mod_confscheduler-grid-scroll">
-            <div class="mod_confscheduler-grid" role="table" aria-label="{{#str}} pluginname, mod_confscheduler {{/str}}"></div>
+            {{! role="group", not role="table": the grid is an absolutely-positioned 2D canvas whose
+    JS-built contents carry no row/cell roles, so announcing it as a table promised
+    screen-reader users navigation semantics that were never there (FABLE.md review,
+    2026-07-09). A named group is honest: one labelled region, explored linearly. }}
+            <div class="mod_confscheduler-grid" role="group" aria-label="{{#str}} pluginname, mod_confscheduler {{/str}}"></div>
         </div>
     </div>
 </div>

@@ -73,12 +73,15 @@ final class add_span_block_test extends advanced_testcase {
         $teacher = $this->getDataGenerator()->create_and_enrol($course, 'editingteacher');
         $this->setUser($teacher);
 
-        $result = add_span_block::execute(
-            $cmid,
-            'Lunch Break',
-            [$room1, $room2],
-            strtotime('2026-09-01 12:00:00'),
-            strtotime('2026-09-01 13:00:00')
+        $result = \core_external\external_api::clean_returnvalue(
+            add_span_block::execute_returns(),
+            add_span_block::execute(
+                $cmid,
+                'Lunch Break',
+                [$room1, $room2],
+                strtotime('2026-09-01 12:00:00'),
+                strtotime('2026-09-01 13:00:00')
+            )
         );
 
         $this->assertGreaterThan(0, $result['slotid']);
@@ -100,13 +103,16 @@ final class add_span_block_test extends advanced_testcase {
         $teacher = $this->getDataGenerator()->create_and_enrol($course, 'editingteacher');
         $this->setUser($teacher);
 
-        $result = add_span_block::execute(
-            $cmid,
-            'Plenary',
-            [$room1, $room2],
-            strtotime('2026-09-01 09:00:00'),
-            strtotime('2026-09-01 10:00:00'),
-            '#3366cc'
+        $result = \core_external\external_api::clean_returnvalue(
+            add_span_block::execute_returns(),
+            add_span_block::execute(
+                $cmid,
+                'Plenary',
+                [$room1, $room2],
+                strtotime('2026-09-01 09:00:00'),
+                strtotime('2026-09-01 10:00:00'),
+                '#3366cc'
+            )
         );
 
         global $DB;
@@ -159,15 +165,18 @@ final class add_span_block_test extends advanced_testcase {
         $teacher = $this->getDataGenerator()->create_and_enrol($course, 'editingteacher');
         $this->setUser($teacher);
 
-        $result = add_span_block::execute(
-            $cmid,
-            'Poster Session',
-            [$room1, $room2],
-            strtotime('2026-09-01 09:00:00'),
-            strtotime('2026-09-01 11:00:00'),
-            null,
-            true,
-            'Exhibit Hall'
+        $result = \core_external\external_api::clean_returnvalue(
+            add_span_block::execute_returns(),
+            add_span_block::execute(
+                $cmid,
+                'Poster Session',
+                [$room1, $room2],
+                strtotime('2026-09-01 09:00:00'),
+                strtotime('2026-09-01 11:00:00'),
+                null,
+                true,
+                'Exhibit Hall'
+            )
         );
 
         global $DB;

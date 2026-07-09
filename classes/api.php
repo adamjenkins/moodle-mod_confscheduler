@@ -400,6 +400,15 @@ class api {
             throw new \invalid_parameter_exception(get_string('error:invalidroom', 'mod_confscheduler'));
         }
 
+        // Completeness, not just membership: a PARTIAL list (a stale client that
+        // missed another organiser's just-added room) would leave the unlisted
+        // room's sortorder colliding with a renumbered one, making subsequent
+        // ordering unstable (FABLE.md review, 2026-07-09).
+        $total = $DB->count_records('confscheduler_room', ['confscheduler' => $confschedulerid]);
+        if ($total !== count($uniqueids)) {
+            throw new \invalid_parameter_exception(get_string('error:invalidroom', 'mod_confscheduler'));
+        }
+
         $sortorder = 0;
         foreach ($uniqueids as $roomid) {
             $DB->set_field('confscheduler_room', 'sortorder', $sortorder, [
@@ -599,7 +608,7 @@ class api {
      * @param int $confschedulerid The confscheduler instance id
      * @return string
      */
-    private static function last_viewed_day_preference_name(int $confschedulerid): string {
+    public static function last_viewed_day_preference_name(int $confschedulerid): string {
         return 'mod_confscheduler_lastday_' . $confschedulerid;
     }
 
@@ -891,6 +900,22 @@ class api {
 
         if ($submissionid !== null) {
             self::validate_submission_chain_of_custody($confscheduler, $submissionid);
+
+            // Same guard add_presentation_to_container() already has, for the same
+            // reason: there is no unique index on confscheduler_slot.submissionid,
+            // so without this, two organisers (or one stale second tab) could
+            // schedule the same submission twice -- after which
+            // get_schedule_for_submission() silently returns only the earlier
+            // slot while the grid shows the talk in two places (FABLE.md review,
+            // 2026-07-09).
+            if (
+                $DB->record_exists('confscheduler_slot', [
+                'confscheduler' => $confschedulerid,
+                'submissionid'  => $submissionid,
+                ])
+            ) {
+                throw new \moodle_exception('error:alreadyscheduled', 'mod_confscheduler');
+            }
         }
 
         self::validate_placement(
@@ -904,6 +929,11 @@ class api {
             $confscheduler->conferencestart !== null ? (int) $confscheduler->conferencestart : null,
             $confscheduler->conferenceend !== null ? (int) $confscheduler->conferenceend : null
         );
+
+        // Transaction: a slot row without its slotroom rows is invisible to
+        // validate_placement() yet renders as a phantom in the grid, so the
+        // multi-row write must be all-or-nothing (FABLE.md review, 2026-07-09).
+        $transaction = $DB->start_delegated_transaction();
 
         $now = time();
         $slotid = $DB->insert_record('confscheduler_slot', (object) [
@@ -928,6 +958,8 @@ class api {
             ]);
         }
 
+        $transaction->allow_commit();
+
         return $slotid;
     }
 
@@ -941,18 +973,32 @@ class api {
      * when the slot was first created, and does not need re-validating on a
      * pure time/room move.
      *
+     * A container CHILD (parentslotid set) cannot be rescheduled through here:
+     * a child has no confscheduler_slotroom rows of its own and its times
+     * mirror its container (see this class's docblock) -- accepting one would
+     * insert phantom slotroom rows for it while grid_data still renders it
+     * nested at the container's position, producing inexplicable "time
+     * overlap" errors, and the container's next edit would orphan those rows
+     * permanently via cascade_container_time_to_children() (FABLE.md review,
+     * 2026-07-09: the edit UI never offers this, but the AJAX endpoint accepts
+     * any slot id in the instance). Children move only with their container.
+     *
      * @param int $slotid The confscheduler_slot id
      * @param int[] $roomids The new room id(s) this slot should occupy
      * @param int $starttime Unix timestamp
      * @param int $endtime Unix timestamp
      * @return void
-     * @throws \moodle_exception if the new placement overlaps/violates SnapGap
+     * @throws \moodle_exception if the new placement overlaps/violates SnapGap, or the
+     *         slot is a presentation nested inside a container
      * @throws \invalid_parameter_exception if a room does not belong to this instance
      */
     public static function update_slot(int $slotid, array $roomids, int $starttime, int $endtime): void {
         global $DB;
 
         $slot = $DB->get_record('confscheduler_slot', ['id' => $slotid], '*', MUST_EXIST);
+        if (!empty($slot->parentslotid)) {
+            throw new \moodle_exception('error:cannotreschedulechild', 'mod_confscheduler');
+        }
         $confscheduler = $DB->get_record('confscheduler', ['id' => $slot->confscheduler], '*', MUST_EXIST);
 
         self::validate_placement(
@@ -966,6 +1012,10 @@ class api {
             $confscheduler->conferencestart !== null ? (int) $confscheduler->conferencestart : null,
             $confscheduler->conferenceend !== null ? (int) $confscheduler->conferenceend : null
         );
+
+        // Transaction: see add_slot()'s matching comment -- a failure between the
+        // slotroom delete and re-insert would otherwise leave a roomless slot.
+        $transaction = $DB->start_delegated_transaction();
 
         $DB->update_record('confscheduler_slot', (object) [
             'id'           => $slot->id,
@@ -985,6 +1035,8 @@ class api {
         if ($slot->submissionid === null && !empty($slot->iscontainer)) {
             self::cascade_container_time_to_children((int) $slotid, $starttime, $endtime);
         }
+
+        $transaction->allow_commit();
     }
 
     /**
@@ -1073,6 +1125,9 @@ class api {
             $confscheduler->conferenceend !== null ? (int) $confscheduler->conferenceend : null
         );
 
+        // Transaction: see add_slot()'s matching comment.
+        $transaction = $DB->start_delegated_transaction();
+
         $DB->update_record('confscheduler_slot', (object) [
             'id'               => $slot->id,
             'label'            => $label,
@@ -1097,6 +1152,8 @@ class api {
         if ($iscontainer) {
             self::cascade_container_time_to_children($slotid, $starttime, $endtime);
         }
+
+        $transaction->allow_commit();
     }
 
     /**
@@ -1211,6 +1268,13 @@ class api {
     public static function delete_slot(int $slotid): void {
         global $DB;
 
+        // Transaction: a container delete is a multi-row cascade (children +
+        // slotroom rows + the container itself); a mid-sequence failure must not
+        // leave half the children deleted (see add_slot()'s matching comment).
+        // Delegated transactions nest safely, so the recursive child calls below
+        // simply join this one.
+        $transaction = $DB->start_delegated_transaction();
+
         $slot = $DB->get_record('confscheduler_slot', ['id' => $slotid]);
         if ($slot && $slot->submissionid === null && !empty($slot->iscontainer)) {
             foreach ($DB->get_records('confscheduler_slot', ['parentslotid' => $slotid]) as $child) {
@@ -1220,6 +1284,8 @@ class api {
 
         $DB->delete_records('confscheduler_slotroom', ['slotid' => $slotid]);
         $DB->delete_records('confscheduler_slot', ['id' => $slotid]);
+
+        $transaction->allow_commit();
     }
 
     /**
@@ -1283,8 +1349,12 @@ class api {
         foreach ($slots as $slot) {
             ['roomownerid' => $roomownerid, 'override' => $override] = self::resolve_room_owner($slot);
 
+            // escape => false: these are RAW (filtered, unescaped) values --
+            // notifier::notify_slot() now escapes its whole placeholder context
+            // exactly once per output format itself, so pre-escaping here would
+            // double-escape (FABLE.md review, 2026-07-09).
             if ($override !== null && $override !== '') {
-                $roomnames = [format_string($override)];
+                $roomnames = [format_string($override, true, ['escape' => false])];
             } else {
                 $roomrows = array_values($DB->get_records_sql(
                     "SELECT r.id, r.name
@@ -1294,7 +1364,10 @@ class api {
                   ORDER BY r.sortorder ASC",
                     ['slotid' => $roomownerid]
                 ));
-                $roomnames = array_map(static fn (\stdClass $room): string => format_string($room->name), $roomrows);
+                $roomnames = array_map(
+                    static fn (\stdClass $room): string => format_string($room->name, true, ['escape' => false]),
+                    $roomrows
+                );
             }
 
             if (\mod_confscheduler\local\notifier::notify_slot($confschedulerid, $slot, $roomnames)) {
@@ -1757,9 +1830,11 @@ class api {
      * Whether a candidate [starttime, endtime) placement in $roomid would
      * overlap another currently-scheduled submission that shares $trackid and
      * is scheduled in a *different* room. Used only as a soft preference (see
-     * try_place_single()) -- never a hard constraint.
+     * try_place_single()) -- never a hard constraint. Purely in-memory: the
+     * caller supplies the prefetched slot set (see
+     * get_presentation_slots_with_rooms() below for why).
      *
-     * @param int $confschedulerid The confscheduler instance id
+     * @param array $presentationslots Prefetched slots from get_presentation_slots_with_rooms()
      * @param int $trackid The trackid to check against
      * @param int $roomid The candidate's room (excluded from the search: only *other* rooms count)
      * @param int $starttime Candidate start, unix timestamp
@@ -1769,30 +1844,33 @@ class api {
      * @return bool
      */
     protected static function track_overlaps_elsewhere(
-        int $confschedulerid,
+        array $presentationslots,
         int $trackid,
         int $roomid,
         int $starttime,
         int $endtime,
         array &$trackidcache
     ): bool {
-        global $DB;
+        foreach ($presentationslots as $slot) {
+            // "Elsewhere" = the other slot occupies at least one room that is not
+            // the candidate's own room (matching the old SQL's sr.roomid <> :roomid).
+            $elsewhere = false;
+            foreach ($slot['roomids'] as $otherroomid) {
+                if ($otherroomid !== $roomid) {
+                    $elsewhere = true;
+                    break;
+                }
+            }
+            if (!$elsewhere) {
+                continue;
+            }
 
-        $sql = "SELECT s.id, s.starttime, s.endtime, s.submissionid
-                  FROM {confscheduler_slot} s
-                  JOIN {confscheduler_slotroom} sr ON sr.slotid = s.id
-                 WHERE s.confscheduler = :confschedulerid
-                   AND s.submissionid IS NOT NULL
-                   AND sr.roomid <> :roomid";
-        $slots = $DB->get_records_sql($sql, ['confschedulerid' => $confschedulerid, 'roomid' => $roomid]);
-
-        foreach ($slots as $slot) {
-            $overlaps = $starttime < (int) $slot->endtime && $endtime > (int) $slot->starttime;
+            $overlaps = $starttime < $slot['endtime'] && $endtime > $slot['starttime'];
             if (!$overlaps) {
                 continue;
             }
 
-            $othersubmissionid = (int) $slot->submissionid;
+            $othersubmissionid = $slot['submissionid'];
             if (!array_key_exists($othersubmissionid, $trackidcache)) {
                 $othersubmission = \mod_confsubmissions\api::get_submission($othersubmissionid);
                 $trackidcache[$othersubmissionid] = ($othersubmission && !empty($othersubmission->trackid))
@@ -1806,6 +1884,46 @@ class api {
         }
 
         return false;
+    }
+
+    /**
+     * Fetches every currently-scheduled presentation slot of an instance, with its
+     * occupied room ids, in one query -- the in-memory dataset
+     * track_overlaps_elsewhere() evaluates candidates against. Previously that
+     * method ran this query itself PER CANDIDATE POSITION (rooms x possible start
+     * times, per tracked submission), which on a large run meant tens of
+     * thousands of identical queries and web-request timeouts (FABLE.md review,
+     * 2026-07-09). Fetched once per try_place_single() call, so placements
+     * committed for earlier submissions in the same run are always included.
+     *
+     * @param int $confschedulerid The confscheduler instance id
+     * @return array<int, array{starttime: int, endtime: int, submissionid: int, roomids: int[]}>
+     */
+    protected static function get_presentation_slots_with_rooms(int $confschedulerid): array {
+        global $DB;
+
+        $sql = "SELECT sr.id AS slotroomid, s.id, s.starttime, s.endtime, s.submissionid, sr.roomid
+                  FROM {confscheduler_slot} s
+                  JOIN {confscheduler_slotroom} sr ON sr.slotid = s.id
+                 WHERE s.confscheduler = :confschedulerid
+                   AND s.submissionid IS NOT NULL";
+        $rows = $DB->get_records_sql($sql, ['confschedulerid' => $confschedulerid]);
+
+        $slots = [];
+        foreach ($rows as $row) {
+            $slotid = (int) $row->id;
+            if (!isset($slots[$slotid])) {
+                $slots[$slotid] = [
+                    'starttime'    => (int) $row->starttime,
+                    'endtime'      => (int) $row->endtime,
+                    'submissionid' => (int) $row->submissionid,
+                    'roomids'      => [],
+                ];
+            }
+            $slots[$slotid]['roomids'][] = (int) $row->roomid;
+        }
+
+        return $slots;
     }
 
     /**
@@ -1903,8 +2021,15 @@ class api {
         // outranks track-overlap avoidance rather than the two getting reshuffled
         // together (a "good" but wrong-day candidate must not jump ahead of a "bad"
         // but right-day one).
+        // One query for the whole call, evaluated in memory per candidate --
+        // previously track_overlaps_elsewhere() re-queried every scheduled slot
+        // PER CANDIDATE (rooms x start times), see that method's docblock.
+        $overlapslots = $avoidtrackid !== null
+            ? self::get_presentation_slots_with_rooms($confschedulerid)
+            : [];
+
         $avoidoverlap = static function (array $group) use (
-            $confschedulerid,
+            $overlapslots,
             $avoidtrackid,
             $durationseconds,
             &$trackidcache
@@ -1917,7 +2042,7 @@ class api {
             foreach ($group as $candidate) {
                 $endtime = $candidate['starttime'] + $durationseconds;
                 $overlaps = self::track_overlaps_elsewhere(
-                    $confschedulerid,
+                    $overlapslots,
                     $avoidtrackid,
                     $candidate['roomid'],
                     $candidate['starttime'],
