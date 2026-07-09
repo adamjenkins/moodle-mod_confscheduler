@@ -114,6 +114,12 @@ if (has_capability('mod/confscheduler:managenotifications', $context)) {
     echo html_writer::link(
         new moodle_url('/mod/confscheduler/notifications.php', ['id' => $cm->id]),
         get_string('managenotifications', 'mod_confscheduler'),
+        ['class' => 'btn btn-outline-secondary btn-sm mb-2 mr-2']
+    );
+
+    echo html_writer::link(
+        new moodle_url('/mod/confscheduler/pending_notifications.php', ['id' => $cm->id]),
+        get_string('pendingnotifications', 'mod_confscheduler', api::count_pending_notifications((int) $confscheduler->id)),
         ['class' => 'btn btn-outline-secondary btn-sm mb-2']
     );
 }

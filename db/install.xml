@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" ?>
-<XMLDB PATH="mod/confscheduler/db" VERSION="2026070803" COMMENT="XMLDB file for Moodle mod/confscheduler"
+<XMLDB PATH="mod/confscheduler/db" VERSION="2026070901" COMMENT="XMLDB file for Moodle mod/confscheduler"
     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
     xsi:noNamespaceSchemaLocation="../../../lib/xmldb/xmldb.xsd">
   <TABLES>
@@ -15,7 +15,7 @@
         <FIELD NAME="conferenceend" TYPE="int" LENGTH="10" NOTNULL="false" SEQUENCE="false" COMMENT="Organiser-set conference end date/time, unix timestamp; null if not set. See conferencestart's comment"/>
         <FIELD NAME="gapminutes" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" DEFAULT="0" COMMENT="GapSnap: minimum gap, in minutes, enforced between presentations in the same room while dragging"/>
         <FIELD NAME="pxperhour" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" DEFAULT="144" COMMENT="Row height: vertical pixels per hour of scheduled time in the grid/display timeline, organiser-adjustable in edit mode"/>
-        <FIELD NAME="notificationsenabled" TYPE="int" LENGTH="1" NOTNULL="true" SEQUENCE="false" DEFAULT="1" COMMENT="Master switch (user request, 2026-07-06): when 0, this instance's notifier never sends the schedule-change notification, regardless of the template configured or how many slots have a pending change. Defaults to 1 (enabled) so existing instances keep their current behaviour"/>
+        <FIELD NAME="notificationsenabled" TYPE="int" LENGTH="1" NOTNULL="true" SEQUENCE="false" DEFAULT="0" COMMENT="Master switch (user request, 2026-07-06): when 0, this instance's notifier never sends the schedule-change notification, regardless of the template configured or how many slots have a pending change. Defaults to 0 (disabled) as of 2026-07-09 -- an organiser must explicitly opt in per instance; this default only applies to newly-created instances, existing instances' stored values are untouched by the upgrade step that changed it"/>
         <FIELD NAME="daystart" TYPE="int" LENGTH="10" NOTNULL="false" SEQUENCE="false" COMMENT="Daily display-window start, minutes since midnight (e.g. 480 = 08:00). Null means fully automatic (derive the axis from scheduled slots, as before this feature -- user request, 2026-07-06)"/>
         <FIELD NAME="dayend" TYPE="int" LENGTH="10" NOTNULL="false" SEQUENCE="false" COMMENT="Daily display-window end, minutes since midnight. Null means fully automatic, same as daystart"/>
         <FIELD NAME="defaultdateview" TYPE="char" LENGTH="10" NOTNULL="true" SEQUENCE="false" DEFAULT="closest" COMMENT="Which day the Display-mode day selector starts on for a first-time/no-preference viewer (user request, 2026-07-07): 'closest' (the day nearest today, previous behaviour) or 'all' (the All days view)"/>

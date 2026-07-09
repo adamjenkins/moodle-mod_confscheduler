@@ -326,5 +326,29 @@ function xmldb_confscheduler_upgrade($oldversion) {
         upgrade_mod_savepoint(true, 2026070803, 'confscheduler');
     }
 
+    if ($oldversion < 2026070901) {
+        // Notifications master switch default flipped 1 -> 0 (user request,
+        // 2026-07-09): new instances now default to notifications OFF. Existing
+        // instances' stored notificationsenabled values are deliberately left
+        // untouched -- only the column's default (used by the next INSERT with
+        // no explicit value) changes.
+        $table = new xmldb_table('confscheduler');
+        $field = new xmldb_field(
+            'notificationsenabled',
+            XMLDB_TYPE_INTEGER,
+            '1',
+            null,
+            XMLDB_NOTNULL,
+            null,
+            '0',
+            'pxperhour'
+        );
+        if ($dbman->field_exists($table, $field)) {
+            $dbman->change_field_default($table, $field);
+        }
+
+        upgrade_mod_savepoint(true, 2026070901, 'confscheduler');
+    }
+
     return true;
 }

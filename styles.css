@@ -878,3 +878,19 @@ a.mod_confscheduler-track-pill:focus {
         break-inside: avoid;
     }
 }
+
+/* Core's own modal.mustache hard-codes a single-class ".text-truncate" on the modal
+   title, ellipsizing a long presentation title instead of wrapping it (user report,
+   2026-07-09). Core cannot be patched, so amd/src/scheduler_display.js scopes this
+   override via Modal.create()'s own templateContext.classes option -- the exact same
+   fix mod_confprogram's own programlist.js needed for the identical modal, which it
+   also opens independently. Two classes here (this one plus .modal-title.text-truncate's
+   own two) gives strictly higher specificity than the single .text-truncate class alone,
+   so no !important is needed -- same technique as
+   .mod_confscheduler-toolbar.mod_confscheduler-print-toolbar above. */
+.mod_confscheduler-submission-modal .modal-title.text-truncate {
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+    overflow-wrap: break-word;
+}

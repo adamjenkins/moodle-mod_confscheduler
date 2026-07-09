@@ -1347,30 +1347,7 @@ class api {
         $sent = 0;
 
         foreach ($slots as $slot) {
-            ['roomownerid' => $roomownerid, 'override' => $override] = self::resolve_room_owner($slot);
-
-            // escape => false: these are RAW (filtered, unescaped) values --
-            // notifier::notify_slot() now escapes its whole placeholder context
-            // exactly once per output format itself, so pre-escaping here would
-            // double-escape (FABLE.md review, 2026-07-09).
-            if ($override !== null && $override !== '') {
-                $roomnames = [format_string($override, true, ['escape' => false])];
-            } else {
-                $roomrows = array_values($DB->get_records_sql(
-                    "SELECT r.id, r.name
-                       FROM {confscheduler_room} r
-                       JOIN {confscheduler_slotroom} sr ON sr.roomid = r.id
-                      WHERE sr.slotid = :slotid
-                  ORDER BY r.sortorder ASC",
-                    ['slotid' => $roomownerid]
-                ));
-                $roomnames = array_map(
-                    static fn (\stdClass $room): string => format_string($room->name, true, ['escape' => false]),
-                    $roomrows
-                );
-            }
-
-            if (\mod_confscheduler\local\notifier::notify_slot($confschedulerid, $slot, $roomnames)) {
+            if (\mod_confscheduler\local\notifier::notify_slot($confschedulerid, $slot, self::get_slot_room_names($slot))) {
                 $DB->update_record('confscheduler_slot', (object) [
                     'id'           => $slot->id,
                     'notifiedtime' => $now,
@@ -1380,6 +1357,70 @@ class api {
         }
 
         return $sent;
+    }
+
+    /**
+     * The room name(s) a slot's notification should display: its own joined
+     * confscheduler_slotroom rows, or its container's (roomnameoverride, if set,
+     * else the container's own joined rooms) when the slot is a container child
+     * with no confscheduler_slotroom rows of its own -- see resolve_room_owner().
+     * Extracted from send_pending_notifications() (2026-07-09) so
+     * pending_notifications.php can show the same room name(s) a real send
+     * would use, without duplicating this resolution logic.
+     *
+     * @param \stdClass $slot A confscheduler_slot record
+     * @return string[] RAW (filtered, unescaped) room names -- see
+     *         notifier::notify_slot()'s own escaping for why these stay unescaped
+     */
+    public static function get_slot_room_names(\stdClass $slot): array {
+        global $DB;
+
+        ['roomownerid' => $roomownerid, 'override' => $override] = self::resolve_room_owner($slot);
+
+        if ($override !== null && $override !== '') {
+            return [format_string($override, true, ['escape' => false])];
+        }
+
+        $roomrows = array_values($DB->get_records_sql(
+            "SELECT r.id, r.name
+               FROM {confscheduler_room} r
+               JOIN {confscheduler_slotroom} sr ON sr.roomid = r.id
+              WHERE sr.slotid = :slotid
+          ORDER BY r.sortorder ASC",
+            ['slotid' => $roomownerid]
+        ));
+
+        return array_map(
+            static fn (\stdClass $room): string => format_string($room->name, true, ['escape' => false]),
+            $roomrows
+        );
+    }
+
+    /**
+     * Dismisses one pending schedule-change notification: marks the slot as
+     * notified (setting notifiedtime = now) WITHOUT actually sending anything,
+     * so it drops out of get_pending_notification_slots()/
+     * count_pending_notifications() without touching the slot's own room/time/
+     * submissionid fields (user request, 2026-07-09 -- pending_notifications.php).
+     * No new column is needed here, unlike mod_confprogram's equivalent: nothing
+     * else in this plugin reads notifiedtime for any purpose beyond "is this
+     * pending", so this is the same field a real send would touch anyway. A
+     * no-op if the slot doesn't belong to this instance or is no longer pending.
+     *
+     * @param int $confschedulerid The confscheduler instance id
+     * @param int $slotid The confscheduler_slot id to dismiss
+     * @return void
+     */
+    public static function dismiss_pending_notification(int $confschedulerid, int $slotid): void {
+        global $DB;
+
+        $DB->set_field_select(
+            'confscheduler_slot',
+            'notifiedtime',
+            time(),
+            'id = ? AND confscheduler = ? AND submissionid IS NOT NULL AND notifiedtime < timemodified',
+            [$slotid, $confschedulerid]
+        );
     }
 
     /**

@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+- Notifications overhaul + modal fix (2026-07-09, user-requested):
+  - **`notificationsenabled` now defaults to off** for newly created
+    instances (existing instances are untouched by the upgrade step).
+  - **New "Pending notifications" page** (`pending_notifications.php`,
+    `mod/confscheduler:managenotifications`) lists every slot whose
+    scheduling info has changed since it was last notified, with a per-row
+    **Dismiss** (`api::dismiss_pending_notification()`, sets `notifiedtime`
+    directly so it drops out of the pending count/list without emailing
+    anyone). Linked from `view.php` and `notifications.php` next to the
+    existing "Send notifications" control. No dedup fix was needed here —
+    this plugin already keeps at most one pending row per presentation.
+  - **Presentation-detail modal no longer truncates a long title.** Same
+    root cause and fix as confprogram: core's `modal.mustache` hard-codes
+    `.text-truncate` on the title; the modal is now created with a scoped
+    `templateContext.classes`, with a matching CSS override in `styles.css`
+    so the title wraps instead of ellipsizing.
 - User-reported display fixes (2026-07-09):
   - **"My timetable" no longer dims a container holding a starred child** —
     CSS opacity multiplies down the tree, so dimming the (never-favouritable)

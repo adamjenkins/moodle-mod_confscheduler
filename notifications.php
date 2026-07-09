@@ -102,6 +102,12 @@ echo $OUTPUT->header();
 echo $OUTPUT->heading(format_string($confscheduler->name), 2);
 echo $OUTPUT->heading(get_string('managenotifications', 'mod_confscheduler'), 3);
 
+$pendingcount = \mod_confscheduler\api::count_pending_notifications((int) $confscheduler->id);
+echo html_writer::tag('p', html_writer::link(
+    new moodle_url('/mod/confscheduler/pending_notifications.php', ['id' => $cm->id]),
+    get_string('pendingnotifications', 'mod_confscheduler', $pendingcount)
+));
+
 $placeholderlist = implode(', ', array_map(
     static fn (string $name): string => "[[{$name}]]",
     ['fullname', 'submissiontitle', 'coursename', 'roomnames', 'starttime', 'endtime']

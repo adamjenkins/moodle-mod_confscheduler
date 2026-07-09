@@ -59,6 +59,10 @@ final class notifier_test extends advanced_testcase {
             'course'          => $course->id,
             'confprogramcmid' => $confprogramcm->id,
         ]);
+        // notificationsenabled defaults to 0 (2026-07-09) -- explicitly enable it here
+        // since most tests below exercise actual sending; the tests that specifically
+        // cover the disabled case toggle it back off themselves.
+        $DB->set_field('confscheduler', 'notificationsenabled', 1, ['id' => $confschedulerrecord->id]);
         $confscheduler = $DB->get_record('confscheduler', ['id' => $confschedulerrecord->id], '*', MUST_EXIST);
 
         return [$confscheduler, $confprogram, $confsubmissions];
@@ -303,5 +307,47 @@ final class notifier_test extends advanced_testcase {
         );
 
         $this->assertSame(0, api::count_pending_notifications((int) $confscheduler->id));
+    }
+
+    /**
+     * dismiss_pending_notification() marks a slot notified WITHOUT sending
+     * anything, dropping it out of get_pending_notification_slots()/
+     * count_pending_notifications(), without touching the slot's own room/time/
+     * submissionid fields (user request, 2026-07-09 -- pending_notifications.php).
+     */
+    public function test_dismiss_pending_notification(): void {
+        $this->resetAfterTest();
+        global $DB;
+
+        [$confscheduler, $confprogram, $confsubmissions] = $this->create_fixture();
+        $speaker = $this->getDataGenerator()->create_user();
+        $submissionid = $this->create_accepted_submission_with_speaker($confsubmissions, $confprogram, $speaker);
+        $roomid = api::add_room((int) $confscheduler->id, 'Main Hall');
+
+        $slotid = api::add_slot(
+            (int) $confscheduler->id,
+            [$roomid],
+            strtotime('2026-09-01 10:00:00'),
+            strtotime('2026-09-01 10:30:00'),
+            $submissionid
+        );
+
+        $this->assertSame(1, api::count_pending_notifications((int) $confscheduler->id));
+
+        $before = $DB->get_record('confscheduler_slot', ['id' => $slotid]);
+        $sink = $this->redirectMessages();
+        api::dismiss_pending_notification((int) $confscheduler->id, $slotid);
+        $after = $DB->get_record('confscheduler_slot', ['id' => $slotid]);
+
+        $this->assertCount(0, $sink->get_messages_by_component_and_type('mod_confscheduler', 'scheduleupdated'));
+        $this->assertGreaterThan(0, (int) $after->notifiedtime);
+        $this->assertSame($before->starttime, $after->starttime);
+        $this->assertSame($before->endtime, $after->endtime);
+        $this->assertSame($before->submissionid, $after->submissionid);
+
+        $this->assertSame(0, api::count_pending_notifications((int) $confscheduler->id));
+
+        $sent = api::send_pending_notifications((int) $confscheduler->id);
+        $this->assertSame(0, $sent);
     }
 }
