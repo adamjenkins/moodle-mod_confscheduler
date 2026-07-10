@@ -106,3 +106,35 @@ export const getDateTimeSelectGroupTimestamp = (root, prefix) => {
     const minute = Number(root.querySelector(`[name=${prefix}_minute]`).value);
     return Math.floor(new Date(year, month - 1, day, hour, minute).getTime() / 1000);
 };
+
+/**
+ * Sets a TIME-ONLY select-group's two selects (hour/minute) to represent the
+ * given unix timestamp's time-of-day, local timezone. Used by the span-block
+ * modal (amd/src/scheduler_grid.js), whose date is fixed to the day being
+ * edited rather than pickable -- see that modal's own docblock.
+ *
+ * @param {Element} root The element containing the two selects (e.g. a modal's root)
+ * @param {String} prefix The select-group's name prefix, e.g. "starttime"
+ * @param {Number} timestamp Unix timestamp (seconds)
+ */
+export const setTimeOnlySelectGroup = (root, prefix, timestamp) => {
+    const date = new Date(timestamp * 1000);
+    root.querySelector(`[name=${prefix}_hour]`).value = pad2(date.getHours());
+    root.querySelector(`[name=${prefix}_minute]`).value = pad2(Math.floor(date.getMinutes() / 5) * 5);
+};
+
+/**
+ * Reads a TIME-ONLY select-group's two selects (hour/minute) back out as a
+ * unix timestamp, combined with the given fixed day key's local midnight.
+ *
+ * @param {Element} root The element containing the two selects (e.g. a modal's root)
+ * @param {String} prefix The select-group's name prefix, e.g. "starttime"
+ * @param {String} dayKey The fixed day (YYYY-MM-DD) this time applies to
+ * @return {Number} Unix timestamp (seconds)
+ */
+export const getTimeOnlySelectGroupTimestamp = (root, prefix, dayKey) => {
+    const [year, month, day] = dayKey.split('-').map(Number);
+    const hour = Number(root.querySelector(`[name=${prefix}_hour]`).value);
+    const minute = Number(root.querySelector(`[name=${prefix}_minute]`).value);
+    return Math.floor(new Date(year, month - 1, day, hour, minute).getTime() / 1000);
+};

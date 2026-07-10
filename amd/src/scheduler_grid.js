@@ -30,6 +30,8 @@ import {
     buildDateTimeSelectOptions,
     setDateTimeSelectGroup,
     getDateTimeSelectGroupTimestamp,
+    setTimeOnlySelectGroup,
+    getTimeOnlySelectGroupTimestamp,
 } from 'mod_confscheduler/datetime_select_utils';
 
 /**
@@ -1668,6 +1670,12 @@ const openRoomModal = async(state, roomid) => {
  * the existing block's label/colour/times/room-range when $slot is given (Revision
  * round 1, 2026-07-03 -- span blocks previously supported only add/delete).
  *
+ * The block's day is fixed, not pickable, in this modal (user request, 2026-07-10):
+ * editing uses the existing slot's own day; adding uses the day currently selected in
+ * the grid (state.selectedDay), falling back to the default day when ALL_DAYS/none is
+ * selected. A new block's time defaults to 12:00-13:00 (lunchtime) on that day, rather
+ * than the previous "now" default (which also had no relation to the day being edited).
+ *
  * @param {Object} state The module state object
  * @param {Object|null} slot The existing slot entry (from state.slots) to edit, or null to add a new block
  * @return {Promise}
@@ -1687,8 +1695,15 @@ const openSpanBlockModal = async(state, slot = null) => {
         }
     }
 
+    const dayKey = isEdit
+        ? DayUtils.dayKeyForTimestamp(slot.starttime)
+        : ((state.selectedDay && state.selectedDay !== DayUtils.ALL_DAYS)
+            ? state.selectedDay
+            : DayUtils.defaultDayKey(state.dayKeys));
+
     const body = await Templates.render('mod_confscheduler/spanblock_form', {
         slotid: isEdit ? slot.id : '',
+        daylabel: dayKey ? DayUtils.formatDayLabel(dayKey) : '',
         label: isEdit ? (slot.label || '') : '',
         colour: isEdit ? slot.colour : null,
         iscontainer: isEdit ? Boolean(slot.iscontainer) : false,
@@ -1715,12 +1730,13 @@ const openSpanBlockModal = async(state, slot = null) => {
         removeOnClose: true,
     });
 
-    // Selects always carry a value (unlike the datetime-local input this replaced),
-    // so a fresh "add" block defaults both to now rather than being left blank.
+    // A fresh "add" block defaults to 12:00-13:00 (lunchtime) on the resolved day,
+    // rather than "now": there is no meaningful "current time" default for a block
+    // being added to a specific day of a conference schedule.
     const root = modal.getRoot()[0];
-    const now = Math.floor(Date.now() / 1000);
-    setDateTimeSelectGroup(root, 'starttime', isEdit ? slot.starttime : now);
-    setDateTimeSelectGroup(root, 'endtime', isEdit ? slot.endtime : now);
+    const dayMidnight = dayKey ? DayUtils.dayBounds(dayKey).start : Math.floor(Date.now() / 1000);
+    setTimeOnlySelectGroup(root, 'starttime', isEdit ? slot.starttime : dayMidnight + (12 * 3600));
+    setTimeOnlySelectGroup(root, 'endtime', isEdit ? slot.endtime : dayMidnight + (13 * 3600));
 
     modal.getRoot().on(ModalEvents.save, (event) => {
         event.preventDefault();
@@ -1750,8 +1766,8 @@ const openSpanBlockModal = async(state, slot = null) => {
         const hi = Math.max(startIndex, endIndex);
         const roomids = state.rooms.slice(lo, hi + 1).map((room) => room.id);
 
-        const starttime = getDateTimeSelectGroupTimestamp(form, 'starttime');
-        const endtime = getDateTimeSelectGroupTimestamp(form, 'endtime');
+        const starttime = getTimeOnlySelectGroupTimestamp(form, 'starttime', dayKey);
+        const endtime = getTimeOnlySelectGroupTimestamp(form, 'endtime', dayKey);
 
         const promise = slotid
             ? Repository.updateSpanBlock(

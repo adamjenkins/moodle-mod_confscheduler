@@ -335,37 +335,10 @@ class grid_data {
      * @return array<int, string> Comma-joined speaker display names keyed by submissionid
      */
     protected static function format_speakers_bulk(array $submissionids): array {
-        global $DB;
-
-        $speakersbysubmission = submissions_api::get_speakers_for_submissions($submissionids);
-
-        $userids = [];
-        foreach ($speakersbysubmission as $speakers) {
-            foreach ($speakers as $speaker) {
-                if (!empty($speaker->userid)) {
-                    $userids[] = (int) $speaker->userid;
-                }
-            }
-        }
-        $namefields = implode(', ', array_merge(['id'], \core_user\fields::for_name()->get_required_fields()));
-        $users = $userids
-            ? $DB->get_records_list('user', 'id', array_unique($userids), '', $namefields)
-            : [];
+        $namesbysubmission = submissions_api::get_speaker_display_names($submissionids);
 
         $result = [];
-        foreach ($speakersbysubmission as $submissionid => $speakers) {
-            $names = [];
-            foreach ($speakers as $speaker) {
-                if (!empty($speaker->userid)) {
-                    $user = $users[(int) $speaker->userid] ?? null;
-                    $name = $user ? fullname($user) : '';
-                } else {
-                    $name = (string) ($speaker->name ?? '');
-                }
-                if ($name !== '') {
-                    $names[] = $name;
-                }
-            }
+        foreach ($namesbysubmission as $submissionid => $names) {
             $result[(int) $submissionid] = implode(', ', $names);
         }
 

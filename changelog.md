@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- Span-block modal no longer asks for a date (2026-07-10, user-requested):
+  the "Add spanning block"/"Edit spanning block" modal used to render full
+  year/month/day/hour/minute selects for both start and end, defaulting a
+  new block to the real-world current moment regardless of which day was
+  being edited in the grid. The block's day is now fixed (not pickable):
+  adding uses the day currently selected in the grid, editing keeps the
+  existing block's own day, shown read-only. A new block's time now
+  defaults to 12:00-13:00 on that day instead of "now". Added
+  `setTimeOnlySelectGroup()`/`getTimeOnlySelectGroupTimestamp()` to
+  `datetime_select_utils.js` for this modal; the "Run autoscheduler" modal
+  (the other consumer of that file) is unchanged.
+
 - Notifications overhaul + modal fix (2026-07-09, user-requested):
   - **`notificationsenabled` now defaults to off** for newly created
     instances (existing instances are untouched by the upgrade step).
