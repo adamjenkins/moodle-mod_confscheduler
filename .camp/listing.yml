@@ -1,0 +1,24 @@
+# camp listing manifest — descriptive content for your plugin's page.
+# Edit freely and commit; camp ingests this file at each tagged release.
+# Schema: https://camp-registry.org/schema/listing.schema.json
+name: mod_confscheduler
+summary: 'Conference Scheduler — a Moodle activity that turns accepted submissions from mod_confprogram into a drag-and-drop time × room schedule, with autoscheduling and print/export support.'
+description: |
+  A drag-and-drop time × room grid over the accepted talks from a linked
+  Conference Program: SnapGap drop nudging, resizable blocks, colour-themeable
+  rooms with capacities and overbooking flags, column-spanning plenary/break
+  blocks (including container blocks for poster sessions and panels), and an
+  autoscheduler that groups same-track talks and honours submitters' preferred
+  days. Prints and exports the finished schedule. Part of the Conference Tools
+  suite.
+labels:
+  # Required disclosure labels — pick all that apply (RFC §4.7):
+  #   fully-free | freemium | paid-service | external-account
+  #   donation-supported | commercial-support-available
+  - fully-free
+# screenshots:
+#   - path: .camp/screenshots/overview.png
+#     caption: Main view
+# links:
+#   docs: https://…
+#   issues: https://…
