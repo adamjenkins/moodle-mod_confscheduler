@@ -68,6 +68,9 @@
     border: 1px solid rgba(0, 0, 0, 0.15);
     border-radius: 4px;
     background: #fff;
+    /* Fixed light surface (the plugin always renders light, see the dark-mode note below), so its
+       text must stay dark in Boost's dark colour mode (5.3) too, instead of inheriting the light body colour. */
+    color: #1d2125;
     padding: 0.4rem 0.5rem;
     margin-bottom: 0.5rem;
     cursor: grab;
@@ -95,6 +98,9 @@
     top: 0;
     z-index: 5;
     background: #fff;
+    /* Fixed light surface (the plugin always renders light, see the dark-mode note below), so its
+       text must stay dark in Boost's dark colour mode (5.3) too, instead of inheriting the light body colour. */
+    color: #1d2125;
 }
 
 .mod_confscheduler-time-header-spacer {
@@ -297,6 +303,9 @@
     border: 1px solid rgba(0, 0, 0, 0.2);
     background: #fff;
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+    /* Fixed light surface (the plugin always renders light, see the dark-mode note below), so its
+       text must stay dark in Boost's dark colour mode (5.3) too, instead of inheriting the light body colour. */
+    color: #1d2125;
     padding: 0.25rem 0.4rem;
     overflow: hidden;
     font-size: 0.75rem;
@@ -693,8 +702,42 @@ a.mod_confscheduler-track-pill:focus {
 
 .mod_confscheduler-fullscreen {
     background: #fff;
+    /* Fixed light surface (the plugin always renders light, see the dark-mode note below), so its
+       text must stay dark in Boost's dark colour mode (5.3) too, instead of inheriting the light body colour. */
+    color: #1d2125;
     padding: 0.5rem;
     overflow: auto;
+}
+
+/*
+ * The whole scheduler is one fixed light surface, fullscreen or not (the plugin always renders
+ * light, see the note below). Under Boost's dark colour mode (Moodle 5.3, experimental) the grid
+ * canvas would otherwise sit on the dark page: #666 time labels at 2.8:1 and black-alpha gridlines
+ * that vanish. grid.mustache and display.mustache mark their roots data-bs-theme="light" so Bootstrap variables (inputs,
+ * borders) resolve light inside it; Boost's "[data-bs-theme=dark] .btn-outline-*" rule matches on
+ * the page ancestor regardless, so the outline buttons' light values (compiled Boost 5.3) are
+ * restored here with a more specific selector.
+ */
+[data-bs-theme="dark"] #mod_confscheduler-grid-root,
+[data-bs-theme="dark"] #mod_confscheduler-display-root {
+    /* Dark mode only: in light mode the grid keeps sitting directly on the page, as before. */
+    background: #fff;
+    color: #1d2125;
+}
+
+[data-bs-theme="dark"] #mod_confscheduler-grid-root .btn-outline-secondary,
+[data-bs-theme="dark"] #mod_confscheduler-display-root .btn-outline-secondary {
+    --bs-btn-color: #6a737b;
+    --bs-btn-border-color: #6a737b;
+    --bs-btn-hover-color: #fff;
+    --bs-btn-hover-bg: #6a737b;
+    --bs-btn-hover-border-color: #6a737b;
+    --bs-btn-focus-shadow-rgb: 106, 115, 123;
+    --bs-btn-active-color: #fff;
+    --bs-btn-active-bg: #6a737b;
+    --bs-btn-active-border-color: #6a737b;
+    --bs-btn-disabled-color: #6a737b;
+    --bs-btn-disabled-border-color: #6a737b;
 }
 
 /*

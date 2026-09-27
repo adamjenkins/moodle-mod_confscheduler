@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- Declare Moodle 5.3 support (2026-09-27): `version.php` now sets
+  `$plugin->supported = [502, 503]`; `requires` stays at 5.2.
+- The schedule stays a light, readable surface in Boost's dark colour mode
+  (Moodle 5.3, experimental): the edit grid and the Display view render as
+  one light panel (`data-bs-theme="light"` on their roots, dark text, light
+  outline buttons) instead of mixing dark canvas with white cards whose
+  titles were unreadable. Light mode is unchanged. A proper dark mode for
+  the scheduler remains a possible later project.
+- CI: two non-blocking moodle.git `main` (5.3) jobs, with PostgreSQL 17 and
+  MariaDB 11.4; the MariaDB health check now uses `mariadb-admin ping`.
+
 - Span-block modal no longer asks for a date (2026-07-10, user-requested):
   the "Add spanning block"/"Edit spanning block" modal used to render full
   year/month/day/hour/minute selects for both start and end, defaulting a

@@ -40,7 +40,7 @@ A time × room grid that reads accepted talks from the linked Conference Program
 
 ## Requirements
 
-- Moodle 5.2 (`2026042000`) or later.
+- Moodle 5.2 (`2026042000`) or later; supported on Moodle 5.2 and 5.3 (`$plugin->supported = [502, 503]`).
 - mod_confprogram and mod_confsubmissions installed in the same course (both are declared dependencies — this plugin reads both plugins' APIs directly).
 
 ## Installation

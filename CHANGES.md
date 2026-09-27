@@ -1,5 +1,11 @@
 # Changes
 
+## Unreleased
+
+- Declare Moodle 5.3 support.
+- The schedule stays a light, readable surface in Boost's dark colour mode
+  (Moodle 5.3, experimental). Light mode is unchanged.
+
 ## v0.4.1
 
 Not yet tagged — this plugin is still in development.
