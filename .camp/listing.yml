@@ -16,9 +16,23 @@ labels:
   #   fully-free | freemium | paid-service | external-account
   #   donation-supported | commercial-support-available
   - fully-free
-# screenshots:
-#   - path: .camp/screenshots/overview.png
-#     caption: Main view
+screenshots:
+  - path: .camp/screenshots/01-display-day.png
+    caption: 'The published schedule for one day: rooms as columns, a plenary across all rooms, talks with speakers, track and room/time.'
+  - path: .camp/screenshots/02-my-timetable.png
+    caption: 'My timetable: an attendee''s starred talks are highlighted and the rest are dimmed.'
+  - path: .camp/screenshots/03-poster-session.png
+    caption: A poster-session container holding four posters that share its time and rooms, next to a regular talk.
+  - path: .camp/screenshots/04-talk-details.png
+    caption: 'Clicking a talk opens its details from Conference Program: time, room, track, abstract and speakers.'
+  - path: .camp/screenshots/05-edit-mode.png
+    caption: 'Edit mode (full screen): the Unscheduled panel, room capacities, SnapGap and row-height controls, and an overbooking warning on a talk starred by more people than Seminar Room C holds.'
+  - path: .camp/screenshots/06-autoscheduler.png
+    caption: 'The autoscheduler: choose a window, optionally clear it first, and choose whether to respect preferred dates.'
+  - path: .camp/screenshots/07-span-block.png
+    caption: 'Adding a span block for a break or plenary: label, rooms, time, colour, container option and displayed room name.'
+  - path: .camp/screenshots/08-print-bw.png
+    caption: 'Black & white print mode, ready for the browser''s print dialogue.'
 # links:
 #   docs: https://…
 #   issues: https://…
