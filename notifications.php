@@ -98,9 +98,9 @@ if ($form->is_cancelled()) {
     redirect($pageurl, get_string('notiftemplatesaved', 'mod_confscheduler'), null, \core\output\notification::NOTIFY_SUCCESS);
 }
 
+// The activity name is already shown by core's page/activity header (see view.php).
 echo $OUTPUT->header();
-echo $OUTPUT->heading(format_string($confscheduler->name), 2);
-echo $OUTPUT->heading(get_string('managenotifications', 'mod_confscheduler'), 3);
+echo $OUTPUT->heading(get_string('managenotifications', 'mod_confscheduler'), $PAGE->activityheader->get_heading_level());
 
 $pendingcount = \mod_confscheduler\api::count_pending_notifications((int) $confscheduler->id);
 echo html_writer::tag('p', html_writer::link(

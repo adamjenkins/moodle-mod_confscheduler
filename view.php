@@ -98,11 +98,22 @@ if ($editmode) {
     ]);
 }
 
+// The activity name and description are already shown by core (Boost's page header and
+// the activity header, \core\output\activity_header), so this page prints neither itself:
+// same as core's mod_page/mod_forum/mod_assign view.php.
+//
+// The activity header shows the intro unless the page layout suppresses it (no activity
+// header at all, 'nodescription', or 'nocompletion', since activity_header only renders
+// the description inside its completion/activity-info block), so print it ourselves only
+// then, the way mod_page does for its popup layout.
+$activityheaderoptions = $PAGE->layout_options['activityheader'] ?? [];
+$headershowsintro = empty($PAGE->layout_options['noactivityheader'])
+    && empty($activityheaderoptions['nodescription'])
+    && empty($activityheaderoptions['nocompletion']);
+
 echo $OUTPUT->header();
 
-echo $OUTPUT->heading(format_string($confscheduler->name));
-
-if ($confscheduler->intro) {
+if (!$headershowsintro && trim((string) $confscheduler->intro) !== '') {
     echo $OUTPUT->box(
         format_module_intro('confscheduler', $confscheduler, $cm->id),
         'generalbox mod_introbox',
@@ -129,6 +140,7 @@ if ($editmode) {
         'cmid'            => $cm->id,
         'confschedulerid' => (int) $confscheduler->id,
         'canmanage'       => true,
+        'headinglevel'    => $PAGE->activityheader->get_heading_level(),
     ]);
 } else {
     // Read-only Display mode (Phase 3.5), shown to everyone by default, including a

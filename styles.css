@@ -33,6 +33,15 @@
     gap: 0.5rem;
 }
 
+/* Day start / Day end (templates/grid.mustache): wide enough for "HH:MM" in 24-hour locales and
+   "HH:MM AM" in 12-hour ones plus the browser's own clock/clear button. The previous inline 6em
+   cut off the last digit ("08:4", "17:3"). Two classes beat Bootstrap's .form-control width: 100%,
+   and flex-shrink: 0 keeps the wrapping toolbar from squeezing them back down. */
+.form-control.mod_confscheduler-timeinput {
+    width: 9.5em;
+    flex: 0 0 auto;
+}
+
 .mod_confscheduler-body {
     display: flex;
     gap: 1rem;
@@ -59,7 +68,7 @@
     cursor: default;
 }
 
-.mod_confscheduler-unscheduled-panel h3 {
+.mod_confscheduler-unscheduled-panel .mod_confscheduler-unscheduled-heading {
     font-size: 1rem;
     margin-bottom: 0.5rem;
 }
@@ -117,25 +126,49 @@
     flex: 1 1 200px;
     min-width: 200px;
     box-sizing: border-box;
-    display: flex;
+    /* A grid, not a single flex row: in edit mode the drag handle, the "(Capacity: N)" text and
+       the edit/delete buttons used to share one line with the room name, leaving a 200px column
+       only a few characters of it ("Main...", "Semin..."). The name now owns the middle column
+       (wrapping to at most two lines), the capacity sits on its own line beneath it, and the
+       handle/buttons flank both rows. Display mode renders only the name, so the empty side
+       columns collapse to nothing (no column-gap, the margins below space the items instead). */
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
     align-items: center;
-    gap: 0.25rem;
     padding: 0.25rem 0.4rem;
     border: 1px solid rgba(0, 0, 0, 0.15);
     background-color: #eef1f5;
 }
 
 .mod_confscheduler-room-draghandle {
+    grid-column: 1;
+    grid-row: 1 / span 2;
+    margin-right: 0.25rem;
     cursor: grab;
     color: #888;
 }
 
 .mod_confscheduler-room-name {
-    flex: 1 1 auto;
+    grid-column: 2;
+    grid-row: 1;
+    min-width: 0;
     font-weight: 600;
-    white-space: nowrap;
+    line-height: 1.2;
+    overflow-wrap: anywhere;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
     overflow: hidden;
-    text-overflow: ellipsis;
+}
+
+.mod_confscheduler-room-header-actions {
+    grid-column: 3;
+    grid-row: 1 / span 2;
+    margin-left: 0.25rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
 }
 
 .mod_confscheduler-room-header-actions button {
@@ -409,8 +442,16 @@
 }
 
 .mod_confscheduler-room-capacity {
+    /* Its own line under the room name -- see .mod_confscheduler-room-header. */
+    grid-column: 2;
+    grid-row: 2;
+    min-width: 0;
     font-weight: normal;
-    font-size: 0.85em;
+    font-size: 0.8em;
+    line-height: 1.2;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
     opacity: 0.85;
 }
 
@@ -538,8 +579,18 @@
     text-overflow: ellipsis;
 }
 
+/*
+ * A presentation block's footer (track pill) and the room/time line that follows it
+ * (amd/src/scheduler_display.js and scheduler_grid.js renderBlock()) share one line while
+ * they fit and wrap otherwise: the footer is inline-level and the room/time line floats right
+ * after it, so a float that no longer fits beside the pill drops to the next line instead of
+ * being painted over it (the room/time line used to be absolutely positioned at the block's
+ * bottom-right, so in a narrow column "Teacher development" covered "Seminar Room C, 09:55-10:20").
+ */
 .mod_confscheduler-block-footer {
-    display: flex;
+    display: inline-flex;
+    max-width: 100%;
+    vertical-align: top;
     justify-content: flex-start;
     margin-top: 0.2rem;
 }
@@ -570,6 +621,35 @@ a.mod_confscheduler-track-pill:focus {
     font-size: 0.6rem;
     color: #666;
     white-space: nowrap;
+}
+
+/* Presentation blocks only: span/container blocks render no footer, so their room/time line
+   keeps the absolute bottom-right placement above (the container's child grid reserves a strip
+   for it). See the .mod_confscheduler-block-footer comment for why this floats. */
+.mod_confscheduler-block-footer + .mod_confscheduler-block-roomtime {
+    position: static;
+    float: right;
+    max-width: 100%;
+    margin-top: 0.2rem;
+    margin-left: 0.4rem;
+    /* Matches the track pill's own line box (0.6rem text, 1px border) so both sit level. */
+    padding-top: 1px;
+    line-height: 1.5;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Span/container blocks: the room/time line sits on the block's own colour theme, which can be
+   any hex colour (room/span block forms), so a fixed grey (#666) was close to unreadable on dark
+   themes (dark teal poster session). A light chip behind dark text keeps it at WCAG AA or better
+   on every theme: 90% white over even pure black composites to about #e6e6e6, which is about
+   13:1 against #1d2125. */
+.mod_confscheduler-block-span .mod_confscheduler-block-roomtime {
+    color: #1d2125;
+    background: rgba(255, 255, 255, 0.9);
+    border-radius: 3px;
+    padding: 0 0.3rem;
+    line-height: 1.5;
 }
 
 /*

@@ -60,9 +60,9 @@ if (data_submitted()) {
     redirect($pageurl);
 }
 
+// The activity name is already shown by core's page/activity header (see view.php).
 echo $OUTPUT->header();
-echo $OUTPUT->heading(format_string($confscheduler->name), 2);
-echo $OUTPUT->heading(get_string('pendingnotificationsheading', 'mod_confscheduler'), 3);
+echo $OUTPUT->heading(get_string('pendingnotificationsheading', 'mod_confscheduler'), $PAGE->activityheader->get_heading_level());
 
 $pending = api::get_pending_notification_slots((int) $confscheduler->id);
 

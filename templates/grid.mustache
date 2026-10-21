@@ -28,12 +28,14 @@
     * cmid int - the confscheduler course-module id
     * confschedulerid int - the confscheduler instance id
     * canmanage bool - whether the current user has mod/confscheduler:manageschedule
+    * headinglevel int - level of the unscheduled panel heading (the activity header's heading level)
 
     Example context (json):
     {
         "cmid": 5,
         "confschedulerid": 3,
-        "canmanage": true
+        "canmanage": true,
+        "headinglevel": 2
     }
 }}
 <div id="mod_confscheduler-grid-root"
@@ -90,8 +92,7 @@
             <input
                 type="time"
                 id="mod_confscheduler-daystart"
-                class="mod_confscheduler-daystart form-control form-control-sm"
-                style="width: 6em;"
+                class="mod_confscheduler-daystart mod_confscheduler-timeinput form-control form-control-sm"
                 disabled
                 title="{{#str}} daystart_help, mod_confscheduler {{/str}}"
             >
@@ -99,8 +100,7 @@
             <input
                 type="time"
                 id="mod_confscheduler-dayend"
-                class="mod_confscheduler-dayend form-control form-control-sm"
-                style="width: 6em;"
+                class="mod_confscheduler-dayend mod_confscheduler-timeinput form-control form-control-sm"
                 disabled
                 title="{{#str}} dayend_help, mod_confscheduler {{/str}}"
             >
@@ -116,7 +116,7 @@
     <div class="mod_confscheduler-body">
         {{#canmanage}}
         <div class="mod_confscheduler-unscheduled-panel">
-            <h3>{{#str}} unscheduledheading, mod_confscheduler {{/str}}</h3>
+            <h{{headinglevel}} class="mod_confscheduler-unscheduled-heading">{{#str}} unscheduledheading, mod_confscheduler {{/str}}</h{{headinglevel}}>
             <div class="mod_confscheduler-unscheduled-list" role="list" aria-label="{{#str}} unscheduledheading, mod_confscheduler {{/str}}"></div>
         </div>
         {{/canmanage}}
