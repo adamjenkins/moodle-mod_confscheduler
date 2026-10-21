@@ -1,16 +1,42 @@
 # camp listing manifest — descriptive content for your plugin's page.
 # Edit freely and commit; camp ingests this file at each tagged release.
 # Schema: https://camp-registry.org/schema/listing.schema.json
-name: mod_confscheduler
-summary: 'Conference Scheduler — a Moodle activity that turns accepted submissions from mod_confprogram into a drag-and-drop time × room schedule, with autoscheduling and print/export support.'
+name: Conference Scheduler
+summary: 'Conference Scheduler turns the talks accepted in Conference Program into a drag-and-drop time × room conference schedule, with an autoscheduler, starred timetables and printing.'
 description: |
-  A drag-and-drop time × room grid over the accepted talks from a linked
-  Conference Program: SnapGap drop nudging, resizable blocks, colour-themeable
-  rooms with capacities and overbooking flags, column-spanning plenary/break
-  blocks (including container blocks for poster sessions and panels), and an
-  autoscheduler that groups same-track talks and honours submitters' preferred
-  days. Prints and exports the finished schedule. Part of the Conference Tools
-  suite.
+  Conference Scheduler is the scheduling activity of the Conference Tools
+  suite for Moodle (with Conference Submissions, Conference Program and
+  Conference Check-in). It takes the submissions accepted in a Conference
+  Program activity and lets organisers place them on a time × room grid. The
+  same grid is the published timetable that attendees browse, star and export.
+
+  **For organisers (edit mode)**
+
+  - Drag accepted talks onto the grid, move them and resize them. A talk
+    starts with the length set for its submission type.
+  - SnapGap: a minimum gap between talks in the same room; a drop that is
+    slightly off is moved to the nearest valid position.
+  - Rooms with colours, order and optional capacities. A talk starred by more
+    people than its room holds is flagged in edit mode as possibly overbooked.
+  - Span blocks across adjacent rooms for plenaries, breaks and receptions. A
+    span block can be a container, such as a poster session, holding several
+    presentations side by side.
+  - An autoscheduler that keeps same-track talks together and respects the days
+    presenters prefer (a hard constraint by default, with an option to ignore it).
+  - Manual change notifications to speakers, with an editable template and a
+    pending-notifications list. Nothing is sent automatically.
+
+  **For attendees (display mode)**
+
+  - A read-only grid for one day or all days, with talk details from
+    Conference Program in a dialogue once its programme is published.
+  - Star talks, see them in My timetable and export them as an .ics file.
+    Stars are shared with Conference Program.
+  - Print the schedule in colour or black & white.
+
+  Backup and restore are supported; course reset clears the schedule and keeps
+  the rooms. Requires Moodle 5.2 or 5.3 with mod_confprogram and
+  mod_confsubmissions in the same course. No external services or accounts.
 labels:
   # Required disclosure labels — pick all that apply (RFC §4.7):
   #   fully-free | freemium | paid-service | external-account
@@ -18,7 +44,7 @@ labels:
   - fully-free
 screenshots:
   - path: .camp/screenshots/01-display-day.png
-    caption: 'The published schedule for one day: rooms as columns, a plenary across all rooms, talks with speakers, track and room/time.'
+    caption: 'The published schedule for one day: rooms as columns, a plenary across all rooms, and talk cards.'
   - path: .camp/screenshots/02-my-timetable.png
     caption: 'My timetable: an attendee''s starred talks are highlighted and the rest are dimmed.'
   - path: .camp/screenshots/03-poster-session.png
@@ -26,13 +52,13 @@ screenshots:
   - path: .camp/screenshots/04-talk-details.png
     caption: 'Clicking a talk opens its details from Conference Program: time, room, track, abstract and speakers.'
   - path: .camp/screenshots/05-edit-mode.png
-    caption: 'Edit mode (full screen): the Unscheduled panel, room capacities, SnapGap and row-height controls, and an overbooking warning on a talk starred by more people than Seminar Room C holds.'
+    caption: 'Edit mode in full screen: the Unscheduled panel, room capacities, SnapGap and a talk hatched red as overbooked.'
   - path: .camp/screenshots/06-autoscheduler.png
     caption: 'The autoscheduler: choose a window, optionally clear it first, and choose whether to respect preferred dates.'
   - path: .camp/screenshots/07-span-block.png
     caption: 'Adding a span block for a break or plenary: label, rooms, time, colour, container option and displayed room name.'
   - path: .camp/screenshots/08-print-bw.png
     caption: 'Black & white print mode, ready for the browser''s print dialogue.'
-# links:
-#   docs: https://…
-#   issues: https://…
+links:
+  docs: https://github.com/adamjenkins/conference-tools-for-moodle
+  issues: https://github.com/adamjenkins/moodle-mod_confscheduler/issues
