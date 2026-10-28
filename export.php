@@ -46,7 +46,8 @@ require_login($course, true, $cm);
 $context = context_module::instance($cm->id);
 require_capability('mod/confscheduler:viewschedule', $context);
 
-$serialized = ics_export::build($confscheduler, (int) $USER->id);
+$canmanage = has_capability('mod/confscheduler:manageschedule', $context);
+$serialized = ics_export::build($confscheduler, (int) $USER->id, $canmanage);
 $filename = ics_export::filename($confscheduler);
 
 header('Last-Modified: ' . gmdate('D, d M Y H:i:s') . ' GMT');

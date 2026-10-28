@@ -42,7 +42,7 @@ final class get_grid_data_test extends advanced_testcase {
     protected function create_fixture(): array {
         global $DB;
 
-        $course = $this->getDataGenerator()->create_course();
+        $course = $this->getDataGenerator()->create_course(['summary' => '']);
 
         $confsubmissions = $this->getDataGenerator()->create_module('confsubmissions', ['course' => $course->id]);
         $confsubmissionscm = get_coursemodule_from_instance('confsubmissions', $confsubmissions->id);
@@ -605,5 +605,109 @@ final class get_grid_data_test extends advanced_testcase {
 
         $clean = \core_external\external_api::clean_returnvalue(get_grid_data::execute_returns(), $result);
         $this->assertTrue($clean['slots'][0]['withdrawn']);
+    }
+
+    /**
+     * A viewschedule-only user (student) gets no submission data at all while the
+     * linked confprogram is still in Review phase: no unscheduled accepted
+     * submissions, and no presentation slots (span blocks only), so the embargoed
+     * accept decisions and speaker names cannot be read through this endpoint
+     * (2026-10-28 security checklist audit, F1). The editing teacher still gets
+     * everything.
+     */
+    public function test_student_gets_no_submission_data_in_review_phase(): void {
+        global $DB;
+        $this->resetAfterTest();
+
+        [$course, $cmid, $confscheduler, $confprogram, $submissionid] = $this->create_fixture();
+        $this->assertSame('review', $DB->get_field('confprogram', 'phase', ['id' => $confprogram->id]));
+
+        // A second accepted submission that stays unscheduled.
+        $submitter = $this->getDataGenerator()->create_user();
+        $unscheduledid = (int) $DB->insert_record('confsubmissions_submission', (object) [
+            'confsubmissions' => $DB->get_field('confsubmissions_submission', 'confsubmissions', ['id' => $submissionid]),
+            'userid'          => $submitter->id,
+            'title'           => 'An Unscheduled Talk',
+            'abstract'        => 'An abstract.',
+            'status'          => 'submitted',
+            'timecreated'     => time(),
+            'timemodified'    => time(),
+        ]);
+        $decider = $this->getDataGenerator()->create_user();
+        \mod_confprogram\api::record_decision((int) $confprogram->id, $unscheduledid, 'accept', 1, (int) $decider->id);
+
+        $roomid = api::add_room((int) $confscheduler->id, 'Main Hall');
+        api::add_slot(
+            (int) $confscheduler->id,
+            [$roomid],
+            strtotime('2026-09-01 10:00:00'),
+            strtotime('2026-09-01 10:30:00'),
+            $submissionid
+        );
+        api::add_slot(
+            (int) $confscheduler->id,
+            [$roomid],
+            strtotime('2026-09-01 12:00:00'),
+            strtotime('2026-09-01 13:00:00'),
+            null,
+            'Lunch'
+        );
+
+        $teacher = $this->getDataGenerator()->create_and_enrol($course, 'editingteacher');
+        $this->setUser($teacher);
+        $result = get_grid_data::execute($cmid);
+        $this->assertCount(2, $result['slots']);
+        $this->assertCount(1, $result['unscheduled']);
+        $this->assertSame($unscheduledid, $result['unscheduled'][0]['submissionid']);
+
+        $student = $this->getDataGenerator()->create_and_enrol($course, 'student');
+        $this->setUser($student);
+        $result = get_grid_data::execute($cmid);
+
+        $this->assertSame([], $result['unscheduled']);
+        $this->assertCount(1, $result['slots']);
+        $this->assertNull($result['slots'][0]['submissionid']);
+        $this->assertSame('Lunch', $result['slots'][0]['label']);
+        $this->assertSame(0, $result['pendingnotifications']);
+        $encoded = json_encode($result);
+        $this->assertStringNotContainsString('A Test Talk', $encoded);
+        $this->assertStringNotContainsString('An Unscheduled Talk', $encoded);
+    }
+
+    /**
+     * Once the confprogram is in Display phase, a viewschedule-only user sees the
+     * scheduled presentations, but still never receives the edit-mode-only
+     * unscheduled list (which the Display-mode grid never renders).
+     */
+    public function test_student_never_gets_unscheduled_in_display_phase(): void {
+        global $DB;
+        $this->resetAfterTest();
+
+        [$course, $cmid, $confscheduler, $confprogram, $submissionid] = $this->create_fixture();
+        $DB->set_field('confprogram', 'phase', 'display', ['id' => $confprogram->id]);
+
+        $student = $this->getDataGenerator()->create_and_enrol($course, 'student');
+        $this->setUser($student);
+
+        // Accepted but unscheduled: not returned.
+        $result = get_grid_data::execute($cmid);
+        $this->assertSame([], $result['unscheduled']);
+        $this->assertCount(0, $result['slots']);
+
+        // Scheduled: returned, with its title.
+        $roomid = api::add_room((int) $confscheduler->id, 'Main Hall');
+        api::add_slot(
+            (int) $confscheduler->id,
+            [$roomid],
+            strtotime('2026-09-01 10:00:00'),
+            strtotime('2026-09-01 10:30:00'),
+            $submissionid
+        );
+
+        $result = get_grid_data::execute($cmid);
+        $this->assertSame([], $result['unscheduled']);
+        $this->assertCount(1, $result['slots']);
+        $this->assertSame($submissionid, $result['slots'][0]['submissionid']);
+        $this->assertSame('A Test Talk', $result['slots'][0]['title']);
     }
 }

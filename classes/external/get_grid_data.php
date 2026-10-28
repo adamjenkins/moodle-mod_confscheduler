@@ -35,6 +35,10 @@ use mod_confscheduler\local\grid_data;
  * page itself (view.php) decides whether to render edit controls based on
  * :manageschedule.
  *
+ * What a viewschedule-only holder gets back is narrower, though: no unscheduled
+ * list, and no presentation slots at all until the linked mod_confprogram is in
+ * Display phase -- see grid_data::build()'s $canmanage parameter.
+ *
  * @package    mod_confscheduler
  * @copyright  2026 Adam Jenkins <adam@wisecat.net>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
@@ -70,7 +74,9 @@ class get_grid_data extends external_api {
 
         $confscheduler = $DB->get_record('confscheduler', ['id' => $cm->instance], '*', MUST_EXIST);
 
-        return grid_data::build($confscheduler, (int) $USER->id);
+        $canmanage = has_capability('mod/confscheduler:manageschedule', $context);
+
+        return grid_data::build($confscheduler, (int) $USER->id, $canmanage);
     }
 
     /**

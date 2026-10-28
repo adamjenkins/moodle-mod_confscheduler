@@ -32,7 +32,10 @@ use mod_confsubmissions\api as submissions_api;
  *
  * This class does not check capabilities: the caller (get_grid_data external
  * function) is responsible for require_capability('mod/confscheduler:viewschedule', ...)
- * before calling build().
+ * before calling build(), and for passing whether the user holds
+ * mod/confscheduler:manageschedule. build() itself enforces mod_confprogram's
+ * Display-phase embargo for everyone else (RELATIONS.md "Phase/state gating that
+ * downstream code must respect").
  *
  * @package    mod_confscheduler
  * @copyright  2026 Adam Jenkins <adam@wisecat.net>
@@ -44,6 +47,13 @@ class grid_data {
      *
      * @param \stdClass $confscheduler The confscheduler record
      * @param int $userid The current user id, used to resolve per-user favourited state
+     * @param bool $canmanage Whether the user holds mod/confscheduler:manageschedule. When
+     *     false: 'unscheduled' is always empty, 'nonpreferredday' always false and
+     *     'pendingnotifications' always 0 (all edit-mode-only data the Display-mode grid
+     *     never reads); and while the linked confprogram is not yet in its 'display'
+     *     phase, presentation slots are left out entirely (span blocks only), so the
+     *     accept decisions and speaker names stay embargoed until the programme is
+     *     published (2026-10-28 security checklist audit, F1)
      * @return array{rooms: array, slots: array, unscheduled: array, gapminutes: int, pxperhour: int,
      *     conferencestart: ?int, conferenceend: ?int, daystart: ?int, dayend: ?int,
      *     daybounds: array, pendingnotifications: int}
@@ -92,13 +102,17 @@ class grid_data {
      * above; both null when the submission has no type configured (or it was since
      * deleted) (Round 2, 2026-07-08).
      */
-    public static function build(\stdClass $confscheduler, int $userid): array {
+    public static function build(\stdClass $confscheduler, int $userid, bool $canmanage): array {
         global $DB;
 
         $confschedulerid = (int) $confscheduler->id;
 
         $confprogramcm = get_coursemodule_from_id('confprogram', $confscheduler->confprogramcmid, 0, false, MUST_EXIST);
         $confprogram = $DB->get_record('confprogram', ['id' => $confprogramcm->instance], '*', MUST_EXIST);
+        // Accept decisions (and so which submissions are on the programme at all) are
+        // embargoed until the confprogram is switched to Display phase; only a schedule
+        // editor may see them earlier.
+        $embargoed = !$canmanage && $confprogram->phase !== 'display';
         $confsubmissionscm = get_coursemodule_from_id(
             'confsubmissions',
             $confprogram->confsubmissionscmid,
@@ -136,6 +150,9 @@ class grid_data {
         }
 
         $slots = \mod_confscheduler\api::get_slots($confschedulerid);
+        if ($embargoed) {
+            $slots = array_filter($slots, static fn($slot): bool => $slot->submissionid === null);
+        }
         $slotroomsbyslot = [];
         if ($slots) {
             [$insql, $params] = $DB->get_in_or_equal(array_keys($slots), SQL_PARAMS_QM);
@@ -156,7 +173,11 @@ class grid_data {
         // unscheduled submission (FABLE.md review, 2026-07-09: this payload is
         // re-fetched after every drag/resize/edit, on every Display-mode view,
         // and again per ICS download).
-        $accepted = display_list::get_accepted_submissions((int) $confprogram->id, (int) $confsubmissionscm->instance);
+        // The accepted list only feeds the edit-mode 'unscheduled' panel, so it is not
+        // even fetched for anyone else.
+        $accepted = $canmanage
+            ? display_list::get_accepted_submissions((int) $confprogram->id, (int) $confsubmissionscm->instance)
+            : [];
 
         $slotsubmissionids = [];
         foreach ($slots as $slot) {
@@ -169,7 +190,7 @@ class grid_data {
 
         $submissionsbyid = submissions_api::get_submissions($slotsubmissionids);
         $speakernamesbyid = self::format_speakers_bulk($allsubmissionids);
-        $preferreddatesbyid = submissions_api::get_date_preferences_for_submissions($allsubmissionids);
+        $preferreddatesbyid = $canmanage ? submissions_api::get_date_preferences_for_submissions($allsubmissionids) : [];
         $favouritecountsbyid = \mod_confprogram\api::count_favourites_for_submissions($slotsubmissionids);
         // The user's favourites for THIS instance's linked confprogram, in one
         // query. Also (deliberately) instance-scopes the read: the old per-slot
@@ -319,7 +340,7 @@ class grid_data {
             // How many presentation slots have a scheduling change pending a
             // notification (user request, 2026-07-05) -- drives the edit-mode "Send
             // notifications" button's count, without itself sending anything.
-            'pendingnotifications' => \mod_confscheduler\api::count_pending_notifications($confschedulerid),
+            'pendingnotifications' => $canmanage ? \mod_confscheduler\api::count_pending_notifications($confschedulerid) : 0,
         ];
     }
 

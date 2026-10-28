@@ -55,14 +55,16 @@ class ics_export {
      *
      * @param \stdClass $confscheduler The confscheduler record
      * @param int $userid The user whose favourited presentations to export
+     * @param bool $canmanage Whether the user holds mod/confscheduler:manageschedule; passed
+     *     to grid_data::build(), which applies the Display-phase embargo when false
      * @return string The serialized iCalendar (.ics) content
      */
-    public static function build(\stdClass $confscheduler, int $userid): string {
+    public static function build(\stdClass $confscheduler, int $userid, bool $canmanage = false): string {
         global $CFG;
 
         require_once($CFG->libdir . '/bennu/bennu.inc.php');
 
-        $payload = grid_data::build($confscheduler, $userid);
+        $payload = grid_data::build($confscheduler, $userid, $canmanage);
 
         $roomnamesbyid = [];
         foreach ($payload['rooms'] as $room) {
