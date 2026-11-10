@@ -200,7 +200,7 @@ class mod_confscheduler_mod_form extends moodleform_mod {
             !empty($data['conferencestart']) && !empty($data['conferenceend'])
                 && $data['conferenceend'] <= $data['conferencestart']
         ) {
-            // <=, not <: an EQUAL pair used to validate, but validate_placement()
+            // Use <=, not <: an EQUAL pair used to validate, but validate_placement()
             // requires starttime >= conferencestart, endtime <= conferenceend and
             // endtime > starttime, so a zero-length window could never accept any
             // slot -- a confusing dead end better rejected here.

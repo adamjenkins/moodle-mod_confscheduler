@@ -20,17 +20,14 @@
  * background colour never leaves illegible text on top of it (Revision round
  * 1 feedback, 2026-07-03).
  *
- * Formula choice: this uses the classic YIQ/"perceived brightness" formula
- * (R*299 + G*587 + B*114) / 1000, not the more precise gamma-corrected WCAG
- * relative-luminance formula. Both are acceptable for this purpose (picking
- * black vs. white text, not a strict WCAG contrast-ratio pass/fail); YIQ is
- * simpler, has no gamma-correction step, and its 0-255 output threshold
- * (128, i.e. the midpoint) is easy to reason about. If stricter WCAG
- * contrast-ratio compliance is ever required, swap perceivedBrightness()'s
- * body for the sRGB-linearised relative luminance formula and adjust the
- * threshold to sit against a real contrast-ratio calculation instead of a
- * flat midpoint -- callers only depend on contrastTextColour()'s return
- * value ('#000000' | '#ffffff' | null), not on this internal formula.
+ * Formula choice (2026-11-10): the WCAG 2.x sRGB relative luminance and
+ * contrast ratio. contrastTextColour() computes the contrast ratio of the
+ * background against both black and white text and returns whichever is
+ * higher, so the choice is the one that reads best by the WCAG measure. It
+ * replaced an earlier YIQ "perceived brightness" midpoint test, which picked
+ * white text on some mid-tone backgrounds (saturated oranges, greens) where
+ * black has the better contrast ratio. Callers only depend on
+ * contrastTextColour()'s return value ('#000000' | '#ffffff' | null).
  *
  * Every function here is a pure function of its arguments (no DOM access, no
  * module-level state), matching amd/src/day_utils.js's shared-helper pattern.
@@ -66,36 +63,60 @@ export const hexToRgb = (hex) => {
 };
 
 /**
- * Computes the YIQ "perceived brightness" of a hex colour, on a 0 (black) to
- * 255 (white) scale. See this module's docblock for why this formula was
- * chosen over full WCAG relative luminance.
+ * Converts one 0-255 sRGB channel to its linear-light value (WCAG 2.x).
+ *
+ * @param {Number} channel The 0-255 channel value
+ * @return {Number} The linearised value, 0-1
+ */
+const linearise = (channel) => {
+    const c = channel / 255;
+    return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+};
+
+/**
+ * Computes the WCAG 2.x relative luminance of a hex colour, on a 0 (black) to
+ * 1 (white) scale.
  *
  * @param {String} hex A hex colour, e.g. "#3366cc"
  * @return {Number|null} null if $hex is not a valid 6-digit hex colour
  */
-export const perceivedBrightness = (hex) => {
+export const relativeLuminance = (hex) => {
     const rgb = hexToRgb(hex);
     if (!rgb) {
         return null;
     }
 
-    return ((rgb.r * 299) + (rgb.g * 587) + (rgb.b * 114)) / 1000;
+    return (0.2126 * linearise(rgb.r)) + (0.7152 * linearise(rgb.g)) + (0.0722 * linearise(rgb.b));
+};
+
+/**
+ * Computes the WCAG 2.x contrast ratio (1 to 21) between two relative
+ * luminances, given in either order.
+ *
+ * @param {Number} first A relative luminance, 0-1
+ * @param {Number} second A relative luminance, 0-1
+ * @return {Number} The contrast ratio
+ */
+export const contrastRatio = (first, second) => {
+    const lighter = Math.max(first, second);
+    const darker = Math.min(first, second);
+    return (lighter + 0.05) / (darker + 0.05);
 };
 
 /**
  * Picks black or white text to sit legibly on top of a given background hex
- * colour, based on perceivedBrightness().
+ * colour: whichever has the higher WCAG contrast ratio against it (black wins
+ * a tie).
  *
  * @param {String} hex A background hex colour, e.g. "#3366cc"
- * @param {Number} threshold Brightness threshold (0-255 scale); >= this value picks black text
  * @return {String|null} '#000000', '#ffffff', or null if $hex is not a valid 6-digit hex colour
  * (callers should leave the element's text colour unset/default in that case)
  */
-export const contrastTextColour = (hex, threshold = 128) => {
-    const brightness = perceivedBrightness(hex);
-    if (brightness === null) {
+export const contrastTextColour = (hex) => {
+    const luminance = relativeLuminance(hex);
+    if (luminance === null) {
         return null;
     }
 
-    return brightness >= threshold ? '#000000' : '#ffffff';
+    return contrastRatio(luminance, 0) >= contrastRatio(luminance, 1) ? '#000000' : '#ffffff';
 };

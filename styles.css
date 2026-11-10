@@ -580,19 +580,26 @@
 }
 
 /*
- * A presentation block's footer (track pill) and the room/time line that follows it
- * (amd/src/scheduler_display.js and scheduler_grid.js renderBlock()) share one line while
- * they fit and wrap otherwise: the footer is inline-level and the room/time line floats right
- * after it, so a float that no longer fits beside the pill drops to the next line instead of
- * being painted over it (the room/time line used to be absolutely positioned at the block's
- * bottom-right, so in a narrow column "Teacher development" covered "Seminar Room C, 09:55-10:20").
+ * A presentation block's footer holds the track pill and, inside it, the room/time line
+ * (amd/src/scheduler_display.js and scheduler_grid.js renderBlock()) on ONE flex row. When
+ * both do not fit, both shorten with an ellipsis. (The room/time line used to be absolutely
+ * positioned at the block's bottom-right, so in a narrow column "Teacher development" covered
+ * "Seminar Room C, 09:55-10:20"; it then floated after the footer and wrapped below the pill,
+ * where a 25-minute card's overflow: hidden clipped it out of sight, 2026-11-10.)
  */
 .mod_confscheduler-block-footer {
-    display: inline-flex;
+    display: flex;
+    align-items: flex-start;
     max-width: 100%;
-    vertical-align: top;
     justify-content: flex-start;
     margin-top: 0.2rem;
+}
+
+.mod_confscheduler-block-footer > .mod_confscheduler-track-pill {
+    flex: 0 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .mod_confscheduler-track-pill {
@@ -625,12 +632,12 @@ a.mod_confscheduler-track-pill:focus {
 
 /* Presentation blocks only: span/container blocks render no footer, so their room/time line
    keeps the absolute bottom-right placement above (the container's child grid reserves a strip
-   for it). See the .mod_confscheduler-block-footer comment for why this floats. */
-.mod_confscheduler-block-footer + .mod_confscheduler-block-roomtime {
+   for it). See the .mod_confscheduler-block-footer comment for why this is a flex item. */
+.mod_confscheduler-block-footer > .mod_confscheduler-block-roomtime {
     position: static;
-    float: right;
-    max-width: 100%;
-    margin-top: 0.2rem;
+    flex: 1 1 auto;
+    min-width: 0;
+    text-align: right;
     margin-left: 0.4rem;
     /* Matches the track pill's own line box (0.6rem text, 1px border) so both sit level. */
     padding-top: 1px;
@@ -685,6 +692,21 @@ a.mod_confscheduler-track-pill:focus {
 .mod_confscheduler-block-resize:hover::after,
 .mod_confscheduler-block-resize:focus-visible::after {
     background: var(--mod_confscheduler-resize-grip-colour-hover, rgba(0, 0, 0, 0.55));
+}
+
+/* Short cards (scheduler_grid.js adds -block-short below SHORT_BLOCK_HEIGHT_PX): the track
+   pill sits at the card's bottom edge, so the centred 28px grip was drawn across it. The
+   hit area keeps its size; only the visible grip shrinks into the bottom-right corner,
+   on the card's bottom edge. */
+.mod_confscheduler-block-short .mod_confscheduler-block-resize {
+    justify-content: flex-end;
+    padding-bottom: 0;
+    padding-right: 3px;
+}
+
+.mod_confscheduler-block-short .mod_confscheduler-block-resize::after {
+    width: 14px;
+    height: 2px;
 }
 
 /*

@@ -271,6 +271,74 @@ class api {
     }
 
     /**
+     * Returns $colour when it passes validate_colour(), or null (no theme) when it does
+     * not. For untrusted stored values (a restored backup), where a bad value must be
+     * dropped rather than abort the whole restore.
+     *
+     * @param mixed $colour The raw value
+     * @return string|null
+     */
+    protected static function colour_or_null($colour): ?string {
+        if ($colour === null || $colour === '' || !is_string($colour)) {
+            return null;
+        }
+        try {
+            self::validate_colour($colour);
+        } catch (\invalid_parameter_exception $e) {
+            return null;
+        }
+        return $colour;
+    }
+
+    /**
+     * Cleans a room record read from a backup before restore inserts it, applying the
+     * same rules add_room()/update_room() enforce: the name is PARAM_TEXT, a colour
+     * that is not a 6-digit hex colour becomes null, and a negative or non-numeric
+     * capacity becomes null (unlimited). Without this a crafted .mbz could store values
+     * that get_grid_data's return schema rejects, breaking the grid for every viewer
+     * (2026-10-28 security checklist audit, F3).
+     *
+     * @param \stdClass $room The parsed room element
+     * @return \stdClass The same object, cleaned
+     */
+    public static function clean_restored_room(\stdClass $room): \stdClass {
+        $room->name = clean_param((string) ($room->name ?? ''), PARAM_TEXT);
+        $room->sortorder = (int) ($room->sortorder ?? 0);
+        $room->colour = self::colour_or_null($room->colour ?? null);
+        $capacity = $room->capacity ?? null;
+        if ($capacity === null || $capacity === '' || !is_numeric($capacity) || (int) $capacity < 0) {
+            $room->capacity = null;
+        } else {
+            $room->capacity = (int) $capacity;
+        }
+        return $room;
+    }
+
+    /**
+     * Cleans a slot record read from a backup before restore inserts it, applying the
+     * same rules add_slot()/update_span_block() enforce: label and room-name override
+     * are PARAM_TEXT (null stays null), a colour that is not a 6-digit hex colour
+     * becomes null, and a text alignment outside the allowlist falls back to the schema
+     * default ('left'/'top'). See clean_restored_room() (audit F3).
+     *
+     * @param \stdClass $slot The parsed slot element
+     * @return \stdClass The same object, cleaned
+     */
+    public static function clean_restored_slot(\stdClass $slot): \stdClass {
+        foreach (['label', 'roomnameoverride'] as $field) {
+            $value = $slot->{$field} ?? null;
+            $slot->{$field} = $value === null ? null : clean_param((string) $value, PARAM_TEXT);
+        }
+        $slot->colour = self::colour_or_null($slot->colour ?? null);
+        $slot->iscontainer = empty($slot->iscontainer) ? 0 : 1;
+        $align = $slot->childtextalign ?? null;
+        $slot->childtextalign = in_array($align, ['left', 'center', 'right'], true) ? $align : 'left';
+        $valign = $slot->childtextvalign ?? null;
+        $slot->childtextvalign = in_array($valign, ['top', 'middle', 'bottom'], true) ? $valign : 'top';
+        return $slot;
+    }
+
+    /**
      * Creates a room (column) in a confscheduler instance.
      *
      * @param int $confschedulerid The confscheduler instance id
@@ -1893,7 +1961,7 @@ class api {
         array &$trackidcache
     ): bool {
         foreach ($presentationslots as $slot) {
-            // "Elsewhere" = the other slot occupies at least one room that is not
+            // The "elsewhere" case: the other slot occupies at least one room that is not
             // the candidate's own room (matching the old SQL's sr.roomid <> :roomid).
             $elsewhere = false;
             foreach ($slot['roomids'] as $otherroomid) {

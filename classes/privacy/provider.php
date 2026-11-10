@@ -49,7 +49,8 @@ use core_privacy\local\metadata\collection;
  * added before the preference existed — FABLE.md review, 2026-07-09).
  * Deletion is handled by core automatically when a user is deleted (all
  * user_preferences rows go), and per-instance cleanup happens in
- * confscheduler_delete_instance() (lib.php).
+ * confscheduler_delete_instance() and, when the schedule is cleared by a course
+ * reset, confscheduler_reset_userdata() (lib.php).
  *
  * @package    mod_confscheduler
  * @copyright  2026 Adam Jenkins <adam@wisecat.net>

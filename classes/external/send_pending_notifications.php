@@ -57,7 +57,10 @@ class send_pending_notifications extends external_api {
     public static function execute(int $cmid): array {
         $params = self::validate_parameters(self::execute_parameters(), ['cmid' => $cmid]);
 
-        [, , $confscheduler] = self::require_manage($params['cmid']);
+        [, $context, $confscheduler] = self::require_manage($params['cmid']);
+        // Arranging the grid and messaging speakers are separate permissions: a role
+        // allowed to schedule but denied notification management must not send (audit F4).
+        require_capability('mod/confscheduler:managenotifications', $context);
 
         return ['sent' => api::send_pending_notifications((int) $confscheduler->id)];
     }

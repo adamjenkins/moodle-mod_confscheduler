@@ -204,6 +204,15 @@ function confscheduler_reset_userdata($data) {
             }
 
             $DB->delete_records_select('confscheduler_slot', "confscheduler $insql", $params);
+
+            // Each user's remembered last-viewed-day for these instances points at a day
+            // of the old conference, so it goes with the schedule (audit F5).
+            $prefnames = array_map(
+                static fn($id): string => \mod_confscheduler\api::last_viewed_day_preference_name((int) $id),
+                $confschedulerids
+            );
+            [$prefinsql, $prefparams] = $DB->get_in_or_equal($prefnames);
+            $DB->delete_records_select('user_preferences', "name $prefinsql", $prefparams);
         }
 
         $status[] = [

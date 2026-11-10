@@ -41,8 +41,10 @@ $capabilities = [
     ],
 
     // Edit mode: drag-and-drop scheduling, room management, and the autoscheduler.
+    // It can clear or unschedule a whole schedule (RISK_DATALOSS) and, together with
+    // managenotifications, message every pending speaker (RISK_SPAM) (audit F4).
     'mod/confscheduler:manageschedule' => [
-        'riskbitmask'  => RISK_CONFIG,
+        'riskbitmask'  => RISK_CONFIG | RISK_DATALOSS | RISK_SPAM,
         'captype'      => 'write',
         'contextlevel' => CONTEXT_MODULE,
         'archetypes'   => [
@@ -81,9 +83,10 @@ $capabilities = [
         ],
     ],
 
-    // Edit the schedule-change notification email template.
+    // Edit the schedule-change notification email template, and (with manageschedule)
+    // send the pending notifications to speakers (audit F4).
     'mod/confscheduler:managenotifications' => [
-        'riskbitmask'  => RISK_XSS,
+        'riskbitmask'  => RISK_XSS | RISK_SPAM,
         'captype'      => 'write',
         'contextlevel' => CONTEXT_MODULE,
         'archetypes'   => [

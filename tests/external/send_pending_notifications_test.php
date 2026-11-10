@@ -91,4 +91,32 @@ final class send_pending_notifications_test extends advanced_testcase {
         $this->expectException(\required_capability_exception::class);
         send_pending_notifications::execute($cmid);
     }
+
+    /**
+     * A schedule editor who is denied managenotifications cannot send either, and
+     * get_grid_data reports no pending notifications to them, so the edit-mode
+     * button stays disabled (2026-10-28 security checklist audit, F4).
+     */
+    public function test_requires_managenotifications_capability(): void {
+        global $DB;
+        $this->resetAfterTest();
+
+        [$course, $cmid] = $this->create_fixture();
+        $teacher = $this->getDataGenerator()->create_and_enrol($course, 'editingteacher');
+        $roleid = (int) $DB->get_field('role', 'id', ['shortname' => 'editingteacher']);
+        assign_capability(
+            'mod/confscheduler:managenotifications',
+            CAP_PROHIBIT,
+            $roleid,
+            \context_module::instance($cmid)->id,
+            true
+        );
+        $this->setUser($teacher);
+
+        $grid = get_grid_data::execute($cmid);
+        $this->assertSame(0, $grid['pendingnotifications']);
+
+        $this->expectException(\required_capability_exception::class);
+        send_pending_notifications::execute($cmid);
+    }
 }

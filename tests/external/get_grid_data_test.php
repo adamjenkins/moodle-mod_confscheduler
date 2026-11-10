@@ -710,4 +710,62 @@ final class get_grid_data_test extends advanced_testcase {
         $this->assertSame($submissionid, $result['slots'][0]['submissionid']);
         $this->assertSame('A Test Talk', $result['slots'][0]['title']);
     }
+
+    /**
+     * When the organiser has unticked "Show in list" for speakers and track in
+     * mod_confprogram's display field settings, a viewschedule-only user gets
+     * neither on the schedule grid; the schedule editor still gets both
+     * (2026-10-28 security checklist audit, F2).
+     */
+    public function test_hidden_confprogram_fields_are_not_returned_to_viewers(): void {
+        global $DB;
+        $this->resetAfterTest();
+
+        [$course, $cmid, $confscheduler, $confprogram, $submissionid] = $this->create_fixture();
+        $DB->set_field('confprogram', 'phase', 'display', ['id' => $confprogram->id]);
+
+        $speaker = $this->getDataGenerator()->create_user(['firstname' => 'Hidden', 'lastname' => 'Speaker']);
+        submissions_api::sync_speakers($submissionid, [['userid' => $speaker->id]]);
+        $confsubmissionsid = $DB->get_field('confsubmissions_submission', 'confsubmissions', ['id' => $submissionid]);
+        $trackid = submissions_api::add_track((int) $confsubmissionsid, 'Data Science', '#3366cc');
+        $DB->set_field('confsubmissions_submission', 'trackid', $trackid, ['id' => $submissionid]);
+
+        $roomid = api::add_room((int) $confscheduler->id, 'Main Hall');
+        api::add_slot(
+            (int) $confscheduler->id,
+            [$roomid],
+            strtotime('2026-09-01 10:00:00'),
+            strtotime('2026-09-01 10:30:00'),
+            $submissionid
+        );
+
+        $student = $this->getDataGenerator()->create_and_enrol($course, 'student');
+        $teacher = $this->getDataGenerator()->create_and_enrol($course, 'editingteacher');
+
+        // Defaults (no field settings saved yet): speakers and track are shown.
+        $this->setUser($student);
+        $result = get_grid_data::execute($cmid);
+        $this->assertStringContainsString('Hidden Speaker', $result['slots'][0]['speakers']);
+        $this->assertSame('Data Science', $result['slots'][0]['track']);
+
+        \mod_confprogram\local\field_settings::upsert((int) $confprogram->id, [
+            'title'    => ['showinlist' => 1, 'showinmodal' => 1],
+            'speakers' => ['showinlist' => 0, 'showinmodal' => 1],
+            'track'    => ['showinlist' => 0, 'showinmodal' => 1],
+        ]);
+
+        $result = get_grid_data::execute($cmid);
+        $clean = \core_external\external_api::clean_returnvalue(get_grid_data::execute_returns(), $result);
+        $this->assertSame('A Test Talk', $clean['slots'][0]['title']);
+        $this->assertNull($clean['slots'][0]['speakers']);
+        $this->assertNull($clean['slots'][0]['track']);
+        $this->assertNull($clean['slots'][0]['trackid']);
+        $this->assertNull($clean['slots'][0]['trackcolour']);
+        $this->assertStringNotContainsString('Hidden Speaker', json_encode($clean));
+
+        $this->setUser($teacher);
+        $result = get_grid_data::execute($cmid);
+        $this->assertStringContainsString('Hidden Speaker', $result['slots'][0]['speakers']);
+        $this->assertSame('Data Science', $result['slots'][0]['track']);
+    }
 }

@@ -71,6 +71,8 @@ final class toggle_favourite_test extends advanced_testcase {
         ]);
         $decider = $this->getDataGenerator()->create_user();
         \mod_confprogram\api::record_decision((int) $confprogram->id, $submissionid, 'accept', 1, (int) $decider->id);
+        // Favourites can only be added once the programme is published.
+        $DB->set_field('confprogram', 'phase', 'display', ['id' => $confprogram->id]);
 
         $slotid = api::add_slot(
             (int) $confscheduler->id,
@@ -171,5 +173,35 @@ final class toggle_favourite_test extends advanced_testcase {
 
         $this->expectException(\required_capability_exception::class);
         toggle_favourite::execute($cmid, $slotid, true);
+    }
+
+    /**
+     * Before the linked confprogram is in Display phase a viewer cannot favourite
+     * a presentation slot, even one whose id they guessed, and no favourite row is
+     * written; removing a favourite is still allowed (residual from the
+     * 2026-10-28 audit's F1 fix).
+     */
+    public function test_refuses_favourite_outside_display_phase(): void {
+        global $DB;
+        $this->resetAfterTest();
+
+        [$course, $cmid, $confprogram, $slotid, $submissionid] = $this->create_fixture();
+        $DB->set_field('confprogram', 'phase', 'review', ['id' => $confprogram->id]);
+        $student = $this->getDataGenerator()->create_and_enrol($course, 'student');
+        $this->setUser($student);
+
+        $result = toggle_favourite::execute($cmid, $slotid, false);
+        $this->assertFalse($result['favourited']);
+
+        try {
+            toggle_favourite::execute($cmid, $slotid, true);
+            $this->fail('A favourite was accepted in Review phase.');
+        } catch (\moodle_exception $e) {
+            $this->assertSame('error:favouritesnotopen', $e->errorcode);
+        }
+        $this->assertFalse($DB->record_exists('confprogram_favourite', [
+            'userid'       => $student->id,
+            'submissionid' => $submissionid,
+        ]));
     }
 }

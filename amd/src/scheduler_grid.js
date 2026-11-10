@@ -123,6 +123,9 @@ const SNAP_MINUTES = 5;
 /** @type {Number} Default duration, in minutes, given to a newly-scheduled block dragged from the unscheduled panel. */
 const DEFAULT_DURATION_MINUTES = 30;
 
+/** @type {Number} Blocks shorter than this (px) get the compact corner resize grip (styles.css .mod_confscheduler-block-short). */
+const SHORT_BLOCK_HEIGHT_PX = 72;
+
 /**
  * Clamps a value between a minimum and maximum (inclusive).
  *
@@ -1155,7 +1158,17 @@ const renderBlock = (state, columnsWrap, slot, slots) => {
     const roomTime = document.createElement('div');
     roomTime.className = 'mod_confscheduler-block-roomtime';
     roomTime.textContent = `${roomNames}, ${formatTime(slot.starttime)}–${formatTime(slot.endtime)}`;
-    block.appendChild(roomTime);
+    // A presentation block's room/time line shares the footer's single flex row with the
+    // track pill, so on a short card it shortens with an ellipsis instead of wrapping
+    // below the pill, where the card's overflow: hidden clipped it out of sight.
+    (block.querySelector(':scope > .mod_confscheduler-block-footer') || block).appendChild(roomTime);
+
+    // Short cards (about 25 minutes at the default row height) have the track pill
+    // right at their bottom edge: styles.css gives them a smaller grip in the corner
+    // so it is not drawn across the pill.
+    if (parseFloat(block.style.height) < SHORT_BLOCK_HEIGHT_PX) {
+        block.classList.add('mod_confscheduler-block-short');
+    }
 
     const resizeHandle = document.createElement('div');
     resizeHandle.className = 'mod_confscheduler-block-resize';

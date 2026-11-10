@@ -1986,4 +1986,72 @@ final class api_test extends advanced_testcase {
         $this->assertSame(strtotime('2026-09-01 12:00:00'), (int) $child->starttime);
         $this->assertSame(strtotime('2026-09-01 13:00:00'), (int) $child->endtime);
     }
+
+    /**
+     * clean_restored_room() drops values the api would reject (audit F3) and keeps
+     * valid ones.
+     */
+    public function test_clean_restored_room(): void {
+        $bad = api::clean_restored_room((object) [
+            'name'      => 'Hall <script>x</script>',
+            'sortorder' => '3',
+            'colour'    => 'red;x',
+            'capacity'  => '-5',
+        ]);
+        $this->assertStringNotContainsString('<script>', $bad->name);
+        $this->assertSame(3, $bad->sortorder);
+        $this->assertNull($bad->colour);
+        $this->assertNull($bad->capacity);
+
+        $good = api::clean_restored_room((object) [
+            'name'      => 'Main Hall',
+            'sortorder' => 0,
+            'colour'    => '#3366cc',
+            'capacity'  => '120',
+        ]);
+        $this->assertSame('Main Hall', $good->name);
+        $this->assertSame('#3366cc', $good->colour);
+        $this->assertSame(120, $good->capacity);
+
+        $unlimited = api::clean_restored_room((object) ['name' => 'Room B', 'sortorder' => 1, 'colour' => null,
+            'capacity' => null]);
+        $this->assertNull($unlimited->colour);
+        $this->assertNull($unlimited->capacity);
+    }
+
+    /**
+     * clean_restored_slot() drops values the api would reject (audit F3) and keeps
+     * valid ones.
+     */
+    public function test_clean_restored_slot(): void {
+        $bad = api::clean_restored_slot((object) [
+            'label'            => 'Lunch <b>now</b>',
+            'roomnameoverride' => '<i>Foyer</i>',
+            'colour'           => '#zzzzzz',
+            'iscontainer'      => '7',
+            'childtextalign'   => 'x-y',
+            'childtextvalign'  => 'sideways',
+        ]);
+        $this->assertSame('Lunch now', $bad->label);
+        $this->assertSame('Foyer', $bad->roomnameoverride);
+        $this->assertNull($bad->colour);
+        $this->assertSame(1, $bad->iscontainer);
+        $this->assertSame('left', $bad->childtextalign);
+        $this->assertSame('top', $bad->childtextvalign);
+
+        $good = api::clean_restored_slot((object) [
+            'label'            => null,
+            'roomnameoverride' => null,
+            'colour'           => '#AABBCC',
+            'iscontainer'      => 0,
+            'childtextalign'   => 'center',
+            'childtextvalign'  => 'bottom',
+        ]);
+        $this->assertNull($good->label);
+        $this->assertNull($good->roomnameoverride);
+        $this->assertSame('#AABBCC', $good->colour);
+        $this->assertSame(0, $good->iscontainer);
+        $this->assertSame('center', $good->childtextalign);
+        $this->assertSame('bottom', $good->childtextvalign);
+    }
 }

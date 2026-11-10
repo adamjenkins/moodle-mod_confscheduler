@@ -17,6 +17,7 @@
 namespace mod_confscheduler\local;
 
 use mod_confprogram\local\display_list;
+use mod_confprogram\local\field_settings;
 use mod_confsubmissions\api as submissions_api;
 
 /**
@@ -53,7 +54,11 @@ class grid_data {
      *     never reads); and while the linked confprogram is not yet in its 'display'
      *     phase, presentation slots are left out entirely (span blocks only), so the
      *     accept decisions and speaker names stay embargoed until the programme is
-     *     published (2026-10-28 security checklist audit, F1)
+     *     published (2026-10-28 security checklist audit, F1); and 'speakers' and
+     *     'track' (with 'trackid'/'trackcolour') are left null whenever the organiser
+     *     has unticked that field's "Show in list" in mod_confprogram's display field
+     *     settings, so the schedule and its ICS export honour the same choice as the
+     *     programme list (audit F2). Editors always get every field, to plan with.
      * @return array{rooms: array, slots: array, unscheduled: array, gapminutes: int, pxperhour: int,
      *     conferencestart: ?int, conferenceend: ?int, daystart: ?int, dayend: ?int,
      *     daybounds: array, pendingnotifications: int}
@@ -113,6 +118,21 @@ class grid_data {
         // embargoed until the confprogram is switched to Display phase; only a schedule
         // editor may see them earlier.
         $embargoed = !$canmanage && $confprogram->phase !== 'display';
+        // The organiser's per-field "Show in list" choices in mod_confprogram's display
+        // settings apply to the public schedule too (audit F2). Only the fixed fields
+        // the grid carries are asked about, so no optional-field lookup is needed.
+        if ($canmanage) {
+            $showspeakers = true;
+            $showtrack = true;
+        } else {
+            $visiblefields = field_settings::get_visible_fieldnames(
+                (int) $confprogram->id,
+                field_settings::FIXED_FIELDS,
+                'list'
+            );
+            $showspeakers = in_array('speakers', $visiblefields, true);
+            $showtrack = in_array('track', $visiblefields, true);
+        }
         $confsubmissionscm = get_coursemodule_from_id(
             'confsubmissions',
             $confprogram->confsubmissionscmid,
@@ -238,9 +258,10 @@ class grid_data {
                 $submission = $submissionsbyid[(int) $slot->submissionid] ?? null;
                 if ($submission) {
                     $entry['title'] = format_string($submission->title, true, ['escape' => false]);
-                    $entry['speakers'] = $speakernamesbyid[(int) $submission->id] ?? '';
+                    $entry['speakers'] = $showspeakers ? ($speakernamesbyid[(int) $submission->id] ?? '') : null;
                     $entry['withdrawn'] = $submission->status === 'withdrawn';
-                    $hastrack = !empty($submission->trackid) && isset($tracksbyid[(int) $submission->trackid]);
+                    $hastrack = $showtrack && !empty($submission->trackid)
+                        && isset($tracksbyid[(int) $submission->trackid]);
                     $entry['track'] = $hastrack
                         ? format_string($tracksbyid[(int) $submission->trackid]->name, true, ['escape' => false])
                         : null;

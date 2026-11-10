@@ -153,6 +153,6 @@ $functions = [
             . 'scheduling change pending since it was last notified.',
         'type'         => 'write',
         'ajax'         => true,
-        'capabilities' => 'mod/confscheduler:manageschedule',
+        'capabilities' => 'mod/confscheduler:manageschedule, mod/confscheduler:managenotifications',
     ],
 ];

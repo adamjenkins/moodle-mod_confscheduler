@@ -76,7 +76,14 @@ class get_grid_data extends external_api {
 
         $canmanage = has_capability('mod/confscheduler:manageschedule', $context);
 
-        return grid_data::build($confscheduler, (int) $USER->id, $canmanage);
+        $payload = grid_data::build($confscheduler, (int) $USER->id, $canmanage);
+        // Sending needs managenotifications as well (send_pending_notifications, audit
+        // F4); without it the edit-mode "Send notifications" button gets a zero count and
+        // stays disabled rather than offering a send that would be refused.
+        if (!has_capability('mod/confscheduler:managenotifications', $context)) {
+            $payload['pendingnotifications'] = 0;
+        }
+        return $payload;
     }
 
     /**

@@ -95,6 +95,14 @@ class toggle_favourite extends external_api {
             MUST_EXIST
         );
 
+        // Favourites exist only once the programme is published: before Display phase
+        // the accept decisions are embargoed, so a guessed slot id must not be able to
+        // write a favourite row for it (residual from the 2026-10-28 audit's F1 fix).
+        // Removing one's own favourite stays allowed in any phase.
+        if ($params['favourited'] && \mod_confprogram\api::get_phase((int) $confprogramcm->id) !== 'display') {
+            throw new \moodle_exception('error:favouritesnotopen', 'mod_confscheduler');
+        }
+
         if ($params['favourited']) {
             \mod_confprogram\api::add_favourite((int) $confprogramcm->instance, $submissionid, (int) $USER->id);
         } else {

@@ -102,6 +102,8 @@ class restore_confscheduler_activity_structure_step extends restore_activity_str
         $data = (object) $data;
         $oldid = $data->id;
         $data->confscheduler = $this->get_new_parentid('confscheduler');
+        // A backup is untrusted input: apply the api's validators (audit F3).
+        $data = \mod_confscheduler\api::clean_restored_room($data);
 
         $newitemid = $DB->insert_record('confscheduler_room', $data);
         $this->set_mapping('confscheduler_room', $oldid, $newitemid);
@@ -164,6 +166,8 @@ class restore_confscheduler_activity_structure_step extends restore_activity_str
         $data->confscheduler = $this->get_new_parentid('confscheduler');
         $data->starttime = $this->apply_date_offset($data->starttime);
         $data->endtime = $this->apply_date_offset($data->endtime);
+        // A backup is untrusted input: apply the api's validators (audit F3).
+        $data = \mod_confscheduler\api::clean_restored_slot($data);
 
         $newitemid = $DB->insert_record('confscheduler_slot', $data);
         $this->set_mapping('confscheduler_slot', $oldid, $newitemid);

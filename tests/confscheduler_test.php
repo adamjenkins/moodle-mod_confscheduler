@@ -263,4 +263,42 @@ final class confscheduler_test extends advanced_testcase {
         $this->assertFalse($DB->record_exists('confscheduler_slotroom', ['slotid' => $slotid]));
         $this->assertTrue($DB->record_exists('confscheduler_room', ['id' => $roomid]));
     }
+
+    /**
+     * Clearing the schedule by course reset also removes every user's remembered
+     * last-viewed-day preference for that course's instances, but not for an
+     * instance in another course (2026-10-28 security checklist audit, F5).
+     */
+    public function test_reset_userdata_removes_lastday_preferences(): void {
+        $this->resetAfterTest();
+        global $CFG, $DB;
+        require_once($CFG->dirroot . '/mod/confscheduler/lib.php');
+
+        [$course, $confprogramcm] = $this->create_course_with_confprogram();
+        $confscheduler = $this->getDataGenerator()->create_module('confscheduler', [
+            'course'          => $course->id,
+            'confprogramcmid' => $confprogramcm->id,
+        ]);
+        [$othercourse, $otherconfprogramcm] = $this->create_course_with_confprogram();
+        $otherconfscheduler = $this->getDataGenerator()->create_module('confscheduler', [
+            'course'          => $othercourse->id,
+            'confprogramcmid' => $otherconfprogramcm->id,
+        ]);
+
+        $user = $this->getDataGenerator()->create_user();
+        api::set_last_viewed_day((int) $confscheduler->id, (int) $user->id, 'all');
+        api::set_last_viewed_day((int) $otherconfscheduler->id, (int) $user->id, 'all');
+        $prefname = api::last_viewed_day_preference_name((int) $confscheduler->id);
+        $otherprefname = api::last_viewed_day_preference_name((int) $otherconfscheduler->id);
+        $this->assertTrue($DB->record_exists('user_preferences', ['name' => $prefname]));
+
+        confscheduler_reset_userdata((object) [
+            'courseid' => $course->id,
+            'reset_confscheduler_schedule' => 1,
+            'timeshift' => 0,
+        ]);
+
+        $this->assertFalse($DB->record_exists('user_preferences', ['name' => $prefname]));
+        $this->assertTrue($DB->record_exists('user_preferences', ['name' => $otherprefname]));
+    }
 }
