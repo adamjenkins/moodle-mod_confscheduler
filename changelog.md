@@ -1,5 +1,56 @@
 # Changelog
 
+## [0.4.5] - 2026-11-10
+
+### Added
+
+- `api::clean_restored_room()` and `api::clean_restored_slot()`, used by the restore step: names,
+  labels and room-name overrides are cleaned to `PARAM_TEXT`, invalid colours become null, a
+  negative or non-numeric room capacity becomes null (unlimited), `iscontainer` is forced to 0/1,
+  and text alignment outside the allowed values falls back to `left`/`top`.
+- `error:favouritesnotopen`: `toggle_favourite` refuses to add a favourite until the linked
+  confprogram is in Display phase (removing one is still allowed).
+- Short edit-mode cards (under 72 px, about 25 minutes) get the `mod_confscheduler-block-short`
+  class and a smaller resize grip in the bottom-right corner.
+- `amd/src/colour_utils.js`: `relativeLuminance()` and `contrastRatio()` (WCAG 2.x).
+- New and extended PHPUnit tests for the api, the course reset, `get_grid_data`,
+  `send_pending_notifications`, `toggle_favourite`, the ICS export and the privacy provider.
+
+### Changed
+
+- `grid_data::build()` takes a new required `$canmanage` argument (whether the user holds
+  `mod/confscheduler:manageschedule`); `ics_export::build()` takes it as an optional argument
+  (default false). `get_grid_data` and `export.php` pass it.
+- For users without `manageschedule`: `unscheduled` is always empty, `nonpreferredday` false and
+  `pendingnotifications` 0; presentation slots are left out until the confprogram is in Display
+  phase; `speakers` and `track` are null when confprogram's "Show in list" display field settings
+  hide them.
+- `get_grid_data` returns `pendingnotifications` 0 to users without
+  `mod/confscheduler:managenotifications`, so the Send notifications button stays disabled.
+- `send_pending_notifications` also requires `mod/confscheduler:managenotifications` (also listed
+  in `db/services.php`); the capability string is reworded to say so.
+- `db/access.php`: `manageschedule` risks are now `RISK_CONFIG | RISK_DATALOSS | RISK_SPAM`,
+  `managenotifications` risks `RISK_XSS | RISK_SPAM`.
+- Course reset (`confscheduler_reset_userdata()`) deletes the users' last-viewed-day preferences
+  for the reset instances.
+- `colour_utils.contrastTextColour()` picks black or white text by the higher WCAG contrast ratio
+  instead of the YIQ brightness midpoint; its `threshold` parameter and `perceivedBrightness()`
+  are removed.
+
+### Fixed
+
+- On short presentation cards the room/time line now sits in the footer's flex row beside the
+  track pill and shortens with an ellipsis, instead of wrapping below the pill where the card
+  clipped it.
+
+### Security
+
+- Scheduled presentations, accepted-but-unscheduled submissions, speakers and preferred dates
+  were returned by `get_grid_data` and the ICS export to every `viewschedule` holder (students,
+  guests) while the linked confprogram was still in Review phase, bypassing its decision embargo
+  and blind review.
+- Restore no longer trusts room and slot values from a backup.
+
 ## [0.4.4] - 2026-10-21
 
 ### Added
